@@ -56,6 +56,9 @@ tmp/**/*
 local.properties
 .classpath
 .settings/
+*/.settings/*
+*/.classpath
+*/.project
 .loadpath
 /src/main/resources/rebel.xml
 # External tool builders
