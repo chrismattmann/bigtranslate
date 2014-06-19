@@ -59,6 +59,8 @@ local.properties
 */.settings/*
 */.classpath
 */.project
+*/.gitignore
+*/*/.gitignore
 .loadpath
 /src/main/resources/rebel.xml
 # External tool builders
