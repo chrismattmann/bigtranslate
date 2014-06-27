@@ -112,7 +112,6 @@
 
    <!-- core employment attributes -->
    <field name="postedDate" type="date" indexed="true" stored="true" required="true" multiValued="false"/>
-   ￼￼￼￼￼￼<field name="location" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
    <field name="department" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
    <field name="title" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
    <field name="salary" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
@@ -123,7 +122,7 @@
    <field name="applications" type="string" indexed="true" stored="true" required="true" multiValued="false"/> 
    <field name="company" type="string" indexed="true" stored="true" required="true" multiValued="false"/>   
    <field name="contactPerson" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
-   <field name="phoneNumber" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
+   <field name="phoneNumber" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
    <field name="faxNumber" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
    <field name="location" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
    <field name="latitude" type="string" indexed="true" stored="true" required="true" multiValued="false"/>

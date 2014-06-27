@@ -35,7 +35,7 @@
        that you fully re-index after changing this setting as it can
        affect both how text is indexed and queried.
   -->
-  <luceneMatchVersion>4.7</luceneMatchVersion>
+  <luceneMatchVersion>4.2</luceneMatchVersion>
 
   <!-- <lib/> directives can be used to instruct Solr to load an Jars
        identified and use them to resolve any "plugins" specified in
@@ -544,12 +544,12 @@
                    autowarmCount="0"/>
     
     <!-- custom cache currently used by block join --> 
-    <cache name="perSegFilter"
+<!--    <cache name="perSegFilter"
       class="solr.search.LRUCache"
       size="10"
       initialSize="0"
       autowarmCount="10"
-      regenerator="solr.NoOpRegenerator" />
+      regenerator="solr.NoOpRegenerator" />-->
 
     <!-- Field Value Cache
          
@@ -1398,16 +1398,16 @@
     </arr>
   </requestHandler>
 
-  <searchComponent name="suggest" class="solr.SuggestComponent">
+  <!--<searchComponent name="suggest" class="solr.SuggestComponent">
   	<lst name="suggester">
       <str name="name">mySuggester</str>
-      <str name="lookupImpl">FuzzyLookupFactory</str>      <!-- org.apache.solr.spelling.suggest.fst -->
-      <str name="dictionaryImpl">DocumentDictionaryFactory</str>     <!-- org.apache.solr.spelling.suggest.HighFrequencyDictionaryFactory --> 
+      <str name="lookupImpl">FuzzyLookupFactory</str> 
+      <str name="dictionaryImpl">DocumentDictionaryFactory</str> 
       <str name="field">cat</str>
       <str name="weightField">price</str>
       <str name="suggestAnalyzerFieldType">string</str>
     </lst>
-  </searchComponent>
+  </searchComponent>-->
 
   <requestHandler name="/suggest" class="solr.SearchHandler" startup="lazy">
     <lst name="defaults">
