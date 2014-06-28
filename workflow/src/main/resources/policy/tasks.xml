@@ -15,7 +15,75 @@
   limitations under the License.
 -->
 <cas:tasks xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas">
-<!--
-  TODO: Add some examples
--->
+
+  <task id="urn:xdata:TsvToJson_Task" name="TsvToJson_Task"
+    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="TsvToJson_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/PgeConfig_TsvToJson.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
+          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <requiredMetFields>
+            <metfield name="TsvFile"/>
+          </requiredMetFields>
+    </configuration>
+  </task>
+
+  <task id="urn:xdata:Repackager_Task" name="Repackager_Task"
+    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="Repackager_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/PgeConfig_Repackager.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
+          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <requiredMetFields>
+            <metfield name="TsvFile"/>
+          </requiredMetFields>
+    </configuration>
+  </task>
+
+  <task id="urn:xdata:Translator_Task" name="Translator_Task"
+    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="Translator_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/PgeConfig_Translator.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
+          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <requiredMetFields>
+            <metfield name="InputFiles"/>
+          </requiredMetFields>        
+    </configuration>
+  </task>
+
+  <task id="urn:xdata:SolrJsonPoster_Task" name="SolrJsonPoster_Task"
+    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="SolrJsonPoster_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/PgeConfig_SolrJsonPoster.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
+          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <property name="SolrUrl" value="http://localhost:8080/solr/employment/update/json?commit=true"/>
+          <requiredMetFields>`
+            <metfield name="InputFiles"/>
+          </requiredMetFields>        
+    </configuration>
+  </task>
+
+
 </cas:tasks>
