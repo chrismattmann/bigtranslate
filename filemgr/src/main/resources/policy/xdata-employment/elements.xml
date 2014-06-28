@@ -15,19 +15,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
-<cas:producttypemap xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas">
- <!-- can set the "parent" attribute on types below to allow inheritance
-of elements between the types
--->
-   <type id="urn:oodt:GenericFile">
-       <element id="urn:oodt:ProductReceivedTime"/>
-       <element id="urn:oodt:ProductName"/>
-       <element id="urn:oodt:ProductId"/>
-       <element id="urn:oodt:ProductType"/>
-       <element id="urn:oodt:ProductStructure"/>
-       <element id="urn:oodt:Filename"/>
-       <element id="urn:oodt:FileLocation"/>
-       <element id="urn:oodt:MimeType"/>
-       <element id="urn:test:DataVersion"/>
-  </type>
-</cas:producttypemap>
+<cas:elements xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas">
+
+</cas:elements>
