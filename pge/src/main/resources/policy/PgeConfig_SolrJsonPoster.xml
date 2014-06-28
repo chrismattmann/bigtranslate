@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <pgeConfig>
 
   <!-- How to run the PGE -->
   <exe dir="[JobDir]" shell="/bin/bash">
-    <cmd>[PGE_HOME]/bin/example-script.sh > /tmp/HelloWorldPGE-[ProductionDateTime].output.txt</cmd>
+     <cmd>export PATH=[XDATA_EMPLOYMENT_HOME]/python2.7/bin:${PATH}</cmd>  
+     <cmd>mkdir [JobInputDir]</cmd>
+     <cmd>mkdir [JobOutputDir]</cmd>
+     <cmd>mkdir [JobLogDir]</cmd>
+     <cmd>echo "Running SolrJsonPoster"</cmd>
+     <cmd>cd [JobOutputDir]</cmd>
+     <cmd>find [InputFiles] -name *.json | poster -u "[SolrUrl]" -v > [JobLogDir]/solrjsonposter_[DateMilis].log 2[GreaterThan][Ampersand]1 </cmd>
   </exe>
 
   <!-- Files to ingest -->
@@ -23,7 +30,14 @@
     <metadata key="LogicalAnd" val="[Ampersand][Ampersand]"/>
     <metadata key="CshPipeToStdOutAndError" val="[GreaterThan][Ampersand][Exclamation]"/>
 
+
+    <!-- Casi-specific keys -->
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
+    <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
+    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/jsonposter/[DateMilis]"/>
+    <metadata key="JobInputDir" val="[JobDir]/input"/>
+    <metadata key="JobOutputDir" val="[JobDir]/output"/>
+    <metadata key="JobLogDir" val="[JobDir]/logs"/>
   </customMetadata>
 
 </pgeConfig>

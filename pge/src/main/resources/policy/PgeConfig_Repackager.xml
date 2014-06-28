@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<pgeConfig>
+
+  <!-- How to run the PGE -->
+  <exe dir="[JobDir]" shell="/bin/bash">
+     <cmd>export PATH=[XDATA_EMPLOYMENT_HOME]/python2.7/bin:${PATH}</cmd>  
+     <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
+     <cmd>mkdir [JobInputDir]</cmd>
+     <cmd>mkdir [JobOutputDir]</cmd>
+     <cmd>mkdir [JobLogDir]</cmd>
+     <cmd>cp [InputFiles] [JobInputDir]</cmd>
+     <cmd>echo "Staging complete, running Repackager"</cmd>
+     <cmd>cd [JobOutputDir]</cmd>
+     <cmd>repackage -j [JobInputDir]/[JsonFile] -o employmentjobs -v > [JobLogDir]/repackager_[DateMilis].log</cmd>
+  </exe>
+
+  <!-- Files to ingest -->
+  <output>
+    <!-- one or more of these -->
+    <dir path="[JobOutputDir]" createBeforeExe="false">
+       <files regExp=".*\.json" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[XDATA_EMPLOYMENT_HOME]/pge/policy/metout/generic_metout.xml"/>
+     </dir>
+  </output>
+
+  <!-- Custom metadata to add to output files -->
+  <customMetadata>
+    <!-- helpful keys -->
+    <metadata key="LessThan" val="&#x3C;"/>
+    <metadata key="LessThanOrEqualTo" val="[LessThan]="/>
+    <metadata key="GreaterThan" val="&#x3E;"/>
+    <metadata key="GreaterThanOrEqualTo" val="[GreaterThan]="/>
+    <metadata key="Exclamation" val="&#33;"/>
+    <metadata key="Ampersand" val="&#38;"/>
+    <metadata key="NotEqualTo" val="[Ampersand]="/>
+    <metadata key="LogicalAnd" val="[Ampersand][Ampersand]"/>
+    <metadata key="CshPipeToStdOutAndError" val="[GreaterThan][Ampersand][Exclamation]"/>
+
+
+    <!-- Casi-specific keys -->
+    <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
+    <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
+    <metadata key="JsonFile" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE InputFiles = '[TsvFile]'}"/>
+    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/repackager/[JsonFile]_[DateMilis]"/>
+    <metadata key="JobInputDir" val="[JobDir]/input"/>
+    <metadata key="JobOutputDir" val="[JobDir]/output"/>
+    <metadata key="JobLogDir" val="[JobDir]/logs"/>
+    <metadata key="ProductType" val="EmploymentJob"/>
+    <metadata key="InputFiles" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE InputFiles = '[TsvFile]'}"/>
+  </customMetadata>
+
+</pgeConfig>
