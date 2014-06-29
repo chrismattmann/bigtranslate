@@ -5,6 +5,7 @@
   <!-- How to run the PGE -->
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PATH=[XDATA_EMPLOYMENT_HOME]/python2.7/bin:${PATH}</cmd>  
+     <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
      <cmd>mkdir [JobLogDir]</cmd>
