@@ -5,20 +5,21 @@
   <!-- How to run the PGE -->
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PATH=[XDATA_EMPLOYMENT_HOME]/python2.7/bin:${PATH}</cmd>  
-     <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
+     <cmd>echo "Staging job input from [JsonFilePath] to [JobInputDir]"</cmd>
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
      <cmd>mkdir [JobLogDir]</cmd>
-     <cmd>cp [InputFiles] [JobInputDir]</cmd>
+     <cmd>cp [JsonFilePath] [JobInputDir]</cmd>
      <cmd>echo "Staging complete, running Repackager"</cmd>
      <cmd>cd [JobOutputDir]</cmd>
-     <cmd>repackage -j [JobInputDir]/[JsonFile] -o employmentjobs -v > [JobLogDir]/repackager_[DateMilis].log</cmd>
+     <cmd>repackage -j [JobInputDir]/[JsonFileName] -o employmentjobs -v > [JobLogDir]/repackager_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <!-- Files to ingest -->
   <output>
     <!-- one or more of these -->
     <dir path="[JobOutputDir]" createBeforeExe="false">
+       <files regExp=".*\.json" metFileWriterClass="org.apache.oodt.cas.pge.writers.FilenameExtractorWriter"              args="[XDATA_EMPLOYMENT_HOME]/pge/extractors/filename/filename.extractor.config.xml"/>
        <files regExp=".*\.json" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[XDATA_EMPLOYMENT_HOME]/pge/policy/metout/generic_metout.xml"/>
      </dir>
   </output>
@@ -36,17 +37,18 @@
     <metadata key="LogicalAnd" val="[Ampersand][Ampersand]"/>
     <metadata key="CshPipeToStdOutAndError" val="[GreaterThan][Ampersand][Exclamation]"/>
 
-
-    <!-- Casi-specific keys -->
-    <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
+    <!-- Job specific keys -->
+    <metadata key="PCS_ActionsIds" val="TriggerPostIngestWorkflow,DeleteDataFile" split="true"/> 
+    <metadata key="JsonFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE Filename = '[Prior_Filename]' AND ProductionDateTime = '[Prior_ProductionDateTime]'}"/>
+    <metadata key="JsonFileName" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE Filename = '[Prior_Filename]' AND ProductionDateTime = '[Prior_ProductionDateTime]'}"/>
+    <metadata key="ProductionDateTime" val="[DATE.UTC]" workflowMet="true"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
-    <metadata key="JsonFile" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE InputFiles = '[TsvFile]'}"/>
-    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/repackager/[JsonFile]_[DateMilis]"/>
+    <metadata key="Filename" val="" workflowMet="true"/>  
+    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/repackager/[JsonFileName]_[DateMilis]"/>
     <metadata key="JobInputDir" val="[JobDir]/input"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>
     <metadata key="ProductType" val="EmploymentJob"/>
-    <metadata key="InputFiles" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregates WHERE InputFiles = '[TsvFile]'}"/>
   </customMetadata>
 
 </pgeConfig>

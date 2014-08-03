@@ -1,0 +1,6 @@
+<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="TsvToJsonWorkflow" id="urn:xdata:TsvToJsonWorkflow">
+ <tasks>
+   <task id="urn:oodt:FilterTask"/>
+   <task id="urn:xdata:TsvToJson_Task"/>
+ </tasks>
+</cas:workflow>

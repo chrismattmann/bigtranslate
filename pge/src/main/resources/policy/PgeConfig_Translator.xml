@@ -9,9 +9,10 @@
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
      <cmd>mkdir [JobLogDir]</cmd>
+     <cmd>cp -R [InputFiles] [JobInputDir]</cmd>
      <cmd>echo "Staging complete, running Translator"</cmd>
      <cmd>cd [JobOutputDir]</cmd>
-     <cmd>find [InputFiles] -name "*.json" -exec basename \{} .json \; | xargs -I infile translatejson -i [InputFiles]/infile.json -j infile-t.json  -c [TranslateCols] -p [TranslateCreds] -f es -t en -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>find [JobInputDir] -name "*.json" -exec basename \{} .json \; | xargs -I infile translatejson -i [JobInputDir]/infile.json -j infile-t.json  -c [TranslateCols] -p [TranslateCreds] -f es -t en -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <!-- Files to ingest -->

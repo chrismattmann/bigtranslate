@@ -9,11 +9,11 @@
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
      <cmd>mkdir [JobLogDir]</cmd>
-     <cmd>cp [InputFiles] [JobInputDir]</cmd>
+     <cmd>cp [TsvFilePath] [JobInputDir]</cmd>
      <cmd>echo "Staging complete, running TsvToJson"</cmd>
      <cmd>cd [JobOutputDir]</cmd>
-     <cmd>export TSV_FILE_PREFIX=`echo [TsvFile] | cut -d. -f1`</cmd>
-     <cmd>tsvtojson -t [InputFiles] -j [JobOutputDir]/${TSV_FILE_PREFIX}.json -c /tmp/wtf/conf/colheaders.txt -o employmentjobs -v > tsvtojson_[DateMilis].log</cmd>
+     <cmd>export TSV_FILE_PREFIX=`basename [TsvFile] .tsv`</cmd>
+     <cmd>tsvtojson -t [JobInputDir]/[TsvFile] -j [JobOutputDir]/${TSV_FILE_PREFIX}.json -c [ConfFilePath]/colheaders.txt -o employmentjobs -u url -v > [JobLogDir]/tsvtojson_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <!-- Files to ingest -->
@@ -39,14 +39,17 @@
 
 
     <!-- Casi-specific keys -->
+    <metadata key="PCS_ActionsIds" val="TriggerPostIngestWorkflow,DeleteDataFile" split="true"/>
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
+    <metadata key="TsvFile" val="[Prior_Filename]"/>
     <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/tsvtojson/[TsvFile]_[DateMilis]"/>
     <metadata key="JobInputDir" val="[JobDir]/input"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>
     <metadata key="ProductType" val="EmploymentJobAggregates"/>
-    <metadata key="InputFiles" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsv WHERE Filename = '[TsvFile]'}"/>
+    <metadata key="InputFiles" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsv WHERE Filename = '[TsvFile]'}"/>
+    <metadata key="TsvFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsv WHERE Filename = '[TsvFile]'}"/>
   </customMetadata>
 
 </pgeConfig>

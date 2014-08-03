@@ -18,4 +18,13 @@
 <!--
   TODO: Add some examples
 -->
+ <event name="EmploymentJobAggregatesTsvIngest">
+    <workflow id="urn:xdata:TsvToJsonWorkflow"/>
+ </event>
+ <event name="EmploymentJobAggregatesIngest">
+    <workflow id="urn:xdata:RepackageWorkflow"/>
+ </event>
+ <event name="EmploymentJobIngest">
+    <workflow id="urn:xdata:TranslateWorkflow"/>
+ </event>
 </cas:workflowevents>
