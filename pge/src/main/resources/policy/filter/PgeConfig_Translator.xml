@@ -5,15 +5,14 @@
   <!-- How to run the PGE -->
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PATH=[XDATA_EMPLOYMENT_HOME]/python2.7/bin:${PATH}</cmd>  
-     <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
+     <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
      <cmd>mkdir [JobLogDir]</cmd>
-     <cmd>cp [TsvFilePath] [JobInputDir]</cmd>
-     <cmd>echo "Staging complete, running TsvToJson"</cmd>
+     <cmd>cp -R [JsonFilePath] [JobInputDir]</cmd>
+     <cmd>echo "Staging complete, running Translator"</cmd>
      <cmd>cd [JobOutputDir]</cmd>
-     <cmd>export TSV_FILE_PREFIX=`basename [TsvFile] .tsv`</cmd>
-     <cmd>tsvtojson -t [JobInputDir]/[TsvFile] -j [JobOutputDir]/${TSV_FILE_PREFIX}.json -c [ConfFilePath]/colheaders.txt -o employmentjobs -u url -v > [JobLogDir]/tsvtojson_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>find [JobInputDir] -name "*.json" -exec basename \{} .json \; | xargs -I infile translatejson -i [JobInputDir]/infile.json -j infile-t.json  -c [TranslateCols] -p [TranslateCreds] -f es -t en -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <!-- Files to ingest -->
@@ -40,16 +39,14 @@
 
     <!-- Casi-specific keys -->
     <metadata key="PCS_ActionsIds" val="TriggerPostIngestWorkflow,DeleteDataFile" split="true"/>
+    <metadata key="JsonFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJob WHERE Filename = '[Prior_Filename]' AND ProductionDateTime = '[Prior_ProductionDateTime]'}"/>
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
-    <metadata key="TsvFile" val="[Prior_Filename]"/>
-    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/tsvtojson/[TsvFile]_[DateMilis]"/>
+    <metadata key="JobDir" val="[XDATA_EMPLOYMENT_HOME]/data/jobs/translate/[Prior_Filename]_[DateMilis]"/>
     <metadata key="JobInputDir" val="[JobDir]/input"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>
-    <metadata key="ProductType" val="EmploymentJobAggregates"/>
-    <metadata key="InputFiles" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsv WHERE Filename = '[TsvFile]'}"/>
-    <metadata key="TsvFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsv WHERE Filename = '[TsvFile]'}"/>
+    <metadata key="ProductType" val="EmploymentJobTranslated"/>
   </customMetadata>
 
 </pgeConfig>

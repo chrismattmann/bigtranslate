@@ -3,13 +3,9 @@
 <metadataList>
     
    <metadata key="TagAccumulator" val="value"/>
-   <metadata key="JobId" val="[JobId]"/>
    <metadata key="InputFiles"/>
    <metadata key="ProductionDateTime"/>
    <metadata key="ProductType"/>
-   <metadata key="Filename"/>
-   <metadata key="FileLocation"/>
-   <metadata key="FileSize"/>
-   <metadata key="ProductName" val="[Filename]"/>
-        
+    
+    
 </metadataList>
