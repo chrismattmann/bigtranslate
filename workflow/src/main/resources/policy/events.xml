@@ -27,4 +27,7 @@
  <event name="EmploymentJobIngest">
     <workflow id="urn:xdata:TranslateWorkflow"/>
  </event>
+ <event name="EmploymentJobTranslatedIngest">
+    <workflow id="urn:xdata:SolrJsonPosterWorkflow"/>
+ </event>
 </cas:workflowevents>
