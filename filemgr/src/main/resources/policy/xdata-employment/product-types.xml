@@ -42,9 +42,15 @@ limitations under the License.
   </type>
   
   <type id="urn:xdata:EmploymentJobAggregates" name="EmploymentJobAggregates">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive/employment_aggregate"/>
-    <versioner class="org.apache.oodt.cas.filemgr.versioning.MetadataBasedFileVersioner"/>
+    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>A Json-based aggregated version of the jobs present in the XDATA employment TSV file.</description>
+    <metadata>
+      <keyval>
+        <key>filePathSpec</key>
+        <val>/[InputFiles]/aggregate_json/[Filename]</val>
+      </keyval>
+    </metadata>
     <metExtractors>
       <extractor
         class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
@@ -66,9 +72,15 @@ limitations under the License.
   </type>
 
   <type id="urn:xdata:EmploymentJob" name="EmploymentJob">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive/employment"/>
-    <versioner class="org.apache.oodt.cas.filemgr.versioning.MetadataBasedFileVersioner"/>
+    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>Individual, per-job JSON files output from the repackager job running on XDATA employment JSON aggregate data.</description>
+    <metadata>
+      <keyval>
+	<key>filePathSpec</key>
+	<val>/[InputFiles]/individual_job_json/[Filename]</val>
+      </keyval>
+    </metadata>
     <metExtractors>
       <extractor
         class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
@@ -90,9 +102,15 @@ limitations under the License.
   </type>
 
   <type id="urn:xdata:EmploymentJobTranslated" name="EmploymentJobTranslated">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive/employment_translated"/>
-    <versioner class="org.apache.oodt.cas.filemgr.versioning.MetadataBasedFileVersioner"/>
+    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>The final, per job translated JSON XDATA employment data files, ready to ingest into Solr.</description>
+    <metadata>
+      <keyval>
+	<key>filePathSpec</key>
+	<val>/[InputFiles]/translated_json/[Filename]</val>
+      </keyval>
+    </metadata>
     <metExtractors>
       <extractor
         class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
