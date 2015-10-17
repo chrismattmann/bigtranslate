@@ -1,0 +1,46 @@
+Requirements for BigTranslate
+
+REQUIREMENTS:
+
+* Java Development Kit (JDK) 1.6+
+* JAVA_HOME set 
+* Python 2.7
+* ETLlib installed and available on the Path.
+* Tika-Python installed and available on the Path.
+* OODT version 0.10-SNAPSHOT
+
+INSTALLATION:
+
+# build oodt
+	$ mvn clean package <OPTIONAL PROFILES>		# see optional build profiles below
+
+# The oodt install 
+
+# deploy oodt
+	$ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
+
+
+NOTE:
+Optinal Build Profiles:  
+For other build configurations, add the following arguments:
+  	(default)           : bin, crawler, data, extensions,
+                        filemgr (Lucene), logs, pcs, resmgr,
+                        tomcat, workflow, pge
+
+  	-Pfm-solr-catalog   : default components, filemgr (Solr),
+                        solr, tomcat/webapps/solr
+
+
+RUN:
+
+  $ cd /my/deployment/directory/oodt
+  $ cd bin
+  $ ./oodt start
+
+
+ START BigTranslate:
+
+ Send an event to the Workflow Manager to kick off the TsvToJson PGE job
+
+ $ cd $OODT_HOME/workflow/bin;
+ $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key FileName TsvFile
