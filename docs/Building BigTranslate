@@ -12,12 +12,11 @@ REQUIREMENTS:
 INSTALLATION:
 
 # build oodt
-	$ mvn clean package <OPTIONAL PROFILES>		# see optional build profiles below
 
-# The oodt install 
+$ mvn clean package <OPTIONAL PROFILES>		# see optional build profiles below
 
 # deploy oodt
-	$ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
+$ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
 
 
 NOTE:
@@ -40,7 +39,7 @@ RUN:
 
  START BigTranslate:
 
- Send an event to the Workflow Manager to kick off the TsvToJson PGE job
-
+ #Send an event to the Workflow Manager to kick off the TsvToJson PGE job
+ # Set the OODT_HOME and $WORKFLOW_URL envirnment variables
  $ cd $OODT_HOME/workflow/bin;
  $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key FileName TsvFile
