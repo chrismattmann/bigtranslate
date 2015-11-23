@@ -21,12 +21,12 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>gov.nasa.jpl.xdata</groupId>
-    <artifactId>xdata-employment</artifactId>
+    <groupId>org.bigtranslate</groupId>
+    <artifactId>bigtranslate</artifactId>
     <version>0.1</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
-  <artifactId>xdata-employment-extensions</artifactId>
+  <artifactId>bigtranslate-extensions</artifactId>
   <packaging>jar</packaging>
   <name>Extensions</name>
   <description>Library of classes that are reused across subcomponents.</description>

@@ -42,4 +42,4 @@ RUN:
  #Send an event to the Workflow Manager to kick off the TsvToJson PGE job
  # Set the OODT_HOME and $WORKFLOW_URL envirnment variables
  $ cd $OODT_HOME/workflow/bin;
- $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key FileName TsvFile
+ $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key fileName TsvFile

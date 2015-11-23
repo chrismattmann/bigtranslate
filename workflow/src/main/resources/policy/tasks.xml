@@ -37,19 +37,19 @@
     </task>
 
 
-  <task id="urn:xdata:TsvToJson_Task" name="TsvToJson_Task"
-    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+  <task id="urn:bigtranslate:TsvToJson_Task" name="TsvToJson_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
           <property name="PGETask_Name" value="TsvToJson_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/no_filter/PgeConfig_TsvToJson.xml" envReplace="true"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_TsvToJson.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
           <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
-          <property name="PCS_ActionRepoFile" value="file:[XDATA_EMPLOYMENT_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="ConfFilePath" value="[XDATA_EMPLOYMENT_HOME]/python2.7/conf" envReplace="true"/>
+          <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
+          <property name="ConfFilePath" value="[BIGTRANSLATE_HOME]/python2.7/conf" envReplace="true"/>
           <property name="ProductType"  value="EmploymentJobAggregates"/>
           <requiredMetFields>
             <metfield name="Filename"/>
@@ -57,18 +57,18 @@
     </configuration>
   </task>
 
-  <task id="urn:xdata:Repackager_Task" name="Repackager_Task"
-    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+  <task id="urn:bigtranslate:Repackager_Task" name="Repackager_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
           <property name="PGETask_Name" value="Repackager_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/no_filter/PgeConfig_Repackager.xml" envReplace="true"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_Repackager.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
           <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
-          <property name="PCS_ActionRepoFile" value="file:[XDATA_EMPLOYMENT_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
+          <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
           <property name="ProductType"        value="EmploymentJob"/>
           <requiredMetFields>
             <metfield name="Filename"/>
@@ -76,20 +76,20 @@
     </configuration>
   </task>
 
-  <task id="urn:xdata:Translator_Task" name="Translator_Task"
-    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+  <task id="urn:bigtranslate:Translator_Task" name="Translator_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
           <property name="PGETask_Name" value="Translator_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/no_filter/PgeConfig_Translator.xml" envReplace="true"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_Translator.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
           <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
-          <property name="PCS_ActionRepoFile" value="file:[XDATA_EMPLOYMENT_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="TranslateCols" value="[XDATA_EMPLOYMENT_HOME]/python2.7/src/tika-python/lib/translate.cols" envReplace="true"/>
-          <property name="TranslateCreds" value="[XDATA_EMPLOYMENT_HOME]/python2.7/src/tika-python/lib/translate.creds" envReplace="true"/>
+          <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
+          <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/python2.7/src/tika-python/lib/translate.cols" envReplace="true"/>
+          <property name="TranslateCreds" value="[BIGTRANSLATE_HOME]/python2.7/src/tika-python/lib/translate.creds" envReplace="true"/>
           <property name="ProductType"    value="EmploymentJobTranslated"/>
           <requiredMetFields>
             <metfield name="Filename"/>
@@ -97,12 +97,12 @@
     </configuration>
   </task>
 
-  <task id="urn:xdata:SolrJsonPoster_Task" name="SolrJsonPoster_Task"
-    class="gov.nasa.jpl.xdata.pge.XDataPGETaskInstance">
+  <task id="urn:bigtranslate:SolrJsonPoster_Task" name="SolrJsonPoster_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
           <property name="PGETask_Name" value="SolrJsonPoster_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[XDATA_EMPLOYMENT_HOME]/pge/policy/no_filter/PgeConfig_SolrJsonPoster.xml" envReplace="true"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_SolrJsonPoster.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>

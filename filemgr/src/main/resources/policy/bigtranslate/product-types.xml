@@ -17,8 +17,8 @@ limitations under the License.
 -->
 <cas:producttypes xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas">
 
-  <type id="urn:xdata:EmploymentJobAggregatesTsv" name="EmploymentJobAggregatesTsv">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/staging"/>
+  <type id="urn:bigtranslate:EmploymentJobAggregatesTsv" name="EmploymentJobAggregatesTsv">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/staging"/>
     <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
     <description>XDATA Employment data starting TSV file.</description>
     <metExtractors>
@@ -41,8 +41,8 @@ limitations under the License.
     </metExtractors>
   </type>
   
-  <type id="urn:xdata:EmploymentJobAggregates" name="EmploymentJobAggregates">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+  <type id="urn:bigtranslate:EmploymentJobAggregates" name="EmploymentJobAggregates">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/archive"/>
     <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>A Json-based aggregated version of the jobs present in the XDATA employment TSV file.</description>
     <metadata>
@@ -71,8 +71,8 @@ limitations under the License.
     </metExtractors>
   </type>
 
-  <type id="urn:xdata:EmploymentJob" name="EmploymentJob">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+  <type id="urn:bigtranslate:EmploymentJob" name="EmploymentJob">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/archive"/>
     <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>Individual, per-job JSON files output from the repackager job running on XDATA employment JSON aggregate data.</description>
     <metadata>
@@ -101,8 +101,8 @@ limitations under the License.
     </metExtractors> 
   </type>
 
-  <type id="urn:xdata:EmploymentJobTranslated" name="EmploymentJobTranslated">
-    <repository path="file://[XDATA_EMPLOYMENT_HOME]/data/archive"/>
+  <type id="urn:bigtranslate:EmploymentJobTranslated" name="EmploymentJobTranslated">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/archive"/>
     <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
     <description>The final, per job translated JSON XDATA employment data files, ready to ingest into Solr.</description>
     <metadata>

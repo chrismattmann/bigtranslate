@@ -21,13 +21,13 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>gov.nasa.jpl.xdata</groupId>
-    <artifactId>xdata-employment</artifactId>
+    <groupId>org.bigtranslate</groupId>
+    <artifactId>bigtranslate</artifactId>
     <version>0.1</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <name>PCS Ops Interface (Apache OODT)</name>
-  <artifactId>xdata-employment-opsui</artifactId>
+  <artifactId>bigtranslate-opsui</artifactId>
   <packaging>war</packaging>
 
   <build>

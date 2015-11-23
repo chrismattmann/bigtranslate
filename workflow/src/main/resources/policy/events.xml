@@ -19,15 +19,15 @@
   TODO: Add some examples
 -->
  <event name="EmploymentJobAggregatesTsvIngest">
-    <workflow id="urn:xdata:TsvToJsonWorkflow"/>
+    <workflow id="urn:bigtranslate:TsvToJsonWorkflow"/>
  </event>
  <event name="EmploymentJobAggregatesIngest">
-    <workflow id="urn:xdata:RepackageWorkflow"/>
+    <workflow id="urn:bigtranslate:RepackageWorkflow"/>
  </event>
  <event name="EmploymentJobIngest">
-    <workflow id="urn:xdata:TranslateWorkflow"/>
+    <workflow id="urn:bigtranslate:TranslateWorkflow"/>
  </event>
  <event name="EmploymentJobTranslatedIngest">
-    <workflow id="urn:xdata:SolrJsonPosterWorkflow"/>
+    <workflow id="urn:bigtranslate:SolrJsonPosterWorkflow"/>
  </event>
 </cas:workflowevents>

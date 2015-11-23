@@ -21,13 +21,13 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>gov.nasa.jpl.xdata</groupId>
-    <artifactId>xdata-employment</artifactId>
+    <groupId>org.bigtranslate</groupId>
+    <artifactId>bigtranslate</artifactId>
     <version>0.1</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
   <name>Resource Manager (Apache OODT)</name>
-  <artifactId>xdata-employment-resmgr</artifactId>
+  <artifactId>bigtranslate-resmgr</artifactId>
   <packaging>jar</packaging>
 
   <build>
@@ -56,8 +56,8 @@
 
   <dependencies>
     <dependency>
-      <groupId>gov.nasa.jpl.xdata</groupId>
-      <artifactId>xdata-employment-extensions</artifactId>
+      <groupId>org.bigtranslate</groupId>
+      <artifactId>bigtranslate-extensions</artifactId>
       <version>${project.parent.version}</version>
       <type>jar</type>
       <scope>runtime</scope>

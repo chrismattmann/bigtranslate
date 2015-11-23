@@ -21,12 +21,12 @@
    
    <modelVersion>4.0.0</modelVersion>
    <parent>
-      <groupId>gov.nasa.jpl.xdata</groupId>
-      <artifactId>xdata-employment</artifactId>
+      <groupId>org.bigtranslate</groupId>
+      <artifactId>bigtranslate</artifactId>
       <version>0.1</version>
       <relativePath>../pom.xml</relativePath>
    </parent>
-   <artifactId>xdata-employment-distribution</artifactId>
+   <artifactId>bigtranslate-distribution</artifactId>
    <name>Distribution (RADiX Distro of OODT)</name>
    <packaging>pom</packaging>
    <properties>
@@ -40,69 +40,69 @@
          </activation>
          <dependencies>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-filemgr</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-filemgr</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-crawler</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-crawler</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-workflow</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-workflow</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pge</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pge</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pcs</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pcs</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-resmgr</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-resmgr</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-extensions</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-extensions</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-opsui</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-opsui</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pcs-services</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pcs-services</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-fmprod</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-fmprod</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
@@ -131,21 +131,21 @@
                                  <outputDirectory>${project.build.directory}/</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-opsui</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/opsui</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-pcs-services</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/pcs</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-fmprod</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
@@ -182,82 +182,82 @@
          <activation/>
          <dependencies>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-filemgr</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-filemgr</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-crawler</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-crawler</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-workflow</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-workflow</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pge</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pge</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pcs</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pcs</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-resmgr</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-resmgr</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-extensions</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-extensions</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-solr</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-solr</artifactId>
                <version>${project.parent.version}</version>
                <type>tar.gz</type>
                <classifier>bin</classifier>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-opsui</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-opsui</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-pcs-services</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-pcs-services</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-fmprod</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-fmprod</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
             <dependency>
-               <groupId>gov.nasa.jpl.xdata</groupId>
-               <artifactId>xdata-employment-solr-webapp</artifactId>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-solr-webapp</artifactId>
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
@@ -286,28 +286,28 @@
                                  <outputDirectory>${project.build.directory}/</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-opsui</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/opsui</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-pcs-services</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/pcs</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-fmprod</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/fmprod</outputDirectory>
                               </artifactItem>
                               <artifactItem>
-                                 <groupId>gov.nasa.jpl.xdata</groupId>
+                                 <groupId>org.bigtranslate</groupId>
                                  <artifactId>${parent.artifactId}-solr-webapp</artifactId>
                                  <type>war</type>
                                  <overWrite>false</overWrite>

@@ -20,9 +20,9 @@ limitations under the License.
 of elements between the types
 -->
    
-  <type id="urn:xdata:EmploymentJobAggregatesTsv" parent="urn:oodt:TraceableFile"/>
-  <type id="urn:xdata:EmploymentJobAggregates" parent="urn:oodt:TraceableFile"/>
-  <type id="urn:xdata:EmploymentJob" parent="urn:oodt:TraceableFile"/>
-  <type id="urn:xdata:EmploymentJobTranslated" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentJobAggregatesTsv" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentJobAggregates" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentJob" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentJobTranslated" parent="urn:oodt:TraceableFile"/>
 
 </cas:producttypemap>

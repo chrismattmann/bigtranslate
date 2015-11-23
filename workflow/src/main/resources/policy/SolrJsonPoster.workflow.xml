@@ -1,6 +1,6 @@
-<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="SolrJsonPosterWorkflow" id="urn:xdata:SolrJsonPosterWorkflow">
+<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="SolrJsonPosterWorkflow" id="urn:bigtranslate:SolrJsonPosterWorkflow">
  <tasks>
    <!--<task id="urn:oodt:FilterTask"/>-->
-   <task id="urn:xdata:SolrJsonPoster_Task"/>
+   <task id="urn:bigtranslate:SolrJsonPoster_Task"/>
  </tasks>
 </cas:workflow>
