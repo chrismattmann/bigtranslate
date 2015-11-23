@@ -21,13 +21,13 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>gov.nasa.jpl.xdata</groupId>
-    <artifactId>xdata-employment</artifactId>
+    <groupId>org.bigtranslate</groupId>
+    <artifactId>bigtranslate</artifactId>
     <version>0.1</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
   <name>Solr Catalog (Apache Solr)</name>
-  <artifactId>xdata-employment-solr</artifactId>
+  <artifactId>bigtranslate-solr</artifactId>
   <packaging>jar</packaging>
 
   <build>

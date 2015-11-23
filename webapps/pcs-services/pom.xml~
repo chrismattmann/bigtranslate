@@ -21,13 +21,13 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>org.bigtranslate</groupId>
+    <groupId>gov.nasa.jpl.xdata</groupId>
     <artifactId>bigtranslate</artifactId>
     <version>0.1</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
-  <name>Filemanager Product Services (Apache OODT)</name>
-  <artifactId>bigtranslate-fmprod</artifactId>
+  <name>PCS Services (Apache OODT)</name>
+  <artifactId>bigtranslate-pcs-services</artifactId>
   <packaging>war</packaging>
 
   <build>
@@ -59,7 +59,7 @@
           <overlays>
             <overlay>
               <groupId>org.apache.oodt</groupId>
-              <artifactId>cas-product</artifactId>
+              <artifactId>pcs-services</artifactId>
             </overlay>
           </overlays>
         </configuration>
@@ -70,7 +70,7 @@
   <dependencies>
     <dependency>
       <groupId>org.apache.oodt</groupId>
-      <artifactId>cas-product</artifactId>
+      <artifactId>pcs-services</artifactId>
       <version>${oodt.version}</version>
       <type>war</type>
     </dependency>
