@@ -106,6 +106,27 @@
          <artifactId>cas-filemgr</artifactId>
          <version>${oodt.version}</version>
       </dependency>
+      <!-- oodt cas-* -->
+      <dependency>
+         <groupId>org.apache.oodt</groupId>
+         <artifactId>cas-workflow</artifactId>
+         <version>${oodt.version}</version>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.oodt</groupId>
+         <artifactId>cas-pge</artifactId>
+         <version>${oodt.version}</version>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.oodt</groupId>
+         <artifactId>cas-resource</artifactId>
+         <version>${oodt.version}</version>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.oodt</groupId>
+         <artifactId>cas-metadata</artifactId>
+         <version>${oodt.version}</version>
+      </dependency>
       <dependency>
          <groupId>junit</groupId>
          <artifactId>junit</artifactId>
