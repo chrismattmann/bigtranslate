@@ -12,11 +12,12 @@ REQUIREMENTS:
 INSTALLATION:
 
 # build oodt
+	$ mvn clean package <OPTIONAL PROFILES>		# see optional build profiles below
 
-$ mvn clean package <OPTIONAL PROFILES>		# see optional build profiles below
+# The oodt install 
 
 # deploy oodt
-$ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
+	$ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
 
 
 NOTE:
@@ -39,7 +40,13 @@ RUN:
 
  START BigTranslate:
 
- #Send an event to the Workflow Manager to kick off the TsvToJson PGE job
- # Set the OODT_HOME and $WORKFLOW_URL envirnment variables
+ 
+Ingest file
+
+$ cd $OODT_HOME/crawler/bin;
+$ ./crawler_launcher --operation --metPC --productPath $OODT_HOME/data/staging/ --metExtractorConfig $OODT_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory --actionIds TriggerPostIngestWorkflow
+
+Send an event to the Workflow Manager to kick off the TsvToJson PGE job
+
  $ cd $OODT_HOME/workflow/bin;
- $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key fileName TsvFile
+ $ ./wmgr-client --url $WORKFLOW_URL --operation --sendEvent --eventName EmploymentJobAggregatesTsvIngest --metaData --key Filename TsvFile
