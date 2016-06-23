@@ -8,7 +8,7 @@
      <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
      <cmd>mkdir [JobInputDir]</cmd>
      <cmd>mkdir [JobOutputDir]</cmd>
-     <cmd>mkdir [JobLogDir]</cmd>
+     <!--<cmd>mkdir [JobLogDir]</cmd> -->
      <cmd>cp [TsvFilePath] [JobInputDir]</cmd>
      <cmd>echo "Staging complete, running TsvToJson"</cmd>
      <cmd>cd [JobOutputDir]</cmd>
