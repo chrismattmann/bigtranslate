@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<pgeConfig>
+
+  <!-- How to run the PGE -->
+  <exe dir="[JobDir]" shell="/bin/bash">
+     <cmd>export PATH=[BIGTRANSLATE_HOME]/etllib/bin:${PATH}</cmd>  
+     <cmd>export PYTHONIOENCODING=utf-8</cmd>
+     <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
+     <cmd>mkdir [JobInputDir]</cmd>
+     <cmd>mkdir [JobOutputDir]</cmd>
+     <cmd>mkdir [JobOutputDir]/aggregatejson</cmd>
+     <cmd>mkdir [JobOutputDir]/employmentjobs</cmd>
+     <cmd>mkdir [JobOutputDir]/translated</cmd>
+     <cmd>cp [TsvFilePath] [JobInputDir]</cmd>
+     <cmd>echo "Staging complete, running BigTranslate"</cmd>
+     <cmd>cd [JobOutputDir]/aggregatejson</cmd>
+     <cmd>export TSV_FILE_PREFIX=`basename [TsvFile] .tsv`</cmd>
+     <cmd>tsvtojson -t [JobInputDir]/[TsvFile] -j [JobOutputDir]/aggregatejson/${TSV_FILE_PREFIX}.json -c [ConfFilePath]/colheaders.txt -o employmentjobs -e [ConfFilePath]/encoding.txt -u url -v > [JobLogDir]/tsvtojson_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>cd [JobOutputDir]/employmentjobs</cmd>
+     <cmd>repackage -j [JobOutputDir]/aggregatejson/${TSV_FILE_PREFIX}.json -o employmentjobs -v > [JobLogDir]/repackager_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>cd [JobOutputDir]/translated</cmd>
+     <cmd>find [JobOutputDir]/employmentjobs -name "*.json" -exec basename \{} .json \; | xargs -I infile translatejson -i [JobOutputDir]/employmentjobs/infile.json -j infile-t.json  -c [TranslateCols] -f es -t en -r [TranslateCachePath] -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>find [JobOutputDir]/translated -name "*.json" | poster -u "[SolrUrl]" -v > [JobLogDir]/solrjsonposter_[DateMilis].log 2[GreaterThan][Ampersand]1 </cmd> 
+
+     <!-- now clean up -->
+     <!-- delete the split file first from the FM -->
+     <cmd>alias fmdel="java -Dorg.apache.oodt.cas.filemgr.properties=[BIGTRANSLATE_HOME]/filemgr/etc/filemgr.properties -Djava.ext.dirs=[BIGTRANSLATE_HOME]/filemgr/lib org.apache.oodt.cas.filemgr.tools.DeleteProduct --fileManagerUrl [FILEMGR_URL] --read"</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/filemgr/bin/query-tool --url [FILEMGR_URL] --sql -query "SELECT CAS.ProductId FROM EmploymentJobAggregatesTsvSplit WHERE CAS.ProductName = '[TsvFile]'"  -outputFormat "\$CAS.ProductId" | fmdel</cmd>
+
+     <!-- remove the working dir stuff -->
+     <cmd>cd [JobDir]</cmd>
+     <cmd>rm -rf [JobOutputDir]/*</cmd>
+  </exe>
+
+  <!-- Files to ingest -->
+  <output>
+    <!-- one or more of these -->
+ 
+  </output>
+
+  <!-- Custom metadata to add to output files -->
+  <customMetadata>
+    <!-- helpful keys -->
+    <metadata key="LessThan" val="&#x3C;"/>
+    <metadata key="LessThanOrEqualTo" val="[LessThan]="/>
+    <metadata key="GreaterThan" val="&#x3E;"/>
+    <metadata key="GreaterThanOrEqualTo" val="[GreaterThan]="/>
+    <metadata key="Exclamation" val="&#33;"/>
+    <metadata key="Ampersand" val="&#38;"/>
+    <metadata key="NotEqualTo" val="[Ampersand]="/>
+    <metadata key="LogicalAnd" val="[Ampersand][Ampersand]"/>
+    <metadata key="CshPipeToStdOutAndError" val="[GreaterThan][Ampersand][Exclamation]"/>
+
+
+    <!-- Casi-specific keys -->
+    <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
+    <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
+    <metadata key="TsvFile" val="[Filename]"/>
+    <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/bigtranslate/[TsvFile]_[DateMilis]"/>
+    <metadata key="JobInputDir" val="[JobDir]/input"/>
+    <metadata key="JobOutputDir" val="[JobDir]/output"/>
+    <metadata key="JobLogDir" val="[JobDir]/logs"/>
+    <metadata key="InputFiles" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsvSplit WHERE Filename = '[TsvFile]'}"/>
+    <metadata key="TsvFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsvSplit WHERE Filename = '[TsvFile]'}"/>
+  </customMetadata>
+
+</pgeConfig>

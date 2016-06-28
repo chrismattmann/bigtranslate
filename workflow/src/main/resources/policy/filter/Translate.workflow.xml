@@ -1,6 +1,0 @@
-<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="TranslateWorkflow" id="urn:bigtranslate:TranslateWorkflow">
- <tasks>
-   <task id="urn:oodt:FilterTask"/>
-   <task id="urn:bigtranslate:Translator_Task"/>
- </tasks>
-</cas:workflow>
