@@ -1,0 +1,5 @@
+<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="BigTranslateWorkflow" id="urn:bigtranslate:BigTranslateWorkflow">
+ <tasks>
+   <task id="urn:bigtranslate:BigTranslate_Task"/>
+ </tasks>
+</cas:workflow>

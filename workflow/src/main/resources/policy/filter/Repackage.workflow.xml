@@ -1,6 +1,0 @@
-<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="RepackageWorkflow" id="urn:bigtranslate:RepackageWorkflow">
- <tasks>
-   <task id="urn:oodt:FilterTask"/>
-   <task id="urn:bigtranslate:Repackager_Task"/>
- </tasks>
-</cas:workflow>

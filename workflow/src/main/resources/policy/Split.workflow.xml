@@ -1,0 +1,5 @@
+<cas:workflow xmlns:cas="http://oodt.jpl.nasa.gov/1.0/cas" name="SplitWorkflow" id="urn:bigtranslate:SplitWorkflow">
+ <tasks>
+   <task id="urn:bigtranslate:Split_Task"/>
+ </tasks>
+</cas:workflow>
