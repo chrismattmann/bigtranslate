@@ -40,6 +40,37 @@ limitations under the License.
       </extractor>
     </metExtractors>
   </type>
+
+  <type id="urn:bigtranslate:EmploymentJobAggregatesTsvSplit" name="EmploymentJobAggregatesTsvSplit">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/archive"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.ProductTypeMetVersioner"/>
+    <description>XDATA Employment data split starting TSV file of 1000 rows.</description>
+    <metadata>
+      <keyval>
+        <key>filePathSpec</key>
+        <val>/[InputFiles]/split_tsv/[Filename]</val>
+      </keyval>
+    </metadata>
+    <metExtractors>
+      <extractor
+        class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
+        <configuration>
+          <!-- you can optionally include the envReplace tag to turn on/off environment var replacement -->
+          <property name="nsAware" value="true" />
+          <property name="elementNs" value="CAS" />
+          <property name="elements"
+            value="ProductReceivedTime,ProductName,ProductId" />
+        </configuration>
+      </extractor>
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.MimeTypeExtractor" />
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.FinalFileLocationExtractor">
+        <configuration>
+           <property name="replace" value="true"/>
+        </configuration>
+      </extractor>
+    </metExtractors>
+  </type>
+
   
   <type id="urn:bigtranslate:EmploymentJobAggregates" name="EmploymentJobAggregates">
     <repository path="file://[BIGTRANSLATE_HOME]/data/archive"/>
