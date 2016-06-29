@@ -1,0 +1,174 @@
+#!/bin/bash
+
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stop on first error.
+set -e
+
+# Hostname where OODT services are deployed
+OODT_HOST=localhost
+
+# Print out usage information for this script.
+function print_help {
+    echo "Usage: bigtranslate [train, translate] in order to perform machine translation on a bunch of data." 
+    echo "       bigtranslate"
+    echo "            train                                   <path to TSV>       | trains and builds a local MT cache based on the TSV file."
+    echo "            translate [--exclude <file/directory name>] <path to repo>  | crawl the tab separated value (TSV) files, one data item per line"
+    echo "            help                  					| print this message"
+    echo "            reset                 					| prepare to re-run big translate"
+    echo "                                  					| CAUTION: will delete previous translations!"
+}
+
+function print_ui_info {
+    echo "Navigate to http://${OODT_HOST}:8080/opsui/ to view the OODT browser and http://${OODT_HOST}:8080/solr to view the Solr catalog."
+}
+
+FILEMGR_URL=http://${OODT_HOST}:9000
+SOLR_URL=http://${OODT_HOST}:8080/solr/bigtranslate
+CLIENT_URL=http://${OODT_HOST}:9001
+OPSUI_URL=http://${OODT_HOST}:8080/opsui
+
+# Crawl and translate the given TSV dataset.
+# Expects one or three argument(s) -- the file path of the TSV files to be crawled and
+# --exclude file/directory name.
+
+function translate {
+    check_services_running
+    if [ $1 = "--exclude" ]; then
+	check_num_args "translate" $# 3
+	export BIGTRANSLATE_EXCLUDE=".*${2}.*"
+	PRODUCT_PATH=$3
+    else
+    	check_num_args "crawl" $# 1
+	export BIGTRANSLATE_EXCLUDE=""
+	PRODUCT_PATH=$1
+    fi
+    pushd $BIGTRANSLATE_HOME/crawler/bin >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
+    
+   ./crawler_launcher --operation --metPC --metExtractorConfig \
+   $BIGTRANSLATE_HOME/extractors/code/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
+   --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
+   --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
+
+    popd >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
+    export BIGTRANSLATE_EXCLUDE=""
+}
+
+# Get the current list of RatAuditTasks running.
+function current_pges {
+    STATUS="PGE%20EXEC"
+    tika="java -jar $BIGTRANSLATE_HOME/lib/tika-app-1.13.jar"
+
+    # Added workaround to catch the intermitent 500 error (very unlikely) and let the script continue
+    # The workaround shall not be required once we solve OODT-920 issue
+    status=$(($tika "${OPSUI_URL}/instances/${STATUS}/1" | grep -v FINISHED | grep BigTranslateWorkflow) 2>&1)
+    if echo "$status" | grep -q "Server returned HTTP response code: 500"; then
+	echo "500 Error occurred but continue";	 
+    else
+	echo $status;
+    fi
+}
+
+# Ensure the number of arguments matches the expected number. Expects three arguments:
+# the option name, the actual number of arguments, and the expected number of arguments.
+function check_num_args {
+    if [[ "$2" != "$3" ]]; then
+        echo "Expected $3 args for '$1', but got $2."
+        print_help
+        exit 1
+    fi
+}
+
+# Return a list of what is running on a the given port. Expects 1 argument: the port number.
+function check_port {
+    check_num_args "check port" $# 1
+
+#   Commented 'lsof' - Using 'nc' which helps to check port on Remote server as well 
+#   lsof -i tcp:$1
+
+    nc -z ${OODT_HOST} $1 &> /dev/null
+    if [ $? == 0 ]; then
+	echo 0
+    else
+	echo ""
+    fi
+}
+
+# Check the Solr and OODT ports. If no arguments are passed, ensure the ports are all busy.
+# Otherwise, check the ports are not busy.
+function check_services_running {
+    if [[ $# == 0 ]]; then
+        if [[ ! -n $(check_port 9000) ]] || [[ ! -n $(check_port 9001) ]] || [[ ! -n $(check_port 9002) ]] || [[ ! -n $(check_port 8080) ]]; then
+            echo "Please start OODT by running '\$BIGTRANSLATE_HOME/bin/oodt start'"
+            echo "Aborting..."
+            exit 1
+        fi
+    elif [[ -n $(check_port 9000) ]] || [[ -n $(check_port 9001) ]] || [[ -n $(check_port 9002) ]] || [[ -n $(check_port 8080) ]]; then
+        echo "Please stop OODT by running '\$BIGTRANSLATE_HOME/bin/oodt stop'"
+        echo "Aborting..."
+        exit 1
+    fi
+    
+}
+
+# Reset bigtranslate to prepare for translating a new dataset. Expects no arguments.
+function reset {
+    check_services_running "running"
+    check_num_args "reset" $# 0
+    echo "This will remove any previous or current translations."
+    read -p "Do you wish to continue? [yN] " yn
+        case $yn in
+            [Yy]*)
+                echo "rm -rf $BIGTRANSLATE_HOME/data/workflow"
+                rm -rf $BIGTRANSLATE_HOME/data/workflow
+                echo "rm -rf $BIGTRANSLATE_HOME/filemgr/catalog"
+                rm -rf $BIGTRANSLATE_HOME/filemgr/catalog
+                echo "rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data"
+                rm -rf $BIGTRANSLATE_HOME/solr/drat/data
+                echo "rm -rf $BIGTRANSLATE_HOME/data/archive/*"
+                rm -rf $BIGTRANSLATE_HOME/data/archive/*
+                echo "rm -rf $BIGTRANSLATE_HOME/data/jobs/*"
+                rm -rf $BIGTRANSLATE_HOME/data/jobs/*
+                echo "Please restart OODT with '\$BIGTRANSLATE_HOME/bin/oodt start' if you wish to run another translation."
+            ;;
+            [Nn]*)
+                echo "Reset cancelled. Exiting..."
+                exit 0
+            ;;
+            *) 
+                echo "Aborting..."
+                exit 1
+            ;;
+        esac
+}
+
+# Start parsing the arguments.
+case $1 in
+    translate)
+        translate $2 $3 $4
+    ;;
+    reset)
+        reset
+    ;;
+    help)
+        print_help
+    ;;
+    *)
+        echo "Unrecognized option: '$1'"
+        print_help
+        exit 1
+    ;;
+esac
