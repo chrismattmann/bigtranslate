@@ -59,7 +59,7 @@ function translate {
     pushd $BIGTRANSLATE_HOME/crawler/bin >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
     
    ./crawler_launcher --operation --metPC --metExtractorConfig \
-   $BIGTRANSLATE_HOME/extractors/code/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
+   $BIGTRANSLATE_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
    --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
    --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
 
@@ -142,6 +142,12 @@ function reset {
                 rm -rf $BIGTRANSLATE_HOME/data/archive/*
                 echo "rm -rf $BIGTRANSLATE_HOME/data/jobs/*"
                 rm -rf $BIGTRANSLATE_HOME/data/jobs/*
+		echo "rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid"
+		rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid  ; 
+		echo "rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid"
+		rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid;
+		echo "rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid"
+		rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid;
                 echo "Please restart OODT with '\$BIGTRANSLATE_HOME/bin/oodt start' if you wish to run another translation."
             ;;
             [Nn]*)
