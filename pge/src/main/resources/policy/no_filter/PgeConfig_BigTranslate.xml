@@ -4,7 +4,6 @@
 
   <!-- How to run the PGE -->
   <exe dir="[JobDir]" shell="/bin/bash">
-     <cmd>export PATH=[BIGTRANSLATE_HOME]/etllib/bin:${PATH}</cmd>  
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>echo "Staging job input from [InputFiles] to [JobInputDir]"</cmd>
      <cmd>mkdir [JobInputDir]</cmd>
