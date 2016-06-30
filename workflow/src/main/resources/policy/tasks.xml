@@ -36,84 +36,47 @@
        </configuration>  
     </task>
 
-
-  <task id="urn:bigtranslate:TsvToJson_Task" name="TsvToJson_Task"
+  <task id="urn:bigtranslate:Split_Task" name="Split_Task"
     class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
-          <property name="PGETask_Name" value="TsvToJson_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_TsvToJson.xml" envReplace="true"/>
+          <property name="PGETask_Name" value="Split_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_Split.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
           <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
           <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="ConfFilePath" value="[BIGTRANSLATE_HOME]/python2.7/conf" envReplace="true"/>
-          <property name="ProductType"  value="EmploymentJobAggregates"/>
+          <property name="ProductType" value="EmploymentJobAggregatesTsvSplit"/>
           <requiredMetFields>
             <metfield name="Filename"/>
           </requiredMetFields>
     </configuration>
   </task>
 
-  <task id="urn:bigtranslate:Repackager_Task" name="Repackager_Task"
+
+  <task id="urn:bigtranslate:BigTranslate_Task" name="BigTranslate_Task"
     class="org.apache.oodt.cas.pge.StdPGETaskInstance">
         <conditions/>
         <configuration>
-          <property name="PGETask_Name" value="Repackager_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_Repackager.xml" envReplace="true"/>
+          <property name="PGETask_Name" value="BigTranslate_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_BigTranslate.xml" envReplace="true"/>
           <property name="PGETask_DumpMetadata" value="true"/>
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
           <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
           <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
           <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="ProductType"        value="EmploymentJob"/>
+          <property name="ConfFilePath" value="[BIGTRANSLATE_HOME]/conf" envReplace="true"/>
+          <property name="NearDupeThreshold" value="0.1"/>
+          <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
+	  <property name="TranslateCachePath" value="[BIGTRANSLATE_HOME]/data/translationcache/cache.rdb" envReplace="true"/>
+          <property name="SolrUrl" value="http://localhost:8080/solr/bigtranslate/update/json?commit=true"/>
           <requiredMetFields>
             <metfield name="Filename"/>
           </requiredMetFields>
     </configuration>
   </task>
-
-  <task id="urn:bigtranslate:Translator_Task" name="Translator_Task"
-    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
-        <conditions/>
-        <configuration>
-          <property name="PGETask_Name" value="Translator_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_Translator.xml" envReplace="true"/>
-          <property name="PGETask_DumpMetadata" value="true"/>
-          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
-          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
-          <property name="PCS_MetFileExtension" value="met"/>
-          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
-          <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/python2.7/src/tika-python/lib/translate.cols" envReplace="true"/>
-          <property name="TranslateCreds" value="[BIGTRANSLATE_HOME]/python2.7/src/tika-python/lib/translate.creds" envReplace="true"/>
-          <property name="ProductType"    value="EmploymentJobTranslated"/>
-          <requiredMetFields>
-            <metfield name="Filename"/>
-          </requiredMetFields>        
-    </configuration>
-  </task>
-
-  <task id="urn:bigtranslate:SolrJsonPoster_Task" name="SolrJsonPoster_Task"
-    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
-        <conditions/>
-        <configuration>
-          <property name="PGETask_Name" value="SolrJsonPoster_Task"/>
-          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_SolrJsonPoster.xml" envReplace="true"/>
-          <property name="PGETask_DumpMetadata" value="true"/>
-          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true" />
-          <property name="PCS_FileManagerUrl"     value="[FILEMGR_URL]" envReplace="true"/>
-          <property name="PCS_MetFileExtension" value="met"/>
-          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
-          <property name="SolrUrl" value="http://localhost:8080/solr/employment/update/json?commit=true"/>
-          <requiredMetFields>`
-            <metfield name="Filename"/>
-          </requiredMetFields>        
-    </configuration>
-  </task>
-
 
 </cas:tasks>
