@@ -34,8 +34,8 @@
       <fileMode>775</fileMode>
     </fileSet>
     <fileSet>
-      <directory>${basedir}/src/main/resources/oodt-fm</directory>
-      <outputDirectory>solr/oodt-fm</outputDirectory>
+      <directory>${basedir}/src/main/resources/bigtranslate</directory>
+      <outputDirectory>solr/bigtranslate</outputDirectory>
       <includes>
         <include>**/**.*</include>
       </includes>
