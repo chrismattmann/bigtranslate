@@ -32,10 +32,6 @@
    <properties>
       <tomcat.version>5.5.23</tomcat.version>
    </properties>
-   <profiles>
-      <profile>
-         <id>default</id>
-         <activation/>
          <dependencies>
             <dependency>
                <groupId>org.bigtranslate</groupId>
@@ -194,6 +190,4 @@
                </plugin>
             </plugins>
          </build>
-      </profile>
-   </profiles>
 </project>
