@@ -11,3 +11,11 @@
 #
 ############################
 
+export BIGTRANSLATE_HOME=/usr/local/bigtranslate
+export FILEMGR_URL=http://localhost:9000
+export WORKFLOW_URL=http://localhost:9001
+export RESMGR_URL=http://localhost:9002
+export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
+export PGE_HOME=$BIGTRANSLATE_HOME/pge
+export PCS_HOME=$BIGTRANSLATE_HOME/pcs
+
