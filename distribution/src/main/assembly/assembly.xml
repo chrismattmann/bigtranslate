@@ -35,6 +35,11 @@
       <includes/>
     </fileSet>
     <fileSet>
+      <directory>${basedir}/src/main/resources/extractors</directory>
+      <outputDirectory>extractors</outputDirectory>
+      <includes/>
+    </fileSet>
+    <fileSet>
       <directory>target</directory>
       <outputDirectory>logs</outputDirectory>
       <excludes>
