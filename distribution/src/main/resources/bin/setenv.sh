@@ -18,4 +18,4 @@ export RESMGR_URL=http://localhost:9002
 export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs
-
+export FMPROD_HOME=$BIGTRANSLATE_HOME/tomcat/webapps/fmprod/WEB-INF/classes/
