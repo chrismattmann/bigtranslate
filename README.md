@@ -3,6 +3,12 @@ BigTranslate
 
 A distributed, parallelized (Map Reduce) wrapper around [Apache&trade; Tika](http://tika.apache.org/) and its Translation API provided by [Tika-Python](http://github.com/chrismattmann/tika-python). BigTranslate uses Apache&trade; OODT to split and distribute machine translation of many millions of rows of data. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](http://github.com/chrismattmann/etllib/) to provide a clean facade to JSON and TSV data processing, and to prepare data for translation using Tika. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval.
 
+Apache&trade; Tika provides a facade to and has been tested with the following Machine Translation APIs.
+
+* [Lingo24](http://www.lingo24.com/us/translation-plugins/api/)
+* [Micorosft Translator API](https://www.microsoft.com/en-us/translator/translatorapi.aspx)
+* [Google Translate API](https://cloud.google.com/translate/docs/)
+
 See the wiki for more information on installing and running BigTranslate:  
 * [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
 * [How to run](https://github.com/chrismattmann/bigtranslate/wiki/How-to-Run)  
