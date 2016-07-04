@@ -137,7 +137,7 @@ function reset {
                 echo "rm -rf $BIGTRANSLATE_HOME/filemgr/catalog"
                 rm -rf $BIGTRANSLATE_HOME/filemgr/catalog
                 echo "rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data"
-                rm -rf $BIGTRANSLATE_HOME/solr/drat/data
+                rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data
                 echo "rm -rf $BIGTRANSLATE_HOME/data/archive/*"
                 rm -rf $BIGTRANSLATE_HOME/data/archive/*
                 echo "rm -rf $BIGTRANSLATE_HOME/data/jobs/*"
