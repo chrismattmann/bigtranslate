@@ -1,51 +1,13 @@
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements. See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0
-# (the "License"); you may not use this file except in compliance with
-# the License. You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+BigTranslate
+============
 
-#     OODT RADiX README
-#
-#     Description:
-#       	This project is meant as template to support faster
-#       data system deployment. Configurable OODT deployments
-#       are possible using Maven profiles (see below).
-#       
-#       OODT version 0.7-SNAPSHOT 
+A distributed, parallelized (Map Reduce) wrapper around [Apache&trade; Tika](http://tika.apache.org/) and its Translation API provided by [Tika-Python](http://github.com/chrismattmann/tika-python). BigTranslate uses Apache&trade; OODT to split and distribute machine translation of many millions of rows of data. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](http://github.com/chrismattmann/etllib/) to provide a clean facade to JSON and TSV data processing, and to prepare data for translation using Tika. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval.
 
-REQUIREMENTS:
-* Java Development Kit (JDK) 1.6+
-* JAVA_HOME set 
-  see: http://docs.oracle.com/cd/E19182-01/820-7851/inst_cli_jdk_javahome_t/index.html
-* (Snapshot releases only) OODT source tree installed. 
-  see: http://oodt.apache.org/components/maven/filemgr/user/basic.html
+See the wiki for more information on installing and running BigTranslate:  
+* [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
+* [How to run](https://github.com/chrismattmann/bigtranslate/wiki/How-to-Run)  
+* [How to re-run](https://github.com/chrismattmann/bigtranslate/wiki/Re-running-BigTranslate)  
+* [How to interact with DRAT](https://github.com/chrismattmann/bigtranslate/wiki/Interacting-with-BigTranslate)  
 
-INSTALLATION:
-  # build oodt
-  $ mvn clean package <OPTIONAL PROFILES> # see optional build profiles below
-
-  # deploy oodt
-  $ tar zxf distribution/target/${PROJECT_ARTIFACT_ID}-distribution-*-bin.tar.gz -C /my/deployment/directory/oodt
-  
-  ---
-  NOTE: For other build configurations, add the following arguments:
-  (default)           : bin, crawler, data, extensions,
-                        filemgr (Lucene), logs, pcs, resmgr,
-                        tomcat, workflow, pge
-
-  -Pfm-solr-catalog   : default components, filemgr (Solr),
-                        solr, tomcat/webapps/solr
-
-RUN:
-  $ cd /my/deployment/directory/oodt
-  $ cd bin
-  $ ./oodt start
+You can clone the wiki by running  
+`git clone https://github.com/chrismattmann/bigtranslate.wiki.git`
