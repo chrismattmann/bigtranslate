@@ -13,7 +13,7 @@ See the wiki for more information on installing and running BigTranslate:
 * [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
 * [How to run](https://github.com/chrismattmann/bigtranslate/wiki/How-to-Run)  
 * [How to re-run](https://github.com/chrismattmann/bigtranslate/wiki/Re-running-BigTranslate)  
-* [How to interact with DRAT](https://github.com/chrismattmann/bigtranslate/wiki/Interacting-with-BigTranslate)  
+* [How to interact with BigTranslate](https://github.com/chrismattmann/bigtranslate/wiki/Interacting-with-BigTranslate)  
 
 You can clone the wiki by running  
 `git clone https://github.com/chrismattmann/bigtranslate.wiki.git`
