@@ -19,3 +19,4 @@ export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs
 export FMPROD_HOME=$BIGTRANSLATE_HOME/tomcat/webapps/fmprod/WEB-INF/classes/
+export TIKA_SERVER_CLASSPATH=$BIGTRANSLATE_HOME/tika-server/language-keys/:$BIGTRANSLATE_HOME/tika-server/tika-server-1.13.jar
