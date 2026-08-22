@@ -74,6 +74,17 @@
       <version>${oodt.version}</version>
       <type>war</type>
     </dependency>
+    <!-- JAXB left the JDK in Java 11; supply it explicitly for CXFServlet. -->
+    <dependency>
+      <groupId>javax.xml.bind</groupId>
+      <artifactId>jaxb-api</artifactId>
+      <version>${jaxb.api.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <version>${jaxb.runtime.version}</version>
+    </dependency>
   </dependencies>
 
 </project>
