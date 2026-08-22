@@ -75,4 +75,4 @@ local.properties
 .cproject
  
 # PDT-specific
-.buildpath
+.buildpathtestdata/
