@@ -24,7 +24,7 @@
 
      <!-- now clean up -->
      <!-- delete the split file first from the FM -->
-     <cmd>alias fmdel="java -Dorg.apache.oodt.cas.filemgr.properties=[BIGTRANSLATE_HOME]/filemgr/etc/filemgr.properties -Djava.ext.dirs=[BIGTRANSLATE_HOME]/filemgr/lib org.apache.oodt.cas.filemgr.tools.DeleteProduct --fileManagerUrl [FILEMGR_URL] --read"</cmd>
+     <cmd>alias fmdel="java -Dorg.apache.oodt.cas.filemgr.properties=[BIGTRANSLATE_HOME]/filemgr/etc/filemgr.properties -cp \"[BIGTRANSLATE_HOME]/filemgr/lib/*\" org.apache.oodt.cas.filemgr.tools.DeleteProduct --fileManagerUrl [FILEMGR_URL] --read"</cmd>
      <cmd>[BIGTRANSLATE_HOME]/filemgr/bin/query-tool --url [FILEMGR_URL] --sql -query "SELECT CAS.ProductId FROM EmploymentJobAggregatesTsvSplit WHERE CAS.ProductName = '[TsvFile]'"  -outputFormat "\$CAS.ProductId" | fmdel</cmd>
 
      <!-- remove the working dir stuff -->

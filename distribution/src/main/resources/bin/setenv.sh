@@ -11,7 +11,7 @@
 #
 ############################
 
-export BIGTRANSLATE_HOME=/usr/local/bigtranslate
+export BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-/usr/local/bigtranslate}
 export FILEMGR_URL=http://localhost:9000
 export WORKFLOW_URL=http://localhost:9001
 export RESMGR_URL=http://localhost:9002

@@ -90,6 +90,11 @@ if [ -z "$OODT_BASE" ]; then
   export OODT_BASE
 fi
 
+# Point the Solr webapp at the deployed solr home. Keyed off OODT_BASE, which is
+# derived from this script's own location, so it stays correct even when
+# BIGTRANSLATE_HOME in setenv.sh has not been edited for this deployment.
+export CATALINA_OPTS=-Dsolr.solr.home="$OODT_BASE"/solr
+
 if [ -z "$OODT_OUT" ] ; then
   OODT_OUT="$OODT_BASE"/logs/oodt.out
   export OODT_OUT

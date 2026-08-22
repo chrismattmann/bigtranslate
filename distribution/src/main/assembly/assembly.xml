@@ -106,7 +106,16 @@
         <exclude>**/webapps/servlets-examples/**</exclude>
         <exclude>**/webapps/jsp-examples/**</exclude>
         <exclude>**/webapps/webdav/**</exclude>
+        <exclude>bin/*.sh</exclude>
       </excludes>
+    </fileSet>
+    <fileSet>
+      <directory>${project.build.directory}/apache-tomcat-${tomcat.version}/bin</directory>
+      <outputDirectory>tomcat/bin</outputDirectory>
+      <includes>
+        <include>*.sh</include>
+      </includes>
+      <fileMode>775</fileMode>
     </fileSet>
   </fileSets>
   <dependencySets>
