@@ -82,9 +82,31 @@ class TranslationCache:
             "  model  TEXT NOT NULL,"
             "  source TEXT NOT NULL,"
             "  target TEXT NOT NULL,"
+            "  origin TEXT NOT NULL DEFAULT 'model',"
             "  PRIMARY KEY (model, source))"
         )
+        # Caches written before the glossary existed lack the origin column.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(translation)")}
+        if "origin" not in cols:
+            self._conn.execute(
+                "ALTER TABLE translation ADD COLUMN origin TEXT NOT NULL DEFAULT 'model'")
         self._conn.commit()
+
+    def seed_glossary(self, pairs):
+        """Write glossary entries as authoritative, replacing model output.
+
+        Re-seeded on every run so that correcting the glossary file and
+        re-running is enough to fix values already translated and cached.
+        """
+        if not self.enabled or not pairs:
+            return 0
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO translation (model, source, target, origin)"
+            " VALUES (?, ?, ?, 'glossary')",
+            [(self.model, src, tgt) for src, tgt in pairs.items()],
+        )
+        self._conn.commit()
+        return len(pairs)
 
     def get_many(self, sources):
         """Return {source: target} for whichever sources are already cached."""
@@ -105,11 +127,12 @@ class TranslationCache:
         return found
 
     def put_many(self, pairs):
+        """Record model output. INSERT OR IGNORE so a glossary row always wins."""
         if not self.enabled or not pairs:
             return
         self._conn.executemany(
-            "INSERT OR REPLACE INTO translation (model, source, target)"
-            " VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO translation (model, source, target, origin)"
+            " VALUES (?, ?, ?, 'model')",
             [(self.model, src, tgt) for src, tgt in pairs.items()],
         )
         self._conn.commit()
@@ -117,6 +140,85 @@ class TranslationCache:
     def close(self):
         if self._conn is not None:
             self._conn.close()
+
+
+# --------------------------------------------------------------------------
+# glossary
+# --------------------------------------------------------------------------
+
+class Glossary:
+    """Authoritative source -> English overrides consulted before the model.
+
+    Two behaviours matter for this corpus:
+
+    Case-insensitive lookup. The model is inconsistent across casings of the
+    same term: on a sample country-day it left "Inmediato" untranslated in 151
+    records while rendering "inmediato" correctly. Matching on a casefolded key
+    means one entry covers every casing.
+
+    Component-wise resolution. Controlled-vocabulary fields hold comma-
+    separated lists such as "Medio Tiempo, Desde Casa". A whole-value entry per
+    combination would not scale, so a value is also resolved when every one of
+    its comma-separated components is known.
+    """
+
+    def __init__(self, entries=None):
+        self._exact = {}
+        self._folded = {}
+        for src, tgt in (entries or {}).items():
+            self._exact[src] = tgt
+            self._folded.setdefault(src.strip().casefold(), tgt)
+
+    def __len__(self):
+        return len(self._exact)
+
+    @property
+    def entries(self):
+        return dict(self._exact)
+
+    @classmethod
+    def load(cls, path):
+        """Read a TSV of source<TAB>target. Blank lines and # comments skipped."""
+        entries = {}
+        with open(path, encoding="utf-8") as fh:
+            for lineno, line in enumerate(fh, 1):
+                line = line.rstrip("\n")
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 2 or not parts[0].strip() or not parts[1].strip():
+                    print("glossary %s:%d: expected source<TAB>target, skipping"
+                          % (path, lineno), file=sys.stderr)
+                    continue
+                entries[parts[0].strip()] = parts[1].strip()
+        return cls(entries)
+
+    def lookup(self, value):
+        """Return the override for value, or None.
+
+        Tries the whole value first, then falls back to resolving every
+        comma-separated component.
+        """
+        if value is None:
+            return None
+        whole = self._lookup_term(value)
+        if whole is not None:
+            return whole
+
+        if "," not in value:
+            return None
+        parts = [p.strip() for p in value.split(",")]
+        if len(parts) < 2 or not all(parts):
+            return None
+        resolved = [self._lookup_term(p) for p in parts]
+        if any(r is None for r in resolved):
+            return None
+        return ", ".join(resolved)
+
+    def _lookup_term(self, term):
+        if term in self._exact:
+            return self._exact[term]
+        return self._folded.get(term.strip().casefold())
 
 
 # --------------------------------------------------------------------------
@@ -169,6 +271,8 @@ def main(argv=None):
     parser.add_argument("-t", "--to", dest="target_lang", default="en",
                         help="target language; only 'en' is supported")
     parser.add_argument("--cache", default=None, help="SQLite translation cache")
+    parser.add_argument("--glossary", default=None,
+                        help="TSV of authoritative source<TAB>target overrides")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--model", default="pantogloss-500-en")
     parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="auto")
@@ -202,11 +306,31 @@ def main(argv=None):
     strings = collect_strings(docs, cols)
     log("%d document(s), %d distinct string(s)" % (len(docs), len(strings)))
 
+    glossary = Glossary.load(args.glossary) if args.glossary else Glossary()
+    if len(glossary):
+        log("glossary: %d entr(y|ies) from %s" % (len(glossary), args.glossary))
+
     cache = TranslationCache(args.cache, args.model)
     try:
-        translations = cache.get_many(strings)
-        missing = sorted(strings - set(translations))
-        log("cache: %d hit, %d miss" % (len(translations), len(missing)))
+        # Seed first so the cache reflects the current glossary, and so editing
+        # the glossary corrects values translated on an earlier run.
+        seeded = cache.seed_glossary(glossary.entries)
+        if seeded:
+            log("glossary: seeded %d entr(y|ies) into the cache" % seeded)
+
+        # Glossary wins over both cache and model.
+        translations = {}
+        for src in strings:
+            hit = glossary.lookup(src)
+            if hit is not None:
+                translations[src] = hit
+        log("glossary: resolved %d of %d string(s)" % (len(translations), len(strings)))
+
+        remaining = strings - set(translations)
+        cached = cache.get_many(remaining)
+        translations.update(cached)
+        missing = sorted(remaining - set(cached))
+        log("cache: %d hit, %d miss" % (len(cached), len(missing)))
 
         if missing:
             # Import lazily so --help and argument errors do not pay for

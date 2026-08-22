@@ -1,0 +1,81 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Configuration and glossary checks. BigTranslate has no Java source, so this
+  # covers most of what the repository actually contains, and needs neither
+  # OODT nor the translation model.
+  config:
+    name: Configuration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Test
+        run: python -m pytest tests/ -v
+
+  # Packaging check. OODT 1.10-SNAPSHOT is published to Apache snapshots, but
+  # that build is from 2020 and predates the JDK 21 and Avro work this project
+  # depends on, so the fork is built from source first and installed locally.
+  # Maven prefers the locally installed artifact over the remote snapshot.
+  package:
+    name: Maven package (JDK 21)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Check out Apache OODT
+        uses: actions/checkout@v4
+        with:
+          repository: chrismattmann/oodt
+          path: oodt
+
+      - name: Install OODT 1.10-SNAPSHOT
+        working-directory: oodt
+        run: mvn -B -q install -DskipTests -Dmaven.javadoc.skip=true
+
+      - name: Package BigTranslate
+        run: mvn -B package -DskipTests
+
+      - name: Check the distribution contents
+        run: |
+          set -e
+          TARBALL=distribution/target/bigtranslate-distribution-*-bin.tar.gz
+          test -f $TARBALL
+
+          # The translation step and its glossary have to ship, and the shim
+          # has to arrive executable or the PGE cannot invoke it.
+          tar tvzf $TARBALL | grep -E 'bin/pantogloss-translatejson' | grep -q '^-rwx'
+          tar tzf  $TARBALL | grep -q 'conf/glossary.es-en.tsv'
+
+          # Tomcat 9 ships bin/*.sh non-executable through the fileSet unless
+          # they are re-added with an explicit mode.
+          tar tvzf $TARBALL | grep -E 'tomcat/bin/catalina.sh' | grep -q '^-rwx'
+
+          # Java 9 removed the extension mechanism; every launcher that still
+          # references it fails at startup. Assert the scan is non-vacuous
+          # first, so a wildcard that matches nothing cannot pass silently.
+          LAUNCHERS=$(tar tzf $TARBALL | grep -cE '^[^/]+/bin/[^/]+$')
+          echo "scanning $LAUNCHERS launcher scripts"
+          test "$LAUNCHERS" -gt 30
+          ! tar xzOf $TARBALL --wildcards '*/bin/*' 2>/dev/null | grep -q 'java.ext.dirs'
+
+          echo "distribution contents OK"

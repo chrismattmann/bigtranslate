@@ -1,0 +1,99 @@
+# Spanish -> English glossary for the employment corpus.
+#
+# Authoritative overrides consulted before the model. Entries are seeded into
+# the translation cache on every run, so editing this file and re-running is
+# enough to correct values already translated.
+#
+# Format: source<TAB>target. Blank lines and # comments are ignored.
+#
+# Matching is case-insensitive, and comma-separated values are resolved
+# component by component, so "Medio Tiempo, Desde Casa" is covered by the
+# "Medio Tiempo" and "Desde Casa" entries below.
+#
+# Why these entries exist: on a sample country-day the model left "Inmediato"
+# untranslated in 151 of 211 records while rendering lowercase "inmediato"
+# correctly, translated "correo electronico" as "default mail" across roughly
+# a hundred records, rendered "Medio Tiempo" as both "Half Time" and "Middle
+# Time", and turned "Asap" into the proper noun "Asaph". These are the
+# highest-frequency values in the corpus, so the errors were systematic.
+
+# --- jobtype -------------------------------------------------------------
+Tiempo Completo	Full Time
+Medio Tiempo	Part Time
+Por Horas	Hourly
+Desde Casa	Work From Home
+Beca/Prácticas	Internship
+Beca/Practicas	Internship
+Prácticas	Internship
+Practicas	Internship
+Becario	Intern
+Pasantía	Internship
+Pasantia	Internship
+Temporal	Temporary
+Por Contrato	Contract
+Freelance	Freelance
+Teletrabajo	Remote
+
+# --- duration ------------------------------------------------------------
+Indefinido	Indefinite
+Indefinida	Indefinite
+Indeterminado	Indeterminate
+Indeterminada	Indeterminate
+Permanente	Permanent
+Fijo	Fixed
+Fija	Fixed
+Según Desempeño	Based on Performance
+Segun Desempeño	Based on Performance
+Según Desempeno	Based on Performance
+A convenir	To be agreed
+Por Proyecto	Per Project
+Por Temporada	Seasonal
+
+# --- start ---------------------------------------------------------------
+Inmediato	Immediate
+Inmediata	Immediate
+De inmediato	Immediate
+Lo antes posible	As soon as possible
+Asap	Immediate
+A convenir con el candidato	To be agreed with the candidate
+
+# --- applications --------------------------------------------------------
+Correo Electronico	Email
+Correo Electrónico	Email
+Correo	Email
+E-mail	Email
+Telefono	Telephone
+Teléfono	Telephone
+Personalmente	In person
+En persona	In person
+enviar CV por correo electronico	Send CV by email
+enviar CV por correo electrónico	Send CV by email
+Enviar curriculum por correo electronico	Send resume by email
+Enviar curriculum por correo electrónico	Send resume by email
+Enviar hoja de vida	Send resume
+Vía telefónica	By telephone
+Via telefonica	By telephone
+
+# --- salary --------------------------------------------------------------
+Salario a convenir	Salary to be agreed
+A convenir en la entrevista	To be agreed at the interview
+Según experiencia	Based on experience
+Segun experiencia	Based on experience
+Negociable	Negotiable
+Más comisiones	Plus commission
+Mas comisiones	Plus commission
+Sueldo base más comisiones	Base salary plus commission
+Por hora laborada	Per hour worked
+
+# --- department / misc ---------------------------------------------------
+Todo el país	Nationwide
+Todo el pais	Nationwide
+Ventas	Sales
+Administración	Administration
+Administracion	Administration
+Recursos Humanos	Human Resources
+Atención al Cliente	Customer Service
+Atencion al Cliente	Customer Service
+Contabilidad	Accounting
+Informática	IT
+Informatica	IT
