@@ -19,4 +19,11 @@ export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs
 export FMPROD_HOME=$BIGTRANSLATE_HOME/tomcat/webapps/fmprod/WEB-INF/classes/
-export TIKA_SERVER_CLASSPATH=$BIGTRANSLATE_HOME/tika-server/language-keys/:$BIGTRANSLATE_HOME/tika-server/tika-server-1.13.jar
+
+# Crawler precondition beans reference this placeholder, so it must be set
+# even when it is empty. The bigtranslate wrapper exports it per run;
+# without a default here, invoking crawler_launcher directly (as the build
+# docs describe) fails Spring context creation.
+export BIGTRANSLATE_EXCLUDE=${BIGTRANSLATE_EXCLUDE:-}
+# Translation runs locally through Pantogloss; the Tika translation server
+# and its API credentials are no longer part of this pipeline.

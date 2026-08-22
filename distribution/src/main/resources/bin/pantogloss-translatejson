@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Translate selected fields of BigTranslate JSON documents into English.
+
+Drop-in replacement for etllib's ``translatejson``, which reached machine
+translation through Apache Tika's translator facade and therefore needed a
+running Tika server plus a paid cloud API key. This runs Pantogloss locally:
+no server, no key, no network once the model is cached.
+
+Two differences from the tool it replaces, both deliberate:
+
+``-t/--to`` is optional and must be ``en``
+    Pantogloss is many-to-English by construction, so a target language
+    argument can only ever be English. The flag is still accepted so existing
+    command lines keep working.
+
+``--in-dir``/``--out-dir`` translate a whole directory in one process
+    The original PGE ran one ``translatejson`` per document under
+    ``xargs -I infile``. That is fine for an HTTP call and ruinous for a local
+    model, which would be loaded from scratch for every posting. Directory
+    mode loads the model once and batches every string in the directory
+    through it. Single-file ``-i``/``-j`` still works and is still one load.
+
+The translation cache is SQLite rather than rlite: hirlite no longer builds on
+any current Python. The cache matters more than the model here, since these
+are daily snapshots of a live job board and the same posting recurs across
+hundreds of files.
+"""
+
+import argparse
+import json
+import os
+import sqlite3
+import sys
+from pathlib import Path
+
+_verbose = False
+
+
+def log(message):
+    if _verbose:
+        print(message, file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
+# cache
+# --------------------------------------------------------------------------
+
+class TranslationCache:
+    """Source string -> English, keyed per model.
+
+    The model name is part of the key so that switching models does not serve
+    stale translations from a previous one.
+    """
+
+    def __init__(self, path, model):
+        self.model = model
+        self.enabled = path is not None
+        if not self.enabled:
+            self._conn = None
+            return
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(path))
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS translation ("
+            "  model  TEXT NOT NULL,"
+            "  source TEXT NOT NULL,"
+            "  target TEXT NOT NULL,"
+            "  PRIMARY KEY (model, source))"
+        )
+        self._conn.commit()
+
+    def get_many(self, sources):
+        """Return {source: target} for whichever sources are already cached."""
+        if not self.enabled or not sources:
+            return {}
+        found = {}
+        sources = list(sources)
+        chunk = 900  # stay under SQLite's variable limit
+        for i in range(0, len(sources), chunk):
+            batch = sources[i:i + chunk]
+            placeholders = ",".join("?" * len(batch))
+            rows = self._conn.execute(
+                "SELECT source, target FROM translation"
+                " WHERE model = ? AND source IN (%s)" % placeholders,
+                [self.model] + batch,
+            )
+            found.update(dict(rows))
+        return found
+
+    def put_many(self, pairs):
+        if not self.enabled or not pairs:
+            return
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO translation (model, source, target)"
+            " VALUES (?, ?, ?)",
+            [(self.model, src, tgt) for src, tgt in pairs.items()],
+        )
+        self._conn.commit()
+
+    def close(self):
+        if self._conn is not None:
+            self._conn.close()
+
+
+# --------------------------------------------------------------------------
+# documents
+# --------------------------------------------------------------------------
+
+def load_documents(args):
+    """Return [(input_path, output_path, document)] for whichever mode is set."""
+    docs = []
+    if args.in_dir:
+        out_dir = Path(args.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for src in sorted(Path(args.in_dir).glob("*.json")):
+            try:
+                with open(src, encoding="utf-8") as fh:
+                    docs.append((src, out_dir / src.name, json.load(fh)))
+            except (OSError, ValueError) as err:
+                print("skipping [%s]: %s" % (src, err), file=sys.stderr)
+    else:
+        with open(args.injson, encoding="utf-8") as fh:
+            docs.append((Path(args.injson), Path(args.json), json.load(fh)))
+    return docs
+
+
+def collect_strings(docs, cols):
+    """Every distinct non-empty value across the translatable columns."""
+    strings = set()
+    for _, _, doc in docs:
+        for col in cols:
+            val = doc.get(col)
+            if isinstance(val, str) and val.strip():
+                strings.add(val)
+    return strings
+
+
+def main(argv=None):
+    global _verbose
+    parser = argparse.ArgumentParser(
+        prog="pantogloss-translatejson",
+        description="Translate BigTranslate JSON fields into English with Pantogloss.",
+    )
+    parser.add_argument("-i", "--injson", help="input JSON document")
+    parser.add_argument("-j", "--json", help="output JSON document")
+    parser.add_argument("--in-dir", help="translate every *.json in this directory")
+    parser.add_argument("--out-dir", help="write directory-mode output here")
+    parser.add_argument("-c", "--cols", required=True,
+                        help="file listing the fields to translate, one per line")
+    parser.add_argument("-f", "--from", dest="source_lang", default=None,
+                        help="source language code (recorded, not required)")
+    parser.add_argument("-t", "--to", dest="target_lang", default="en",
+                        help="target language; only 'en' is supported")
+    parser.add_argument("--cache", default=None, help="SQLite translation cache")
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--model", default="pantogloss-500-en")
+    parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="auto")
+    parser.add_argument("--beam-size", type=int, default=1,
+                        help="1 (greedy) suits short formulaic job-posting fields")
+    parser.add_argument("--max-length", type=int, default=50)
+    parser.add_argument("--offline", action="store_true",
+                        help="use cached model files only")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args(argv)
+    _verbose = args.verbose
+
+    if args.target_lang.lower() not in ("en", "eng", "english"):
+        parser.error("Pantogloss translates into English only; got --to %r"
+                     % args.target_lang)
+    if args.in_dir:
+        if not args.out_dir:
+            parser.error("--in-dir requires --out-dir")
+    elif not (args.injson and args.json):
+        parser.error("give -i and -j, or --in-dir and --out-dir")
+
+    with open(args.cols, encoding="utf-8") as fh:
+        cols = [c.strip() for c in fh if c.strip()]
+    log("translating columns: %s" % cols)
+
+    docs = load_documents(args)
+    if not docs:
+        log("no input documents")
+        return 0
+
+    strings = collect_strings(docs, cols)
+    log("%d document(s), %d distinct string(s)" % (len(docs), len(strings)))
+
+    cache = TranslationCache(args.cache, args.model)
+    try:
+        translations = cache.get_many(strings)
+        missing = sorted(strings - set(translations))
+        log("cache: %d hit, %d miss" % (len(translations), len(missing)))
+
+        if missing:
+            # Import lazily so --help and argument errors do not pay for
+            # TensorFlow, which takes several seconds to load.
+            from pantogloss import Translator
+
+            translator = Translator.from_pretrained(
+                args.model,
+                device=args.device,
+                local_files_only=args.offline,
+            )
+            log("model on %s" % translator.device_info.selected)
+
+            fresh = {}
+            for i in range(0, len(missing), args.batch_size):
+                batch = missing[i:i + args.batch_size]
+                out = translator.translate(
+                    batch,
+                    beam_size=args.beam_size,
+                    max_length=args.max_length,
+                )
+                if isinstance(out, str):
+                    out = [out]
+                fresh.update(dict(zip(batch, out)))
+                log("  translated %d/%d" % (min(i + args.batch_size, len(missing)),
+                                            len(missing)))
+            cache.put_many(fresh)
+            translations.update(fresh)
+    finally:
+        cache.close()
+
+    written = 0
+    for _, out_path, doc in docs:
+        for col in cols:
+            val = doc.get(col)
+            if isinstance(val, str) and val.strip():
+                doc[col] = translations.get(val, val)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, ensure_ascii=False)
+        written += 1
+
+    log("wrote %d document(s)" % written)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
