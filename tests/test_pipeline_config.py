@@ -223,8 +223,33 @@ def root_pom():
 
 
 class TestBuild:
-    def test_targets_oodt_110(self, root_pom):
-        assert "<oodt.version>1.10-SNAPSHOT</oodt.version>" in root_pom
+    def test_targets_mnemosyne_release(self, root_pom):
+        # Mnemosyne is the continuation of Apache OODT, which the ASF retired
+        # to the Attic in April 2023. A release, not a SNAPSHOT, so the
+        # coordinate cannot resolve to different bytes on different machines.
+        assert "<oodt.version>1.11.0</oodt.version>" in root_pom
+
+    def test_no_apache_oodt_coordinates_remain(self):
+        # Java packages stay org.apache.oodt.*; only the Maven coordinate moved.
+        # The 2020 org.apache.oodt:1.10-SNAPSHOT on Apache snapshots would
+        # silently resolve in place of the fork if any pom still named it.
+        stale = []
+        for pom in REPO.rglob("pom.xml"):
+            if "/target/" in str(pom):
+                continue
+            if "<groupId>org.apache.oodt</groupId>" in pom.read_text():
+                stale.append(str(pom.relative_to(REPO)))
+        assert not stale, "poms still on Apache coordinates: %s" % stale
+
+    def test_oodt_dependencies_use_the_mnemosyne_group(self):
+        found = False
+        for pom in REPO.rglob("pom.xml"):
+            if "/target/" in str(pom):
+                continue
+            if "<groupId>ai.mattmann.mnemosyne</groupId>" in pom.read_text():
+                found = True
+                break
+        assert found, "no pom declares the Mnemosyne groupId"
 
     def test_no_plaintext_repositories(self, root_pom):
         assert "http://repository.apache.org" not in root_pom
