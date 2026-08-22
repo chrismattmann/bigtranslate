@@ -19,12 +19,16 @@
      <cmd>cd [JobOutputDir]/employmentjobs</cmd>
      <cmd>repackage -j [JobOutputDir]/aggregatejson/${TSV_FILE_PREFIX}.json -o employmentjobs -v > [JobLogDir]/repackager_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>cd [JobOutputDir]/translated</cmd>
-     <cmd>find [JobOutputDir]/employmentjobs -name "*.json" -exec basename \{} .json \; | xargs -I infile translatejson -i [JobOutputDir]/employmentjobs/infile.json -j infile-t.json  -c [TranslateCols] -f es -t en -r [TranslateCachePath] -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <!-- One invocation for the whole directory, not one per document. The
+          Tika-backed predecessor made an HTTP call per field, so a process
+          per file cost nothing; Pantogloss loads a local model, so the same
+          shape would reload it once per posting. -->
+     <cmd>[BIGTRANSLATE_HOME]/bin/pantogloss-translatejson --in-dir [JobOutputDir]/employmentjobs --out-dir [JobOutputDir]/translated -c [TranslateCols] -f es --cache [TranslateCachePath] --batch-size [TranslateBatchSize] --offline -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>find [JobOutputDir]/translated -name "*.json" | poster -u "[SolrUrl]" -v > [JobLogDir]/solrjsonposter_[DateMilis].log 2[GreaterThan][Ampersand]1 </cmd> 
 
      <!-- now clean up -->
      <!-- delete the split file first from the FM -->
-     <cmd>alias fmdel="java -Dorg.apache.oodt.cas.filemgr.properties=[BIGTRANSLATE_HOME]/filemgr/etc/filemgr.properties -Djava.ext.dirs=[BIGTRANSLATE_HOME]/filemgr/lib org.apache.oodt.cas.filemgr.tools.DeleteProduct --fileManagerUrl [FILEMGR_URL] --read"</cmd>
+     <cmd>alias fmdel="java -Dorg.apache.oodt.cas.filemgr.properties=[BIGTRANSLATE_HOME]/filemgr/etc/filemgr.properties -cp \"[BIGTRANSLATE_HOME]/filemgr/lib/*\" org.apache.oodt.cas.filemgr.tools.DeleteProduct --fileManagerUrl [FILEMGR_URL] --read"</cmd>
      <cmd>[BIGTRANSLATE_HOME]/filemgr/bin/query-tool --url [FILEMGR_URL] --sql -query "SELECT CAS.ProductId FROM EmploymentJobAggregatesTsvSplit WHERE CAS.ProductName = '[TsvFile]'"  -outputFormat "\$CAS.ProductId" | fmdel</cmd>
 
      <!-- remove the working dir stuff -->

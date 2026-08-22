@@ -76,3 +76,8 @@ local.properties
  
 # PDT-specific
 .buildpath
+
+# Local corpus slices pulled off the archive drive for testing.
+# These are scraped third-party postings containing personal data.
+testdata/
+
