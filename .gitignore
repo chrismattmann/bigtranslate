@@ -81,3 +81,12 @@ local.properties
 # These are scraped third-party postings containing personal data.
 testdata/
 
+
+######################
+# Python
+######################
+
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

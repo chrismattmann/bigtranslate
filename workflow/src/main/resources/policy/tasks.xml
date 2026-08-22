@@ -76,6 +76,7 @@
           <property name="NearDupeThreshold" value="0.8"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
 	  <property name="TranslateCachePath" value="[BIGTRANSLATE_HOME]/data/translationcache/cache.sqlite" envReplace="true"/>
+          <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
           <property name="TranslateBatchSize" value="32"/>
           <property name="SolrUrl" value="http://localhost:8080/solr/bigtranslate/update/json?commit=true"/>
           <requiredMetFields>
