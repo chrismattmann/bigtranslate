@@ -26,10 +26,10 @@ jobs:
       - name: Test
         run: python -m pytest tests/ -v
 
-  # Packaging check. OODT 1.10-SNAPSHOT is published to Apache snapshots, but
-  # that build is from 2020 and predates the JDK 21 and Avro work this project
-  # depends on, so the fork is built from source first and installed locally.
-  # Maven prefers the locally installed artifact over the remote snapshot.
+  # Packaging check against Mnemosyne, the continuation of Apache OODT after
+  # the ASF retired it to the Attic. Mnemosyne is built from source until
+  # ai.mattmann.mnemosyne:1.11.0 is published to Maven Central, at which point
+  # this checkout and install step can be dropped entirely.
   package:
     name: Maven package (JDK 21)
     runs-on: ubuntu-latest
@@ -42,14 +42,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Check out Apache OODT
+      - name: Check out Mnemosyne
         uses: actions/checkout@v4
         with:
-          repository: chrismattmann/oodt
-          path: oodt
+          repository: chrismattmann/mnemosyne
+          path: mnemosyne
 
-      - name: Install OODT 1.10-SNAPSHOT
-        working-directory: oodt
+      - name: Install Mnemosyne 1.11.0
+        working-directory: mnemosyne
         run: mvn -B -q install -DskipTests -Dmaven.javadoc.skip=true
 
       - name: Package BigTranslate
