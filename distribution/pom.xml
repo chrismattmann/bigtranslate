@@ -123,7 +123,17 @@
                   <executions>
                      <execution>
                         <id>unpack-tomcat</id>
-                        <phase>process-sources</phase>
+                        <!--
+                          prepare-package, not process-sources. This unpacks
+                          war artifacts produced by sibling modules, which do
+                          not exist until those modules reach package. Binding
+                          it early made `mvn test` fail: the reactor builds
+                          siblings only through test, so the wars were absent
+                          while this execution still ran. prepare-package runs
+                          immediately before package, so the assembly still
+                          sees the unpacked layout.
+                        -->
+                        <phase>prepare-package</phase>
                         <goals>
                            <goal>unpack</goal>
                         </goals>
