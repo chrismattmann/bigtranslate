@@ -7,13 +7,9 @@ BigTranslate
 [![Powered by Mnemosyne](https://img.shields.io/badge/powered%20by-Mnemosyne%201.11.0-6E4B8E.svg)](https://github.com/chrismattmann/mnemosyne)
 [![Website](https://img.shields.io/badge/website-chrismattmann.github.io%2Fbigtranslate-informational.svg)](https://chrismattmann.github.io/bigtranslate/)
 
-A distributed, parallelized (Map Reduce) wrapper around [Apache&trade; Tika](http://tika.apache.org/) and its Translation API provided by [Tika-Python](http://github.com/chrismattmann/tika-python). BigTranslate uses Apache&trade; OODT to split and distribute machine translation of many millions of rows of data. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](http://github.com/chrismattmann/etllib/) to provide a clean facade to JSON and TSV data processing, and to prepare data for translation using Tika. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval.
+A distributed, parallelized (Map Reduce) system that uses [Pantogloss](https://github.com/chrismattmann/pantogloss) to machine-translate many millions of rows of TSV data. Pantogloss is a TensorFlow/Keras many-to-English library that runs locally — no hosted translation APIs. BigTranslate uses [Mnemosyne](https://github.com/chrismattmann/mnemosyne) to split and distribute those translations. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](http://github.com/chrismattmann/etllib/) to provide a clean facade to JSON and TSV data processing, and to prepare records for Pantogloss. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval.
 
-Apache&trade; Tika provides a facade to and has been tested with the following Machine Translation APIs.
-
-* [Lingo24](http://www.lingo24.com/us/translation-plugins/api/)
-* [Micorosft Translator API](https://www.microsoft.com/en-us/translator/translatorapi.aspx)
-* [Google Translate API](https://cloud.google.com/translate/docs/)
+Translation is performed by Pantogloss with a Spanish&rarr;English employment glossary and a local cache. The PGE `pantogloss-translatejson` runs the model offline over selected columns.
 
 See the wiki for more information on installing and running BigTranslate:  
 * [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
