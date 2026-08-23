@@ -1,0 +1,276 @@
+<html lang="en">
+  <head>
+    <title>BigTranslate</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="css/custom.css?v=4"/>
+    <link href="https://fonts.googleapis.com/css?family=Lato" rel="stylesheet">
+    <link rel="stylesheet" href="css/font-awesome.min.css">
+  </head>
+  <body>
+    <header>
+      <div class="container-fluid">
+
+        <div class="row">
+          <div class="col-sm-12">
+            <ul class="nav justify-content-end">
+              <li class="nav-item">
+                <a class="nav-link active" href="#problem"><span class="d-none d-sm-inline">The Problem</span><span class="d-sm-none">Problem</span></a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#bigtranslate"><span class="d-none d-sm-inline">BigTranslate</span><span class="d-sm-none">About</span></a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#resources"><span class="d-none d-sm-inline">Resources</span><span class="d-sm-none">Docs</span></a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#contributors"><span class="d-none d-sm-inline">Contributors</span><span class="d-sm-none">Team</span></a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="row align-items-center">
+          <div class="offset-md-1 col-md-5">
+            <img src="img/header.png" width="100%" alt="">
+          </div>
+          <div class="offset-md-1 col-md-5 white-text">
+            <h1 class="bigtranslate">BIGTRANSLATE</h1>
+            <p>Distributed machine translation<br/>
+              for large TSV corpora
+          </div>
+        </div>
+
+       </div>
+
+   </header>
+
+    <section id="problem" class="container section-space">
+      <div class="row align-items-center">
+        <div class="col-12 breathing-space">
+          <h2>THE PROBLEM</h2>
+          <hr/>
+        </div>
+        <div class="col-12 col-md-4 text-center text-md-left">
+          <img src="img/the-problem.png" alt=""/>
+        </div>
+        <div class="col-12 col-md-8">
+          <div class="row breathing-space">
+            <div class="col-12 col-sm-2 col-md-1">
+              <img src="img/icon-1.png" width="63" alt=""/>
+            </div>
+            <div class="col-12 col-sm-10 col-md-10 offset-md-1">
+              <h4>LARGE EMPLOYMENT CORPORA</h4>
+              <p class="grey-text">The <a href="https://www.darpa.mil/research/programs/xdata">DARPA XDATA</a> Employment dataset is a large TSV corpus of Latin American job listings from Computrabajo. Individual country-day files hold thousands of records; the collection as a whole was used to exercise analytics at a scale of tens to hundreds of millions of rows.</p>
+            </div>
+          </div>
+          <div class="row breathing-space">
+            <div class="col-12 col-sm-2 col-md-1">
+              <img src="img/icon-2.png" width="63" alt=""/>
+            </div>
+            <div class="col-12 col-sm-10 col-md-10 offset-md-1">
+              <h4>MIXED LANGUAGE AT SCALE</h4>
+              <p class="grey-text">Listings mix Spanish and English in fields such as title, salary, job type, duration, and how to apply. Row-at-a-time calls to Google Translate, Microsoft Translator, or Lingo24 do not finish in a reasonable time once the corpus grows to millions of translations.</p>
+            </div>
+          </div>
+          <div class="row breathing-space">
+            <div class="col-12 col-sm-2 col-md-1">
+              <img src="img/icon-3.png" width="63" alt=""/>
+            </div>
+            <div class="col-12 col-sm-10 col-md-10 offset-md-1">
+              <h4>NEED FOR QUERYABLE TRANSLATIONS</h4>
+              <p class="grey-text">Analysts need more than a translated file. After the columns are rendered into English, the records have to be searchable and aggregable so employment trends across countries and dates can be queried at scale.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+     </section>
+
+     <section id="bigtranslate" class="container-fluid alternate-lightbg section-space">
+       <div class="container text-center">
+          <h2 class="col-sm-12 breathing-space">WHAT IS BIGTRANSLATE?</h2>
+          <hr/>
+          <p class="col-sm-12 breathing-space">
+          A distributed, parallelized (Map Reduce) wrapper around <a href="http://tika.apache.org/">Apache Tika<sup>TM</sup></a> and its Translation API, invoked through <a href="https://github.com/chrismattmann/tika-python">Tika-Python</a>. BigTranslate uses <a href="https://github.com/chrismattmann/mnemosyne">Mnemosyne</a> — the continuation of Apache OODT<sup>TM</sup> after the ASF retired it to the Attic in 2023 — to split and workflow machine translation of many millions of TSV rows. It has been tested on up to 190 million rows on 16-core nodes.
+          </p>
+          <div class="row">
+            <div class="col-md-3 breathing-space">
+              <i class="fa fa-columns fa-3x fa-color" aria-hidden="true"></i>
+              <h4>TSV in, JSON out</h4>
+              <p>BigTranslate uses <a href="https://github.com/chrismattmann/etllib">ETLLib</a> to turn Computrabajo-style TSV into JSON job records, then translates selected columns — title, salary, job type, duration, start, applications, and department.</p>
+            </div>
+            <div class="offset-md-1 col-md-3 breathing-space">
+              <i class="fa fa-language fa-3x fa-color" aria-hidden="true"></i>
+              <h4>Tika translation, with a glossary</h4>
+              <p>Tika fronts Google Translate, Microsoft Translator, and Lingo24. A Spanish→English employment glossary and translation cache correct systematic terms such as <em>Tiempo Completo</em>, <em>Inmediato</em>, and <em>Correo Electrónico</em>.</p>
+            </div>
+            <div class="offset-md-1 col-md-3 breathing-space">
+              <i class="fa fa-search fa-3x fa-color" aria-hidden="true"></i>
+              <h4>Index into Solr</h4>
+              <p>Translated JSON is posted to <a href="https://lucene.apache.org/solr/">Apache Solr<sup>TM</sup></a> so the corpus can be queried, faceted, and analyzed after the Map Reduce run completes.</p>
+            </div>
+          </div>
+       </div>
+     </section>
+
+     <section id="pipeline" class="container section-space">
+       <div class="container text-center">
+          <h2 class="col-sm-12 breathing-space">HOW IT WORKS</h2>
+          <hr/>
+          <p class="col-sm-12 breathing-space">The workflow follows the XDATA Employment data bible: a country-day TSV is ingested, exploded into one JSON document per job, translated, and archived.</p>
+          <div class="row">
+            <div class="col-md-3 breathing-space">
+              <div class="step-num">1</div>
+              <h4>Ingest &amp; partition</h4>
+              <p>The crawler picks up files such as <code>computrabajo-do-20121106.tsv</code> from staging. A TsvToJson PGE splits the aggregate file into individual job JSON documents — the Map Reduce partitioner.</p>
+            </div>
+            <div class="offset-md-1 col-md-3 breathing-space">
+              <div class="step-num">2</div>
+              <h4>Translate columns</h4>
+              <p><code>pantogloss-translatejson</code> runs as a PGE over each job, translating the configured columns from Spanish to English with the glossary as an authoritative override and a cache so re-runs do not pay the API again.</p>
+            </div>
+            <div class="offset-md-1 col-md-3 breathing-space">
+              <div class="step-num">3</div>
+              <h4>Reduce into Solr</h4>
+              <p>Translated JSON is posted to Solr. Original TSV, aggregate JSON, per-job JSON, and translated JSON all land in the archive so a country-day can be re-run or inspected later.</p>
+            </div>
+          </div>
+       </div>
+     </section>
+
+     <section id="resources" class="container-fluid alternate-lightbg section-space">
+        <div class="container">
+          <h2 class="col-sm-12 breathing-space">RESOURCES</h2>
+          <hr/>
+
+          <div class="row breathing-space">
+
+            <div class="col">
+              <div class="row">
+                <div class="col-sm-1">
+                  <img src="img/code.png" alt=""/>
+                </div>
+                <div class="offset-sm-1 col-sm-9">
+                  <h6>GITHUB</h6>
+                  <p>Source, tests, the Spanish→English glossary, and CI live on GitHub. BigTranslate is powered by Mnemosyne 1.11.0 and builds on JDK 21.</p>
+		  <a class="btn btn-outline-danger circular-border" href="https://github.com/chrismattmann/bigtranslate">VIEW PROJECT</a>
+			</div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="row">
+                <div class="col-sm-1">
+                  <img src="img/publication.png" alt=""/>
+                </div>
+                <div class="offset-sm-1 col-sm-9">
+                  <h6>WIKI</h6>
+                  <p>Installation, how to run, how to re-run, and how to interact with OpsUI and Solr are documented on the project wiki.</p>
+                  <a class="btn btn-outline-danger circular-border" href="https://github.com/chrismattmann/bigtranslate/wiki">READ THE WIKI</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+     </section>
+
+
+     <section id="contributors" class="container-fluid alternate-darkbg white-text section-space">
+       <div class="container text-center breathing-space">
+          <h2 class="col-sm-12 breathing-space">Project Team</h2>
+          <hr/>
+
+          <div class="pmc-group">
+            <h4 class="pmc-subhead">Founder and Developer</h4>
+            <div class="row names founder-row justify-content-center">
+            </div>
+          </div>
+
+          <div class="pmc-group">
+            <h4 class="pmc-subhead">Original Contributors</h4>
+            <div class="row names contributors-row justify-content-center">
+            </div>
+          </div>
+       </div>
+     </section>
+
+     <footer class="container-fluid footer-bg section-space">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-5">
+                  <div class="row">
+                    <div class="col-md-4 right-align">
+                        <a href="https://chrismattmann.github.io/bigtranslate/" target="_blank">
+                            <img src="img/code.png" width="70%" alt="">
+                        </a>
+                    </div>
+                    <div class="col-md-8">
+                        <ul style="list-style-type: none;">
+
+                            <li><a href="https://github.com/chrismattmann/" target="_blank"><h4 class="white-text">Chris Mattmann's GitHub</h4></a>
+                            <li><a class="white-text" href="http://mattmann.ai" target="_blank">Mattmann AI</a></li>
+                            <li><a class="white-text" href="https://github.com/sponsors/chrismattmann" target="_blank">Become
+                                a Sponsor</a></li>
+                            <li><a class="white-text" href="https://github.com/chrismattmann/bigtranslate/issues/" target="_blank">Report a Bug</a></li>
+                        </ul>
+                    </div>
+                  </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+
+    <script
+      src="https://code.jquery.com/jquery-3.3.1.min.js"
+      integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+      crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.3/umd/popper.min.js" integrity="sha384-vFJXuSJphROIrBnz7yo7oB41mKfc8JzQZiCq4NCceLEaO4IHwicKwpJf9c9IpFgh" crossorigin="anonymous"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+    <script type="text/javascript">
+      var bigtranslate = {
+        "chair": {
+          "chrismattmann": {
+            "name": "Chris Mattmann"
+          }
+        },
+        "roster": {
+          "chrismattmann": {
+            "name": "Chris Mattmann"
+          },
+          "sidhantsetia": {
+            "name": "Sidhant Setia"
+          },
+          "thammegowda": {
+            "name": "Thamme Gowda"
+          }
+        }
+      };
+
+      function pmcCard(username, name, extraClass) {
+        var handle = (username || "").replace(/\s+/g, "");
+        var isFounder = extraClass && extraClass.indexOf("pmc-founder") !== -1;
+        var col = isFounder ? "col-12 col-md-4" : "col-12 col-sm-6 col-md-3";
+        var klass = col + " breathing-space pmc-person" + (extraClass ? " " + extraClass : "");
+        return '<div class="' + klass + '"><a href="https://github.com/' + handle + '">' +
+          '<img class="pmc-avatar" src="https://github.com/' + handle + '.png?size=200" alt="' + name + '"/>' +
+          '<h5>' + name + '</h5></a></div>';
+      }
+
+      var founderIds = {};
+      for (var chairId in bigtranslate.chair) {
+        founderIds[chairId.replace(/\s+/g, "").toLowerCase()] = true;
+        $(".founder-row").append(pmcCard(chairId, bigtranslate.chair[chairId].name, "pmc-founder"));
+      }
+      for (var username in bigtranslate.roster) {
+        if (founderIds[username.replace(/\s+/g, "").toLowerCase()]) {
+          continue;
+        }
+        $(".contributors-row").append(pmcCard(username, bigtranslate.roster[username]["name"]));
+      }
+    </script>
+  </body>
+</html>
