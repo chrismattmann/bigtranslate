@@ -12,15 +12,15 @@ body{
 }
 
 a{
-	color:#494E9D;
+	color:#990000;
 }
 
 a:hover{
-	color:#C4C8F4;
+	color:#C9A227;
 }
 
 header{
-	background: #494E9D;
+	background: #990000;
 }
 
 .nav {
@@ -32,12 +32,16 @@ header{
 	color: #fff;
 }
 
+.nav a:hover{
+	color: #FFCC00;
+}
+
 .white-text{
 	color: #fff;
 }
 
 .grey-text{
-	color:#BDBDBD;
+	color:#8A8070;
 }
 
 .bigtranslate{
@@ -57,15 +61,15 @@ header{
 }
 
 .alternate-lightbg{
-	background: #F1F1F7;
+	background: #FFF8E7;
 }
 
 .alternate-darkbg{
-	background: #4B4F85;
+	background: #6E1014;
 }
 
 .footer-bg{
-	background: #383838;
+	background: #2A1214;
 }
 
 .circular-border{
@@ -73,7 +77,20 @@ header{
 }
 
 .fa-color{
-	color: #494E9D;
+	color: #990000;
+}
+
+.btn-outline-cardinal {
+	color: #990000;
+	background: transparent;
+	border: 1px solid #990000;
+}
+
+.btn-outline-cardinal:hover,
+.btn-outline-cardinal:focus {
+	color: #990000;
+	background: #FFCC00;
+	border-color: #990000;
 }
 
 .names a{
@@ -105,7 +122,7 @@ header{
 	width: 56px;
 	height: 2px;
 	margin: 12px auto 0;
-	background: rgba(255, 255, 255, 0.45);
+	background: #FFCC00;
 }
 
 .pmc-person a {
@@ -130,7 +147,7 @@ header{
 	aspect-ratio: 1 / 1;
 	object-fit: cover;
 	border-radius: 50%;
-	border: 3px solid rgba(255, 255, 255, 0.9);
+	border: 3px solid #FFCC00;
 	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
 	background: #fff;
 }
@@ -152,7 +169,7 @@ header{
 }
 
 .pmc-person a:hover .pmc-avatar {
-	border-color: #fff;
+	border-color: #FFE680;
 	box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
 }
 
@@ -162,8 +179,8 @@ header{
 	height: 42px;
 	line-height: 42px;
 	border-radius: 50%;
-	background: #494E9D;
-	color: #fff;
+	background: #990000;
+	color: #FFCC00;
 	font-size: 1.1rem;
 	margin-bottom: 12px;
 }
