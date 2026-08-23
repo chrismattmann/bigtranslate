@@ -26,10 +26,8 @@ jobs:
       - name: Test
         run: python -m pytest tests/ -v
 
-  # Packaging check against Mnemosyne, the continuation of Apache OODT after
-  # the ASF retired it to the Attic. Mnemosyne is built from source until
-  # ai.mattmann.mnemosyne:1.11.0 is published to Maven Central, at which point
-  # this checkout and install step can be dropped entirely.
+  # Packaging check. Mnemosyne resolves from Maven Central as
+  # ai.mattmann.mnemosyne:1.11.0, so there is nothing to build from source.
   package:
     name: Maven package (JDK 21)
     runs-on: ubuntu-latest
@@ -41,16 +39,6 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
-
-      - name: Check out Mnemosyne
-        uses: actions/checkout@v4
-        with:
-          repository: chrismattmann/mnemosyne
-          path: mnemosyne
-
-      - name: Install Mnemosyne 1.11.0
-        working-directory: mnemosyne
-        run: mvn -B -q install -DskipTests -Dmaven.javadoc.skip=true
 
       - name: Package BigTranslate
         run: mvn -B package -DskipTests
