@@ -71,7 +71,7 @@
             </div>
             <div class="col-12 col-sm-10 col-md-10 offset-md-1">
               <h4>MIXED LANGUAGE AT SCALE</h4>
-              <p class="grey-text">Listings mix Spanish and English in fields such as title, salary, job type, duration, and how to apply. Row-at-a-time calls to Google Translate, Microsoft Translator, or Lingo24 do not finish in a reasonable time once the corpus grows to millions of translations.</p>
+              <p class="grey-text">Listings mix Spanish and English in fields such as title, salary, job type, duration, and how to apply. Sending each field out to a hosted translation API does not finish in a reasonable time once the corpus grows to millions of translations.</p>
             </div>
           </div>
           <div class="row breathing-space">
@@ -92,7 +92,7 @@
           <h2 class="col-sm-12 breathing-space">WHAT IS BIGTRANSLATE?</h2>
           <hr/>
           <p class="col-sm-12 breathing-space">
-          A distributed, parallelized (Map Reduce) wrapper around <a href="http://tika.apache.org/">Apache Tika<sup>TM</sup></a> and its Translation API, invoked through <a href="https://github.com/chrismattmann/tika-python">Tika-Python</a>. BigTranslate uses <a href="https://github.com/chrismattmann/mnemosyne">Mnemosyne</a> — the continuation of Apache OODT<sup>TM</sup> after the ASF retired it to the Attic in 2023 — to split and workflow machine translation of many millions of TSV rows. It has been tested on up to 190 million rows on 16-core nodes.
+          A distributed, parallelized (Map Reduce) system that uses <a href="https://github.com/chrismattmann/pantogloss">Pantogloss</a> — a TensorFlow/Keras many-to-English library that runs locally, with no hosted translation APIs — to machine-translate TSV corpora. BigTranslate uses <a href="https://github.com/chrismattmann/mnemosyne">Mnemosyne</a> — the continuation of Apache OODT<sup>TM</sup> after the ASF retired it to the Attic in 2023 — to split and workflow those translations across many millions of rows. It has been tested on up to 190 million rows on 16-core nodes.
           </p>
           <div class="row">
             <div class="col-md-3 breathing-space">
@@ -102,8 +102,8 @@
             </div>
             <div class="offset-md-1 col-md-3 breathing-space">
               <i class="fa fa-language fa-3x fa-color" aria-hidden="true"></i>
-              <h4>Tika translation, with a glossary</h4>
-              <p>Tika fronts Google Translate, Microsoft Translator, and Lingo24. A Spanish→English employment glossary and translation cache correct systematic terms such as <em>Tiempo Completo</em>, <em>Inmediato</em>, and <em>Correo Electrónico</em>.</p>
+              <h4>Pantogloss, with a glossary</h4>
+              <p><a href="https://github.com/chrismattmann/pantogloss">Pantogloss</a> runs a local many-to-English model offline. A Spanish→English employment glossary and translation cache correct systematic terms such as <em>Tiempo Completo</em>, <em>Inmediato</em>, and <em>Correo Electrónico</em>.</p>
             </div>
             <div class="offset-md-1 col-md-3 breathing-space">
               <i class="fa fa-search fa-3x fa-color" aria-hidden="true"></i>
@@ -128,7 +128,7 @@
             <div class="offset-md-1 col-md-3 breathing-space">
               <div class="step-num">2</div>
               <h4>Translate columns</h4>
-              <p><code>pantogloss-translatejson</code> runs as a PGE over each job, translating the configured columns from Spanish to English with the glossary as an authoritative override and a cache so re-runs do not pay the API again.</p>
+              <p><code>pantogloss-translatejson</code> runs as a PGE over the job directory, translating the configured columns from Spanish to English with the glossary as an authoritative override and a cache so re-runs skip strings already translated.</p>
             </div>
             <div class="offset-md-1 col-md-3 breathing-space">
               <div class="step-num">3</div>
