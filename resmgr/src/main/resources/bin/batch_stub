@@ -26,6 +26,6 @@ if ( $#argv != 1 ) then
         exit 1
 else
         java -cp "../lib/*" \
-        org.apache.oodt.cas.resource.system.extern.XmlRpcBatchStub \
+        org.apache.oodt.cas.resource.system.extern.AvroRpcBatchStub \
         --portNum $1&
 endif

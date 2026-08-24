@@ -96,6 +96,39 @@ class TestAvroTransport:
                        "/filemgr.fm-solr-catalog.properties").read_text()
         assert "AvroFileManagerServerFactory" in text
 
+    def test_resmgr_declares_avro_transport(self):
+        # The resource manager was the last part still speaking XML-RPC here,
+        # and it named the transport in three separate places: the batch
+        # manager factory, the batch stub launcher, and the client launcher.
+        text = (REPO / "resmgr/src/main/resources/etc/resource.properties").read_text()
+        assert "AvroRpcResourceManager" in text
+        assert "AvroRpcResourceManagerClient" in text
+        assert "AvroRpcBatchMgrFactory" in text
+
+    def test_resmgr_scripts_do_not_name_xmlrpc(self):
+        for name, expected in (("batch_stub", "AvroRpcBatchStub"),
+                               ("resmgr-client", "ResourceManagerClientMain")):
+            matches = [p for p in launcher_scripts() if p.name == name]
+            assert matches, "launcher %s not found" % name
+            text = matches[0].read_text()
+            assert expected in text
+            assert "XmlRpc" not in text
+
+    def test_no_active_xmlrpc_selection_anywhere(self):
+        # A commented-out XML-RPC option is fine; a live one is not. Apache
+        # XML-RPC is being retired from Mnemosyne, and it is the last thing
+        # keeping commons-httpclient 3.x and CVE-2012-5783 on the classpath.
+        offenders = []
+        for path in REPO.glob("*/src/main/resources/etc/*.properties"):
+            for num, line in enumerate(path.read_text().splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("#") or "=" not in stripped:
+                    continue
+                value = stripped.split("=", 1)[1]
+                if "XmlRpc" in value:
+                    offenders.append("%s:%d" % (path.name, num))
+        assert not offenders, "XML-RPC still selected in: %s" % offenders
+
     def test_workflow_declares_avro_factories(self):
         text = (REPO / "workflow/src/main/resources/etc/workflow.properties").read_text()
         assert "AvroRpcWorkflowManagerFactory" in text
