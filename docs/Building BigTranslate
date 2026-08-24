@@ -5,10 +5,10 @@ REQUIREMENTS:
 * Java Development Kit (JDK) 21
 * JAVA_HOME set
 * Python 3.10+
-* ETLLib on PATH: `pip install "etllib[translate] @ git+https://github.com/chrismattmann/etllib.git"`
+* ETLLib on PATH: `pip install "etllib @ git+https://github.com/chrismattmann/etllib.git"`
   (or `pip install -r requirements.txt` from this repo). The PGE uses
   `tsvtojson`, `repackage`, and `poster`; translation is Pantogloss, not
-  etllib's `translatejson`.
+  etllib's `translatejson`. The `etllib[translate]` extra is not required.
 * Pantogloss importable (`from pantogloss import Translator`)
 * libmagic
 * Mnemosyne 1.11.0 (resolved from Maven Central)

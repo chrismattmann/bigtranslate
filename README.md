@@ -11,15 +11,13 @@ A distributed, parallelized (Map Reduce) system that uses [Pantogloss](https://g
 
 Translation is performed by Pantogloss with a Spanish&rarr;English employment glossary and a local cache. The PGE `pantogloss-translatejson` runs the model offline over selected columns.
 
-Install ETLLib with the `translate` extra (Python 3.10+, plus libmagic):
+Install ETLLib (Python 3.10+, plus libmagic) so `tsvtojson`, `repackage`, and `poster` are on your `PATH`. Translation is Pantogloss; the `etllib[translate]` extra is not needed:
 
 ```bash
-python3 -m pip install "etllib[translate] @ git+https://github.com/chrismattmann/etllib.git"
+python3 -m pip install "etllib @ git+https://github.com/chrismattmann/etllib.git"
 # or, from this repo:
 python3 -m pip install -r requirements.txt
 ```
-
-`[translate]` pulls hirlite for etllib's `translatejson` CLI. The PGE itself uses `pantogloss-translatejson`. If hirlite fails to build, `python3 -m pip install "etllib @ git+https://github.com/chrismattmann/etllib.git"` is enough for `tsvtojson` / `repackage` / `poster`.
 
 See the wiki for more information on installing and running BigTranslate:  
 * [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
