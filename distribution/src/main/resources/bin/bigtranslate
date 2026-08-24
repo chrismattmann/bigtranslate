@@ -23,9 +23,8 @@ OODT_HOST=localhost
 
 # Print out usage information for this script.
 function print_help {
-    echo "Usage: bigtranslate [train, translate] in order to perform machine translation on a bunch of data." 
+    echo "Usage: bigtranslate [translate, reset, help] to machine-translate a TSV corpus."
     echo "       bigtranslate"
-    echo "            train                                   <path to TSV>       | trains and builds a local MT cache based on the TSV file."
     echo "            translate [--exclude <file/directory name>] <path to repo>  | crawl the tab separated value (TSV) files, one data item per line"
     echo "            help                  					| print this message"
     echo "            reset                 					| prepare to re-run big translate"
