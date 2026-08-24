@@ -1,0 +1,4 @@
+# Python side of the pipeline. tsvtojson, repackage, and poster come from
+# etllib. Translation is pantogloss-translatejson, so the [translate] extra
+# (hirlite) is not required.
+etllib @ git+https://github.com/chrismattmann/etllib.git
