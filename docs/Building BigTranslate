@@ -2,12 +2,18 @@ Requirements for BigTranslate
 
 REQUIREMENTS:
 
-* Java Development Kit (JDK) 1.6+
-* JAVA_HOME set 
-* Python 2.7
-* ETLlib installed and available on the Path.
-* Tika-Python installed and available on the Path.
-* OODT version 0.10-SNAPSHOT
+* Java Development Kit (JDK) 21
+* JAVA_HOME set
+* Python 3.10+
+* ETLLib on PATH: `pip install "etllib[translate] @ git+https://github.com/chrismattmann/etllib.git"`
+  (or `pip install -r requirements.txt` from this repo). The PGE uses
+  `tsvtojson`, `repackage`, and `poster`; translation is Pantogloss, not
+  etllib's `translatejson`.
+* Pantogloss importable (`from pantogloss import Translator`)
+* libmagic
+* Mnemosyne 1.11.0 (resolved from Maven Central)
+
+Current walkthrough: https://github.com/chrismattmann/bigtranslate/wiki/Installation
 
 INSTALLATION:
 

@@ -1,0 +1,4 @@
+# Python side of the pipeline. tsvtojson, repackage, and poster come from
+# etllib. The [translate] extra pulls hirlite for etllib's translatejson CLI;
+# the PGE itself translates with pantogloss-translatejson.
+etllib[translate] @ git+https://github.com/chrismattmann/etllib.git
