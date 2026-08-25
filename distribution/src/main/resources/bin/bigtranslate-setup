@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Creates the virtual environment holding the Python half of the pipeline.
+# Run once after unpacking a distribution. Maven does not do this: it ships
+# requirements.txt and this script, and the Python install happens here.
+#
+# env.sh puts $BIGTRANSLATE_HOME/.venv/bin on PATH when this directory exists,
+# so the servers -- and therefore the PGEs they run -- pick the tools up.
+
+set -e
+
+PRGDIR=$(cd "$(dirname "$0")" && pwd)
+BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-$(cd "$PRGDIR/.." && pwd)}
+VENV="$BIGTRANSLATE_HOME/.venv"
+REQUIREMENTS="$BIGTRANSLATE_HOME/requirements.txt"
+
+# Pantogloss needs TensorFlow 2.18, which publishes no wheels above Python
+# 3.12, so a bare "python3" on a newer system produces an environment the
+# translate step cannot run in. Prefer a version known to work, newest first,
+# and let PYTHON override.
+if [ -z "$PYTHON" ]; then
+    for candidate in python3.12 python3.11 python3.10 python3; do
+        if command -v "$candidate" > /dev/null 2>&1; then
+            PYTHON=$candidate
+            break
+        fi
+    done
+fi
+
+if [ -z "$PYTHON" ] || ! command -v "$PYTHON" > /dev/null 2>&1; then
+    echo "Cannot find a Python interpreter. Set PYTHON to one between 3.10 and 3.12." >&2
+    exit 1
+fi
+
+PYTHON_VERSION=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+case "$PYTHON_VERSION" in
+    3.10|3.11|3.12) ;;
+    *)
+        echo "$PYTHON is Python $PYTHON_VERSION."
+        echo "ETLLib is fine with that, but Pantogloss needs TensorFlow 2.18, which"
+        echo "publishes no wheels above 3.12. If you intend to translate, re-run with"
+        echo "PYTHON set to a 3.10-3.12 interpreter."
+        echo
+        ;;
+esac
+
+echo "Using $PYTHON (Python $PYTHON_VERSION)"
+
+if [ ! -f "$REQUIREMENTS" ]; then
+    echo "Cannot find $REQUIREMENTS." >&2
+    echo "This script expects to run from inside an unpacked distribution." >&2
+    exit 1
+fi
+
+if [ -d "$VENV" ]; then
+    echo "Using the existing environment at $VENV"
+else
+    echo "Creating $VENV"
+    "$PYTHON" -m venv "$VENV"
+fi
+
+echo "Installing from $REQUIREMENTS"
+"$VENV/bin/pip" install --upgrade pip
+"$VENV/bin/pip" install -r "$REQUIREMENTS"
+
+# Pantogloss does the translating, but it is not in requirements.txt: it is not
+# published, so a public dependency list cannot name it. It has to go in this
+# same environment rather than one of its own, because the PGE runs
+# bin/pantogloss-translatejson through "#!/usr/bin/env python3" and that
+# resolves to whichever interpreter is first on PATH, which is this one.
+#
+# Point PANTOGLOSS_SOURCE at a checkout, a wheel, or any pip specifier:
+#   PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
+if [ -n "$PANTOGLOSS_SOURCE" ]; then
+    echo
+    echo "Installing Pantogloss from $PANTOGLOSS_SOURCE"
+    "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+fi
+
+echo
+echo "Done. Installed:"
+for tool in tsvtojson repackage poster; do
+    if [ -x "$VENV/bin/$tool" ]; then
+        echo "  $tool"
+    else
+        echo "  $tool  MISSING -- check the output above"
+    fi
+done
+if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
+    echo "  pantogloss"
+else
+    echo "  pantogloss  NOT INSTALLED -- the translate step will fail."
+    echo "              Re-run with PANTOGLOSS_SOURCE set to a checkout or wheel."
+fi
+echo
+echo "Restart the services so they pick the tools up:"
+echo "  $BIGTRANSLATE_HOME/bin/oodt restart"

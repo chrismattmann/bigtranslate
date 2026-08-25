@@ -95,6 +95,16 @@ fi
 # BIGTRANSLATE_HOME in setenv.sh has not been edited for this deployment.
 export CATALINA_OPTS=-Dsolr.solr.home="$OODT_BASE"/solr
 
+# The Python half of the pipeline lives in a virtual environment created by
+# bin/bigtranslate-setup. Put it on PATH here rather than in bin/bigtranslate,
+# because the PGEs that call tsvtojson, repackage, poster and
+# pantogloss-translatejson are run by the workflow manager and inherit its
+# environment, not the environment of whoever typed "bigtranslate translate".
+if [ -d "$OODT_BASE"/.venv/bin ]; then
+  PATH="$OODT_BASE"/.venv/bin:"$PATH"
+  export PATH
+fi
+
 if [ -z "$OODT_OUT" ] ; then
   OODT_OUT="$OODT_BASE"/logs/oodt.out
   export OODT_OUT
