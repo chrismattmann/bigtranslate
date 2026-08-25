@@ -301,18 +301,38 @@ class TestBuild:
         assert "<groupId>org.apache.tomcat</groupId>" in text
         assert "tomcat:apache-tomcat" not in text
 
-    def test_solr_env_entry_declares_a_type(self):
-        # Tomcat 9 reads env-entry-type unconditionally; without it the /solr
-        # context dies on an NPE and returns 404 with no root cause logged.
+    def _solr_env_entries(self):
         web_xml = REPO / "webapps/solr-webapp/src/main/webapp/WEB-INF/web.xml"
         root = ET.parse(web_xml).getroot()
         ns = {"j": "http://java.sun.com/xml/ns/javaee"}
         entries = root.findall("j:env-entry", ns) or root.findall("env-entry")
-        assert entries
+        return entries, ns
+
+    def test_solr_env_entry_declares_a_type(self):
+        # Tomcat 9 reads env-entry-type unconditionally; without it the /solr
+        # context dies on an NPE and returns 404 with no root cause logged.
+        # There need not be any env-entry at all -- see the test below -- but
+        # any that is added has to carry a type.
+        entries, ns = self._solr_env_entries()
         for entry in entries:
             types = (entry.findall("j:env-entry-type", ns)
                      or entry.findall("env-entry-type"))
             assert types, "env-entry without env-entry-type"
+
+    def test_solr_home_is_not_hardcoded_in_the_webapp(self):
+        # A JNDI env-entry beats the solr.solr.home system property, so one
+        # named solr/home overrides what env.sh computes from the deployment's
+        # own location. It used to be "../solr", relative to Tomcat's working
+        # directory rather than the deployment, and Solr looked for its cores
+        # outside the install, found none, and answered every request with 500.
+        entries, ns = self._solr_env_entries()
+        for entry in entries:
+            names = (entry.findall("j:env-entry-name", ns)
+                     or entry.findall("env-entry-name"))
+            for name in names:
+                assert (name.text or "").strip() != "solr/home", (
+                    "solr/home hardcoded in web.xml; it overrides "
+                    "-Dsolr.solr.home from bin/env.sh")
 
     def test_pcs_webapp_supplies_jaxb(self):
         # JAXB left the JDK in Java 11; CXFServlet fails to load without it.

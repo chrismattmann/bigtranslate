@@ -36,13 +36,21 @@
 
   <!-- People who want to hardcode their "Solr Home" directly into the
        WAR File can set the JNDI property here...
+
+       Deliberately left unset. A JNDI env-entry takes precedence over the
+       solr.solr.home system property, so setting it here silently overrode the
+       -Dsolr.solr.home that bin/env.sh computes from the deployment's own
+       location. The value was "../solr", relative to Tomcat's working
+       directory rather than to the deployment, so Solr looked for its cores
+       outside the install, found none, fell back to a "collection1" that does
+       not exist, and answered every request with HTTP 500:
+
+         initFailures: {"collection1": "Could not load config file
+         .../bigtranslate/../solr/collection1/solrconfig.xml"}
+
+       With no env-entry, solr.solr.home applies and the bigtranslate core is
+       found where it is actually installed.
    -->
-  
-    <env-entry>
-       <env-entry-name>solr/home</env-entry-name>
-       <env-entry-value>../solr</env-entry-value>
-       <env-entry-type>java.lang.String</env-entry-type>
-    </env-entry>
    
    
   <!-- Any path (name) registered in solrconfig.xml will be sent to that filter -->
