@@ -117,6 +117,17 @@
       </includes>
       <fileMode>775</fileMode>
     </fileSet>
+    <!--
+      The Python side of the pipeline is declared here so a deployment carries
+      its own dependency list. bin/bigtranslate-setup reads it.
+    -->
+    <fileSet>
+      <directory>${basedir}/../</directory>
+      <outputDirectory>.</outputDirectory>
+      <includes>
+        <include>requirements.txt</include>
+      </includes>
+    </fileSet>
   </fileSets>
   <dependencySets>
     <dependencySet>

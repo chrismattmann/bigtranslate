@@ -37,6 +37,38 @@ function print_ui_info {
 
 FILEMGR_URL=http://${OODT_HOST}:9000
 SOLR_URL=http://${OODT_HOST}:8080/solr/bigtranslate
+
+# This script is not started through env.sh, so pick the virtual environment up
+# the same way env.sh does before looking for anything in it.
+BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-$(cd "$(dirname "$0")/.." && pwd)}
+if [ -d "$BIGTRANSLATE_HOME"/.venv/bin ]; then
+    PATH="$BIGTRANSLATE_HOME"/.venv/bin:"$PATH"
+    export PATH
+fi
+
+# The PGE shells out to these. Without them each step writes "command not
+# found" into its own log and the workflow still reports FINISHED, so the run
+# looks successful and translates nothing. Say so up front instead.
+function check_python_tools {
+    missing=""
+    for tool in tsvtojson repackage poster; do
+        command -v $tool > /dev/null 2>&1 || missing="$missing $tool"
+    done
+    # pantogloss-translatejson runs under "#!/usr/bin/env python3", so the
+    # interpreter first on PATH is the one that has to be able to import it
+    python3 -c "import pantogloss" > /dev/null 2>&1 || missing="$missing pantogloss"
+    if [ -n "$missing" ]; then
+        echo "Missing Python tools:$missing"
+        echo
+        echo "Install them with:"
+        echo "  PANTOGLOSS_SOURCE=<checkout or wheel> $BIGTRANSLATE_HOME/bin/bigtranslate-setup"
+        echo "  $BIGTRANSLATE_HOME/bin/oodt restart"
+        echo
+        echo "The services must be restarted afterwards: the PGEs inherit their"
+        echo "environment from the workflow manager, not from this shell."
+        exit 1
+    fi
+}
 CLIENT_URL=http://${OODT_HOST}:9001
 OPSUI_URL=http://${OODT_HOST}:8080/opsui
 
@@ -163,6 +195,7 @@ function reset {
 # Start parsing the arguments.
 case $1 in
     translate)
+        check_python_tools
         translate $2 $3 $4
     ;;
     reset)

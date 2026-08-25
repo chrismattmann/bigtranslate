@@ -11,13 +11,43 @@ A distributed, parallelized (Map Reduce) system that uses [Pantogloss](https://g
 
 Translation is performed by Pantogloss with a Spanish&rarr;English employment glossary and a local cache. The PGE `pantogloss-translatejson` runs the model offline over selected columns.
 
-Install ETLLib (Python 3.10+, plus libmagic) so `tsvtojson`, `repackage`, and `poster` are on your `PATH`. Translation is Pantogloss; the `etllib[translate]` extra is not needed:
+BigTranslate needs the Python tools `tsvtojson`, `repackage` and `poster` from
+ETLLib (Python 3.10+, plus libmagic). In an unpacked distribution, one command
+installs them into a virtual environment beside the services:
 
 ```bash
-python3 -m pip install "etllib @ git+https://github.com/chrismattmann/etllib.git"
-# or, from this repo:
+PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
+bin/oodt restart
+```
+
+Pantogloss is not in `requirements.txt` because it is not published, so
+`PANTOGLOSS_SOURCE` points the setup script at a checkout, a wheel, or any pip
+specifier. It goes into the same environment as ETLLib rather than one of its
+own: the PGE runs `pantogloss-translatejson` through `#!/usr/bin/env python3`,
+which picks whichever interpreter is first on `PATH`. Omit `PANTOGLOSS_SOURCE`
+if you only want the ETLLib tools; the setup script says which of the four it
+ended up with.
+
+Use Python 3.10--3.12. Pantogloss needs TensorFlow 2.18, which publishes no
+wheels above 3.12, so `bigtranslate-setup` prefers `python3.12` and works down
+from there. `PYTHON` overrides the choice.
+
+The restart matters. The PGEs that call these tools are run by the workflow
+manager and inherit *its* environment, so putting the tools on your own `PATH`
+is not enough; `env.sh` adds `$BIGTRANSLATE_HOME/.venv/bin` when the services
+start. `bin/bigtranslate translate` checks the tools resolve before it does
+anything, because without them each step logs "command not found" into its own
+file while the workflow still reports `FINISHED` -- a run that looks like it
+worked and translated nothing.
+
+To install into an environment you manage yourself instead, the dependency list
+is `requirements.txt`, shipped in the distribution:
+
+```bash
 python3 -m pip install -r requirements.txt
 ```
+
+Translation is Pantogloss; the `etllib[translate]` extra is not needed.
 
 See the wiki for more information on installing and running BigTranslate:  
 * [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
