@@ -57,6 +57,7 @@
       <outputDirectory>filemgr/etc</outputDirectory>
       <includes>
         <include>filemgr.properties</include>
+        <include>logging.properties</include>
         <include>**.xml</include>
       </includes>
       <fileMode>664</fileMode>
