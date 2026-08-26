@@ -128,6 +128,21 @@
         <include>requirements.txt</include>
       </includes>
     </fileSet>
+    <!--
+      The Solr server, unpacked from the distribution antrun fetched. Separate
+      from solr/, which is the Solr home holding the bigtranslate core and its
+      data: this directory is the engine and can be replaced wholesale.
+    -->
+    <fileSet>
+      <directory>${project.build.directory}/solr-${solr.version}</directory>
+      <outputDirectory>solr-server</outputDirectory>
+      <excludes><exclude>bin/**</exclude></excludes>
+    </fileSet>
+    <fileSet>
+      <directory>${project.build.directory}/solr-${solr.version}/bin</directory>
+      <outputDirectory>solr-server/bin</outputDirectory>
+      <fileMode>0755</fileMode>
+    </fileSet>
   </fileSets>
   <dependencySets>
     <dependencySet>
@@ -139,7 +154,6 @@
         <exclude>${groupId}:${parent.artifactId}-opsui</exclude>
         <exclude>${groupId}:${parent.artifactId}-pcs-services</exclude>
         <exclude>${groupId}:${parent.artifactId}-fmprod</exclude>
-        <exclude>${groupId}:${parent.artifactId}-solr-webapp</exclude>
       </excludes>
     </dependencySet>
   </dependencySets>

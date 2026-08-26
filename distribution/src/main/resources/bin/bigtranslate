@@ -32,11 +32,11 @@ function print_help {
 }
 
 function print_ui_info {
-    echo "Navigate to http://${OODT_HOST}:8080/opsui/ to view the OODT browser and http://${OODT_HOST}:8080/solr to view the Solr catalog."
+    echo "Navigate to http://${OODT_HOST}:8080/opsui/ to view the OODT browser and http://${OODT_HOST}:8983/solr to view the Solr catalog."
 }
 
 FILEMGR_URL=http://${OODT_HOST}:9000
-SOLR_URL=http://${OODT_HOST}:8080/solr/bigtranslate
+SOLR_URL=http://${OODT_HOST}:8983/solr/bigtranslate
 
 # This script is not started through env.sh, so pick the virtual environment up
 # the same way env.sh does before looking for anything in it.
