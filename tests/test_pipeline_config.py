@@ -301,47 +301,41 @@ class TestBuild:
         assert "<groupId>org.apache.tomcat</groupId>" in text
         assert "tomcat:apache-tomcat" not in text
 
-    def _solr_env_entries(self):
-        web_xml = REPO / "webapps/solr-webapp/src/main/webapp/WEB-INF/web.xml"
-        root = ET.parse(web_xml).getroot()
-        ns = {"j": "http://java.sun.com/xml/ns/javaee"}
-        entries = root.findall("j:env-entry", ns) or root.findall("env-entry")
-        return entries, ns
+    def test_solr_is_not_deployed_into_tomcat(self):
+        # Solr runs as its own application now. The tests that used to live
+        # here checked the war's web.xml for a JNDI solr/home entry that
+        # overrode -Dsolr.solr.home; there is no war to check any more, and
+        # nothing should put one back.
+        assert not (REPO / "webapps/solr-webapp").exists()
+        assert "solr-webapp" not in (REPO / "webapps/pom.xml").read_text()
 
-    def test_solr_env_entry_declares_a_type(self):
-        # Tomcat 9 reads env-entry-type unconditionally; without it the /solr
-        # context dies on an NPE and returns 404 with no root cause logged.
-        # There need not be any env-entry at all -- see the test below -- but
-        # any that is added has to carry a type.
-        entries, ns = self._solr_env_entries()
-        for entry in entries:
-            types = (entry.findall("j:env-entry-type", ns)
-                     or entry.findall("env-entry-type"))
-            assert types, "env-entry without env-entry-type"
+    def test_oodt_starts_solr_against_the_deployment_solr_home(self):
+        # The failure this replaces was Solr resolving its home relative to
+        # Tomcat's working directory and finding no cores. It is now passed
+        # explicitly.
+        text = (BIN / "oodt").read_text()
+        assert "solr-server" in text
+        assert "--solr-home" in text
 
-    def test_solr_home_is_not_hardcoded_in_the_webapp(self):
-        # A JNDI env-entry beats the solr.solr.home system property, so one
-        # named solr/home overrides what env.sh computes from the deployment's
-        # own location. It used to be "../solr", relative to Tomcat's working
-        # directory rather than the deployment, and Solr looked for its cores
-        # outside the install, found none, and answered every request with 500.
-        entries, ns = self._solr_env_entries()
-        for entry in entries:
-            names = (entry.findall("j:env-entry-name", ns)
-                     or entry.findall("env-entry-name"))
-            for name in names:
-                assert (name.text or "").strip() != "solr/home", (
-                    "solr/home hardcoded in web.xml; it overrides "
-                    "-Dsolr.solr.home from bin/env.sh")
+    def test_solr_home_ships_the_core(self):
+        core = REPO / "solr/src/main/resources/bigtranslate"
+        assert (core / "core.properties").exists()
+        assert (core / "conf/solrconfig.xml").exists()
+        assert (core / "conf/schema.xml").exists()
 
     def test_pcs_webapp_supplies_jaxb(self):
         # JAXB left the JDK in Java 11; CXFServlet fails to load without it.
         text = (REPO / "webapps/pcs-services/pom.xml").read_text()
         assert "jaxb-api" in text and "jaxb-runtime" in text
 
-    def test_solr_home_is_set_for_tomcat(self):
-        # Never set before; the Solr webapp came up with no core.
-        assert "solr.solr.home" in (BIN / "env.sh").read_text()
+    def test_solr_is_reached_on_its_own_port(self):
+        # Solr moved out of Tomcat, so nothing should still be pointing at
+        # :8080/solr. Its own port is 8983.
+        for rel in ("filemgr/src/main/resources/etc/filemgr.properties",
+                    "filemgr/src/main/resources/etc/filemgr.fm-solr-catalog.properties",
+                    "workflow/src/main/resources/policy/tasks.xml"):
+            text = (REPO / rel).read_text()
+            assert "8080/solr" not in text, rel
 
     def test_crawler_exclude_has_a_default(self):
         # Crawler precondition beans reference the placeholder, so invoking
