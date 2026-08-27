@@ -64,9 +64,12 @@ jobs:
           tar tvzf $TARBALL | grep -E 'tomcat/bin/catalina.sh' | grep -q '^-rwx'
 
           # Gloss is the GUI; Tomcat's ROOT sends people there.
+          # The assembly has no base directory, so these paths are not
+          # prefixed: */tomcat/... does not match tomcat/...
           tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss/index.html'
           tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss-services/WEB-INF/web.xml'
-          tar xzOf $TARBALL --wildcards '*/tomcat/webapps/ROOT/index.jsp' | grep -q '/gloss/'
+          tar tzf $TARBALL | grep -q 'tomcat/webapps/ROOT/index.jsp'
+          tar xzOf $TARBALL tomcat/webapps/ROOT/index.jsp | grep -q '/gloss/'
 
           # Java 9 removed the extension mechanism; every launcher that still
           # references it fails at startup. Assert the scan is non-vacuous
