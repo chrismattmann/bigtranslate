@@ -108,6 +108,18 @@
                <version>${project.parent.version}</version>
                <type>war</type>
             </dependency>
+            <dependency>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-gloss-services</artifactId>
+               <version>${project.parent.version}</version>
+               <type>war</type>
+            </dependency>
+            <dependency>
+               <groupId>org.bigtranslate</groupId>
+               <artifactId>bigtranslate-gloss</artifactId>
+               <version>${project.parent.version}</version>
+               <type>war</type>
+            </dependency>
          </dependencies>
          <build>
             <plugins>
@@ -163,6 +175,20 @@
                                  <overWrite>false</overWrite>
                                  <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/fmprod</outputDirectory>
                               </artifactItem>
+                              <artifactItem>
+                                 <groupId>org.bigtranslate</groupId>
+                                 <artifactId>${parent.artifactId}-gloss-services</artifactId>
+                                 <type>war</type>
+                                 <overWrite>false</overWrite>
+                                 <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/gloss-services</outputDirectory>
+                              </artifactItem>
+                              <artifactItem>
+                                 <groupId>org.bigtranslate</groupId>
+                                 <artifactId>${parent.artifactId}-gloss</artifactId>
+                                 <type>war</type>
+                                 <overWrite>false</overWrite>
+                                 <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/gloss</outputDirectory>
+                              </artifactItem>
                            </artifactItems>
                         </configuration>
                      </execution>
@@ -192,6 +218,42 @@
                        dest="${project.build.directory}" compression="gzip"/>
                 <chmod dir="${project.build.directory}/solr-${solr.version}/bin" perm="755" includes="*"/>
               </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!--
+        Replaces Tomcat's welcome page with a redirect to /gloss, the Vue
+        application. Done here rather than in the assembly descriptor: the
+        archive keeps the first file added for a given path, so Tomcat's own
+        ROOT/index.jsp wins there. Overwriting it in the unpacked Tomcat
+        during prepare-package means the assembly picks up the replacement.
+        Declared after maven-dependency-plugin on purpose: plugins bound to the
+        same phase run in declaration order, and the Tomcat unpack would
+        otherwise put the stock page back.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>root-redirect</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/apache-tomcat-${tomcat.version}/webapps/ROOT</outputDirectory>
+              <overwrite>true</overwrite>
+              <resources>
+                <resource>
+                  <directory>${basedir}/src/main/resources/tomcat/webapps/ROOT</directory>
+                  <includes>
+                    <include>index.jsp</include>
+                  </includes>
+                </resource>
+              </resources>
             </configuration>
           </execution>
         </executions>

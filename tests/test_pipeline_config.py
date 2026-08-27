@@ -14,9 +14,10 @@
 # limitations under the License.
 """The configuration that actually drives the pipeline.
 
-BigTranslate has no Java source; it is policy XML, shell launchers and property
-files. These guard the modernization work, which is almost entirely
-configuration, and the class of regression that only shows up at runtime.
+Most of BigTranslate is policy XML, shell launchers and property files.
+Gloss (webapps/gloss-services) is the Java that wraps those launchers for
+the GUI. These tests guard the modernization work and the class of
+regression that only shows up at runtime.
 """
 
 import re
@@ -341,6 +342,39 @@ class TestBuild:
         # Crawler precondition beans reference the placeholder, so invoking
         # crawler_launcher directly failed Spring context creation without it.
         assert "BIGTRANSLATE_EXCLUDE" in (BIN / "setenv.sh").read_text()
+
+    def test_gloss_is_a_webapps_module(self):
+        text = (REPO / "webapps/pom.xml").read_text()
+        assert "<module>gloss</module>" in text
+        assert "<module>gloss-services</module>" in text
+
+    def test_distribution_unpacks_gloss_wars(self):
+        text = (REPO / "distribution/pom.xml").read_text()
+        assert "bigtranslate-gloss</artifactId>" in text
+        assert "bigtranslate-gloss-services</artifactId>" in text
+        assert "webapps/gloss</outputDirectory>" in text
+        assert "webapps/gloss-services</outputDirectory>" in text
+
+    def test_root_redirects_to_gloss(self):
+        text = (REPO / "distribution/src/main/resources/tomcat/webapps/ROOT/index.jsp").read_text()
+        assert "/gloss/" in text
+
+    def test_cli_reset_accepts_yes(self):
+        text = (BIN / "bigtranslate").read_text()
+        assert "reset [--yes]" in text
+        assert 'if [ "$1" = "--yes" ]' in text
+
+    def test_cli_translate_still_exists_alongside_gloss(self):
+        text = (BIN / "bigtranslate").read_text()
+        assert "function translate" in text
+        assert "8080/gloss" in text
+
+    def test_gloss_services_expose_table_and_facets(self):
+        text = (REPO / "webapps/gloss-services/src/main/java/org/bigtranslate/gloss/rest"
+                       "/ServicesRestResource.java").read_text()
+        assert '@Path("/table")' in text
+        assert '@Path("/facets")' in text
+        assert '@Path("/record")' in text
 
 
 class TestShippedScripts:

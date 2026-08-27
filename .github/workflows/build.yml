@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Configuration and glossary checks. BigTranslate has no Java source, so this
-  # covers most of what the repository actually contains, and needs neither
-  # OODT nor the translation model.
+  # Configuration, glossary, and Gloss wiring checks. Needs neither OODT nor
+  # the translation model. Java unit tests for Gloss run in the package job.
   config:
     name: Configuration tests
     runs-on: ubuntu-latest
@@ -40,8 +39,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: webapps/gloss/src/main/webapp/resources/package-lock.json
+
       - name: Package BigTranslate
-        run: mvn -B package -DskipTests
+        run: mvn -B package
 
       - name: Check the distribution contents
         run: |
@@ -57,6 +62,11 @@ jobs:
           # Tomcat 9 ships bin/*.sh non-executable through the fileSet unless
           # they are re-added with an explicit mode.
           tar tvzf $TARBALL | grep -E 'tomcat/bin/catalina.sh' | grep -q '^-rwx'
+
+          # Gloss is the GUI; Tomcat's ROOT sends people there.
+          tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss/index.html'
+          tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss-services/WEB-INF/web.xml'
+          tar xzOf $TARBALL --wildcards '*/tomcat/webapps/ROOT/index.jsp' | grep -q '/gloss/'
 
           # Java 9 removed the extension mechanism; every launcher that still
           # references it fails at startup. Assert the scan is non-vacuous

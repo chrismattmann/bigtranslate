@@ -4,6 +4,10 @@ deploy/
 /build/
 /bin/
 target/
+
+# Gloss Vue build
+webapps/gloss/src/main/webapp/resources/node_modules/
+webapps/gloss/src/main/webapp/resources/dist/
  
 # OS Files #
 .DS_Store

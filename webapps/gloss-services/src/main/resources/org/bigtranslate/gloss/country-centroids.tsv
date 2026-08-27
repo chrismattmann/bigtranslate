@@ -1,0 +1,186 @@
+# Location name (any language we see in the corpus) -> lat, lng.
+# Used when a posting has a location string but empty coordinates, which is
+# the usual case for Computrabajo country-day TSVs.
+# Format: name<TAB>lat<TAB>lng. Matching is case-insensitive and accent-folded.
+
+# --- countries (English, Spanish, common abbreviations) ---
+Costa Rica	9.7489	-83.7534
+CR	9.7489	-83.7534
+Dominican Republic	18.7357	-70.1627
+Republica Dominicana	18.7357	-70.1627
+República Dominicana	18.7357	-70.1627
+DO	18.7357	-70.1627
+Mexico	23.6345	-102.5528
+México	23.6345	-102.5528
+MX	23.6345	-102.5528
+Argentina	-38.4161	-63.6167
+AR	-38.4161	-63.6167
+Colombia	4.5709	-74.2973
+CO	4.5709	-74.2973
+Peru	-9.1900	-75.0152
+Perú	-9.1900	-75.0152
+PE	-9.1900	-75.0152
+Chile	-35.6751	-71.5430
+CL	-35.6751	-71.5430
+Venezuela	6.4238	-66.5897
+VE	6.4238	-66.5897
+Ecuador	-1.8312	-78.1834
+EC	-1.8312	-78.1834
+Panama	8.5380	-80.7821
+Panamá	8.5380	-80.7821
+PA	8.5380	-80.7821
+Guatemala	15.7835	-90.2308
+GT	15.7835	-90.2308
+Honduras	15.2000	-86.2419
+HN	15.2000	-86.2419
+El Salvador	13.7942	-88.8965
+SV	13.7942	-88.8965
+Nicaragua	12.8654	-85.2072
+NI	12.8654	-85.2072
+Bolivia	-16.2902	-63.5887
+BO	-16.2902	-63.5887
+Paraguay	-23.4425	-58.4438
+PY	-23.4425	-58.4438
+Uruguay	-32.5228	-55.7658
+UY	-32.5228	-55.7658
+Brazil	-14.2350	-51.9253
+Brasil	-14.2350	-51.9253
+BR	-14.2350	-51.9253
+Cuba	21.5218	-77.7812
+CU	21.5218	-77.7812
+Puerto Rico	18.2208	-66.5901
+PR	18.2208	-66.5901
+Spain	40.4637	-3.7492
+España	40.4637	-3.7492
+ES	40.4637	-3.7492
+United States	37.0902	-95.7129
+Estados Unidos	37.0902	-95.7129
+USA	37.0902	-95.7129
+US	37.0902	-95.7129
+Canada	56.1304	-106.3468
+CA	56.1304	-106.3468
+United Kingdom	55.3781	-3.4360
+UK	55.3781	-3.4360
+GB	55.3781	-3.4360
+France	46.2276	2.2137
+FR	46.2276	2.2137
+Germany	51.1657	10.4515
+Alemania	51.1657	10.4515
+DE	51.1657	10.4515
+Italy	41.8719	12.5674
+Italia	41.8719	12.5674
+IT	41.8719	12.5674
+Portugal	39.3999	-8.2245
+PT	39.3999	-8.2245
+China	35.8617	104.1954
+CN	35.8617	104.1954
+India	20.5937	78.9629
+IN	20.5937	78.9629
+Japan	36.2048	138.2529
+JP	36.2048	138.2529
+Australia	-25.2744	133.7751
+AU	-25.2744	133.7751
+Haiti	18.9712	-72.2852
+Haití	18.9712	-72.2852
+HT	18.9712	-72.2852
+Jamaica	18.1096	-77.2975
+JM	18.1096	-77.2975
+Trinidad and Tobago	10.6918	-61.2225
+TT	10.6918	-61.2225
+Belize	17.1899	-88.4976
+BZ	17.1899	-88.4976
+Guyana	4.8604	-58.9302
+GY	4.8604	-58.9302
+Suriname	3.9193	-56.0278
+SR	3.9193	-56.0278
+Extranjero	20.0	-40.0
+
+# --- cities that show up as location values ---
+Santo Domingo	18.4861	-69.9312
+Santo Domingo Norte	18.5500	-69.9000
+Puerto Plata	19.7934	-70.6884
+San Francisco Macoris	19.3002	-70.2546
+San Francisco de Macorís	19.3002	-70.2546
+Todo el pais	18.7357	-70.1627
+Todo el País	18.7357	-70.1627
+Dominicana	18.7357	-70.1627
+Santiago	-33.4489	-70.6693
+Santiago de los Caballeros	19.4517	-70.6970
+San Jose	9.9281	-84.0907
+San José	9.9281	-84.0907
+Mexico City	19.4326	-99.1332
+Ciudad de Mexico	19.4326	-99.1332
+Ciudad de México	19.4326	-99.1332
+Guadalajara	20.6597	-103.3496
+Monterrey	25.6866	-100.3161
+Buenos Aires	-34.6037	-58.3816
+Cordoba	-31.4201	-64.1888
+Córdoba	-31.4201	-64.1888
+Rosario	-32.9442	-60.6505
+Bogota	4.7110	-74.0721
+Bogotá	4.7110	-74.0721
+Medellin	6.2442	-75.5812
+Medellín	6.2442	-75.5812
+Cali	3.4516	-76.5320
+Lima	-12.0464	-77.0428
+Arequipa	-16.4090	-71.5375
+Valparaiso	-33.0472	-71.6127
+Valparaíso	-33.0472	-71.6127
+Caracas	10.4806	-66.9036
+Quito	-0.1807	-78.4678
+Guayaquil	-2.1894	-79.8891
+Panama City	8.9824	-79.5199
+Ciudad de Panama	8.9824	-79.5199
+Ciudad de Panamá	8.9824	-79.5199
+Guatemala City	14.6349	-90.5069
+Tegucigalpa	14.0723	-87.1921
+San Salvador	13.6929	-89.2182
+Managua	12.1150	-86.2362
+La Paz	-16.4897	-68.1193
+Santa Cruz	-17.8146	-63.1561
+Asuncion	-25.2637	-57.5759
+Asunción	-25.2637	-57.5759
+Montevideo	-34.9011	-56.1645
+Sao Paulo	-23.5505	-46.6333
+São Paulo	-23.5505	-46.6333
+Rio de Janeiro	-22.9068	-43.1729
+Madrid	40.4168	-3.7038
+Barcelona	41.3851	2.1734
+Valencia	39.4699	-0.3763
+Miami	25.7617	-80.1918
+New York	40.7128	-74.0060
+Los Angeles	34.0522	-118.2437
+Houston	29.7604	-95.3698
+Chicago	41.8781	-87.6298
+Alajuela	10.0162	-84.2116
+Cartago	9.8644	-83.9194
+Heredia	9.9985	-84.1198
+Puntarenas	9.9763	-84.8384
+Limon	9.9907	-83.0360
+Limón	9.9907	-83.0360
+Puebla	19.0414	-98.2063
+Tijuana	32.5149	-117.0382
+Leon	21.1250	-101.6860
+León	21.1250	-101.6860
+Merida	20.9674	-89.5926
+Mérida	20.9674	-89.5926
+Cancun	21.1619	-86.8515
+Cancún	21.1619	-86.8515
+Barranquilla	10.9639	-74.7964
+Cartagena	10.3910	-75.4794
+Cusco	-13.5319	-71.9675
+Trujillo	-8.1116	-79.0288
+Concepcion	-36.8201	-73.0444
+Concepción	-36.8201	-73.0444
+Maracaibo	10.6427	-71.6125
+Barquisimeto	10.0647	-69.3570
+Cuenca	-2.9001	-79.0059
+Santiago de Cuba	20.0169	-75.8302
+Havana	23.1136	-82.3666
+La Habana	23.1136	-82.3666
+San Juan	18.4655	-66.1057
+Seville	37.3891	-5.9845
+Sevilla	37.3891	-5.9845
+Zaragoza	41.6488	-0.8891
+Malaga	36.7213	-4.4214
+Málaga	36.7213	-4.4214
