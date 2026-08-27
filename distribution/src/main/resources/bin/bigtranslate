@@ -26,13 +26,14 @@ function print_help {
     echo "Usage: bigtranslate [translate, reset, help] to machine-translate a TSV corpus."
     echo "       bigtranslate"
     echo "            translate [--exclude <file/directory name>] <path to repo>  | crawl the tab separated value (TSV) files, one data item per line"
-    echo "            help                  					| print this message"
-    echo "            reset                 					| prepare to re-run big translate"
-    echo "                                  					| CAUTION: will delete previous translations!"
+    echo "            help                                                        | print this message"
+    echo "            reset [--yes]                                               | prepare to re-run big translate"
+    echo "                                                                        | CAUTION: will delete previous translations!"
+    echo "                                                                        | --yes skips the confirmation prompt (Gloss uses this)"
 }
 
 function print_ui_info {
-    echo "Navigate to http://${OODT_HOST}:8080/opsui/ to view the OODT browser and http://${OODT_HOST}:8983/solr to view the Solr catalog."
+    echo "Navigate to http://${OODT_HOST}:8080/gloss/ for Gloss, http://${OODT_HOST}:8080/opsui/ for the OODT browser, and http://${OODT_HOST}:8983/solr for the Solr catalog."
 }
 
 FILEMGR_URL=http://${OODT_HOST}:9000
@@ -155,37 +156,55 @@ function check_services_running {
     
 }
 
-# Reset bigtranslate to prepare for translating a new dataset. Expects no arguments.
+# Wipe catalogs and working directories. Services must be down: this deletes
+# the File Manager catalog and Solr data on disk rather than going through
+# their APIs. Gloss calls this with --yes; the interactive prompt is for
+# humans at a terminal.
+function do_reset {
+    echo "rm -rf $BIGTRANSLATE_HOME/data/workflow"
+    rm -rf $BIGTRANSLATE_HOME/data/workflow
+    echo "rm -rf $BIGTRANSLATE_HOME/filemgr/catalog"
+    rm -rf $BIGTRANSLATE_HOME/filemgr/catalog
+    echo "rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data"
+    rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data
+    echo "rm -rf $BIGTRANSLATE_HOME/data/archive/*"
+    rm -rf $BIGTRANSLATE_HOME/data/archive/*
+    echo "rm -rf $BIGTRANSLATE_HOME/data/jobs/*"
+    rm -rf $BIGTRANSLATE_HOME/data/jobs/*
+    echo "rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid"
+    rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid
+    echo "rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid"
+    rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid
+    echo "rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid"
+    rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid
+    echo "Please restart OODT with '\$BIGTRANSLATE_HOME/bin/oodt start' if you wish to run another translation."
+}
+
+# Reset bigtranslate to prepare for translating a new dataset.
+# Optional --yes skips the confirmation prompt (used by Gloss).
 function reset {
+    local yes=0
+    if [ "$1" = "--yes" ]; then
+        yes=1
+        shift
+    fi
     check_services_running "running"
     check_num_args "reset" $# 0
+    if [ "$yes" -eq 1 ]; then
+        do_reset
+        return
+    fi
     echo "This will remove any previous or current translations."
     read -p "Do you wish to continue? [yN] " yn
         case $yn in
             [Yy]*)
-                echo "rm -rf $BIGTRANSLATE_HOME/data/workflow"
-                rm -rf $BIGTRANSLATE_HOME/data/workflow
-                echo "rm -rf $BIGTRANSLATE_HOME/filemgr/catalog"
-                rm -rf $BIGTRANSLATE_HOME/filemgr/catalog
-                echo "rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data"
-                rm -rf $BIGTRANSLATE_HOME/solr/bigtranslate/data
-                echo "rm -rf $BIGTRANSLATE_HOME/data/archive/*"
-                rm -rf $BIGTRANSLATE_HOME/data/archive/*
-                echo "rm -rf $BIGTRANSLATE_HOME/data/jobs/*"
-                rm -rf $BIGTRANSLATE_HOME/data/jobs/*
-		echo "rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid"
-		rm -rf $BIGTRANSLATE_HOME/workflow/run/cas.workflow.pid  ; 
-		echo "rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid"
-		rm -rf $BIGTRANSLATE_HOME/filemgr/run/cas.filemgr.pid;
-		echo "rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid"
-		rm -rf $BIGTRANSLATE_HOME/resmgr/run/cas.resmgr.pid;
-                echo "Please restart OODT with '\$BIGTRANSLATE_HOME/bin/oodt start' if you wish to run another translation."
+                do_reset
             ;;
             [Nn]*)
                 echo "Reset cancelled. Exiting..."
                 exit 0
             ;;
-            *) 
+            *)
                 echo "Aborting..."
                 exit 1
             ;;
@@ -199,7 +218,8 @@ case $1 in
         translate $2 $3 $4
     ;;
     reset)
-        reset
+        shift
+        reset "$@"
     ;;
     help)
         print_help

@@ -154,6 +154,8 @@
         <exclude>${groupId}:${parent.artifactId}-opsui</exclude>
         <exclude>${groupId}:${parent.artifactId}-pcs-services</exclude>
         <exclude>${groupId}:${parent.artifactId}-fmprod</exclude>
+        <exclude>${groupId}:${parent.artifactId}-gloss</exclude>
+        <exclude>${groupId}:${parent.artifactId}-gloss-services</exclude>
       </excludes>
     </dependencySet>
   </dependencySets>

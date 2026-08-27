@@ -1,0 +1,101 @@
+:root {
+  --cardinal: #990000;
+  --cardinal-dark: #6e0000;
+  --gold: #ffcc00;
+  --cream: #fff8e7;
+  --ink: #1a1410;
+  --muted: #6b5e4e;
+  --line: #e6d9c2;
+  --paper: #ffffff;
+  --good: #2f6f3e;
+  --warn: #b35c00;
+  --bad: #990000;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  color: var(--ink);
+  background: var(--cream);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  margin: 0;
+  min-height: 100%;
+  background: var(--cream);
+}
+
+button, input {
+  font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+button.primary {
+  background: var(--cardinal);
+  color: var(--cream);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--cardinal-dark);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--cardinal);
+  border: 1px solid var(--cardinal);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type="text"] {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+input[type="text"]:focus {
+  outline: 2px solid var(--gold);
+  border-color: var(--gold);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+}
+
+.pill.idle { background: #e7f0e4; color: var(--good); }
+.pill.translating { background: #fff1c2; color: var(--warn); }
+.pill.resetting { background: #fff1c2; color: var(--warn); }
+.pill.error { background: #f7dede; color: var(--bad); }
+
+.dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.on { background: var(--good); }
+.dot.off { background: #c4b8a6; }
