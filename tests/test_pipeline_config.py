@@ -179,6 +179,12 @@ class TestTranslateStep:
         text = PGE_CONFIG.read_text()
         assert re.search(r"find \[JobOutputDir\]/translated .*\| poster", text)
 
+    def test_stamps_solr_lineage_before_poster(self):
+        text = PGE_CONFIG.read_text()
+        stamp = text.find("stamp-solr-lineage")
+        poster = text.find("| poster")
+        assert stamp != -1 and poster != -1 and stamp < poster
+
 
 def _pge_output_dirs(path):
     root = ET.parse(path).getroot()
@@ -196,7 +202,7 @@ def _metout_keys(path):
 
 
 class TestBigTranslateIngest:
-    """Translate used to throw away its outputs; pedigree needs them cataloged."""
+    """File Manager catalogs the TSV and the split; Solr holds the postings."""
 
     def test_split_still_writes_met_via_generic_metout(self):
         dirs = _pge_output_dirs(SPLIT_CONFIG)
@@ -205,45 +211,31 @@ class TestBigTranslateIngest:
         assert files.get("metFileWriterClass").endswith("MetadataListPcsMetFileWriter")
         assert files.get("args").endswith("generic_metout.xml")
 
-    def test_translate_ingests_each_output_dir(self):
+    def test_translate_does_not_ingest_leaf_json(self):
         dirs = _pge_output_dirs(PGE_CONFIG)
         paths = [d.get("path") for d in dirs]
-        assert "[JobOutputDir]/aggregatejson" in paths
-        assert "[JobOutputDir]/employmentjobs" in paths
-        assert "[JobOutputDir]/translated" in paths
-        for d in dirs:
-            files = d.find("files")
-            assert files is not None
-            assert files.get("metFileWriterClass").endswith("MetadataListPcsMetFileWriter")
-            assert files.get("args").endswith(".xml")
-            assert files.get("regExp") == r".*\.json$"
+        assert "[JobOutputDir]/employmentjobs" not in paths
+        assert "[JobOutputDir]/translated" not in paths
+        assert "[JobOutputDir]/aggregatejson" not in paths
 
     def test_does_not_delete_the_split_parent(self):
         text = PGE_CONFIG.read_text()
         assert "DeleteProduct" not in text
         assert "fmdel" not in text
 
-    def test_does_not_wipe_outputs_before_ingest(self):
+    def test_wipes_working_copies_after_solr_post(self):
         text = PGE_CONFIG.read_text()
-        assert "rm -rf [JobOutputDir]" not in text
+        poster = text.find("| poster")
+        wipe = text.find("rm -rf [JobOutputDir]")
+        assert poster != -1 and wipe != -1 and poster < wipe
 
-    def test_aggregate_json_name_is_the_split_filename(self):
+    def test_lineage_keys_are_the_split_and_original_tsv(self):
         root = ET.parse(PGE_CONFIG).getroot()
         keys = {m.get("key"): m.get("val") for m in root.find("customMetadata").findall("metadata")}
-        assert keys["AggregateJsonFile"] == "[TsvFile].json"
-        assert "[AggregateJsonFile]" in PGE_CONFIG.read_text()
-
-    def test_metout_sets_product_type_and_immediate_parent(self):
-        aggregates = _metout_keys(METOUT / "generic_metout_aggregates.xml")
-        jobs = _metout_keys(METOUT / "generic_metout_jobs.xml")
-        translated = _metout_keys(METOUT / "generic_metout_translated.xml")
-        assert aggregates["ProductType"] == "EmploymentJobAggregates"
-        assert aggregates["InputFiles"] is None
-        assert jobs["ProductType"] == "EmploymentJob"
-        assert jobs["InputFiles"] == "[AggregateJsonFile]"
-        assert translated["ProductType"] == "EmploymentJobTranslated"
-        assert translated["InputFiles"] == "[Filename]"
-        assert translated["Filename"] == "[Filename].translated.json"
+        assert keys["SplitFilename"] == "[TsvFile]"
+        assert keys["SourceTsv"] == "[InputFiles]"
+        assert "[SplitFilename]" in PGE_CONFIG.read_text()
+        assert "[SourceTsv]" in PGE_CONFIG.read_text()
 
     def test_tika_server_classpath_is_retired(self):
         text = (BIN / "setenv.sh").read_text()

@@ -42,11 +42,13 @@ public class TestProcessBtWrapper extends TestCase {
     assertEquals("/data/untranslated", command.get(4));
   }
 
-  public void testWipeTypesAreTheEmploymentProducts() {
+  public void testWipeTypesAreTheCoarseFileManagerProducts() {
     List<String> types = ProcessBtWrapper.wipeTypes();
     assertTrue(types.contains("EmploymentJobAggregatesTsv"));
-    assertTrue(types.contains("EmploymentJobTranslated"));
-    assertEquals(5, types.size());
+    assertTrue(types.contains("EmploymentJobAggregatesTsvSplit"));
+    assertFalse(types.contains("EmploymentJob"));
+    assertFalse(types.contains("EmploymentJobTranslated"));
+    assertEquals(2, types.size());
   }
 
   public void testWipeDirectoryContentsLeavesTheDirectory() throws Exception {

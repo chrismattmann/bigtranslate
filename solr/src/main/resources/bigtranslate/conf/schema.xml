@@ -84,6 +84,12 @@
   <field name="url" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="lastSeenDate" type="pdate" indexed="true" stored="true" required="true" multiValued="false"/>
 
+  <!-- Lineage for a posting. File Manager only catalogs the original TSV and
+       the split; these fields point Solr documents at those products. -->
+  <field name="InputFiles" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
+  <field name="SplitFilename" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
+  <field name="TsvFile" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
+
   <field name="content" type="text_general" indexed="false" stored="true" multiValued="true"/>
   <field name="text" type="text_general" indexed="true" stored="false" multiValued="true"/>
   <field name="text_rev" type="text_general_rev" indexed="true" stored="false" multiValued="true"/>

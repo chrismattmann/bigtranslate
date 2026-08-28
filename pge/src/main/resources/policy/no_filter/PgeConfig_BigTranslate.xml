@@ -23,23 +23,16 @@
           per file cost nothing; Pantogloss loads a local model, so the same
           shape would reload it once per posting. -->
      <cmd>[BIGTRANSLATE_HOME]/bin/pantogloss-translatejson --in-dir [JobOutputDir]/employmentjobs --out-dir [JobOutputDir]/translated -c [TranslateCols] -f es --cache [TranslateCachePath] --glossary [TranslateGlossary] --batch-size [TranslateBatchSize] --offline -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/stamp-solr-lineage --dir [JobOutputDir]/translated --input-files '[SplitFilename]' --split '[SplitFilename]' --tsv '[SourceTsv]' >> [JobLogDir]/stamp_solr_lineage_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>find [JobOutputDir]/translated -name "*.json" | poster -u "[SolrUrl]" -v > [JobLogDir]/solrjsonposter_[DateMilis].log 2[GreaterThan][Ampersand]1 </cmd>
+     <!-- Working copies are ephemeral. File Manager only catalogs the TSV and
+          the split; Solr holds the postings. -->
+     <cmd>rm -rf [JobOutputDir]/*</cmd>
   </exe>
 
-  <!-- Files to ingest. CAS-PGE writes .met files after exe, so the working
-       copies have to still be here; DeleteDataFile removes them after ingest.
-       Do not delete the split TSV from File Manager: it is the aggregate's
-       parent and pedigree walks InputFiles by Filename. -->
+  <!-- Do not ingest per-job or translated JSON. At corpus scale that is
+       hundreds of millions of File Manager products; Gloss reads Solr. -->
   <output>
-    <dir path="[JobOutputDir]/aggregatejson" createBeforeExe="false">
-       <files regExp=".*\.json$" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout_aggregates.xml"/>
-    </dir>
-    <dir path="[JobOutputDir]/employmentjobs" createBeforeExe="false">
-       <files regExp=".*\.json$" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout_jobs.xml"/>
-    </dir>
-    <dir path="[JobOutputDir]/translated" createBeforeExe="false">
-       <files regExp=".*\.json$" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout_translated.xml"/>
-    </dir>
   </output>
 
   <!-- Custom metadata to add to output files -->
@@ -57,16 +50,17 @@
 
 
     <!-- Casi-specific keys -->
-    <metadata key="PCS_ActionsIds" val="DeleteDataFile" split="true"/>
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
     <metadata key="TsvFile" val="[Filename]"/>
+    <metadata key="SplitFilename" val="[TsvFile]"/>
+    <!-- The triggering split product already has InputFiles = original TSV. -->
+    <metadata key="SourceTsv" val="[InputFiles]"/>
     <metadata key="AggregateJsonFile" val="[TsvFile].json"/>
     <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/bigtranslate/[TsvFile]_[DateMilis]"/>
     <metadata key="JobInputDir" val="[JobDir]/input"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>
-    <metadata key="InputFiles" val="SQL(FORMAT='$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsvSplit WHERE Filename = '[TsvFile]'}"/>
     <metadata key="TsvFilePath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentJobAggregatesTsvSplit WHERE Filename = '[TsvFile]'}"/>
   </customMetadata>
 

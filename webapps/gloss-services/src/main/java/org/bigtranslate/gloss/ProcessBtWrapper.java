@@ -57,10 +57,7 @@ public class ProcessBtWrapper {
 
   static final String[] WIPE_TYPES = {
       "EmploymentJobAggregatesTsv",
-      "EmploymentJobAggregatesTsvSplit",
-      "EmploymentJobAggregates",
-      "EmploymentJob",
-      "EmploymentJobTranslated"
+      "EmploymentJobAggregatesTsvSplit"
   };
 
   private static final Logger LOG = Logger.getLogger(ProcessBtWrapper.class.getName());
