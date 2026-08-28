@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Stamp File Manager lineage onto translated JSON before it is posted to Solr.
+
+Postings live in Solr, not File Manager. Each document gets the split product
+name (InputFiles / SplitFilename) and the original TSV name (TsvFile) so a
+Gloss record can hop to the FM products that actually exist at batch grain.
+"""
+
+from __future__ import print_function
+
+import argparse
+import json
+import os
+import sys
+
+
+def stamp_document(doc, input_files, split_filename, tsv_file):
+    """Return a copy of doc with lineage fields set. Empty values are skipped."""
+    stamped = dict(doc)
+    if input_files:
+        stamped["InputFiles"] = input_files
+    if split_filename:
+        stamped["SplitFilename"] = split_filename
+    if tsv_file:
+        stamped["TsvFile"] = tsv_file
+    return stamped
+
+
+def stamp_dir(directory, input_files, split_filename, tsv_file):
+    n = 0
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".json") or name.endswith(".met"):
+            continue
+        path = os.path.join(directory, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8") as handle:
+            doc = json.load(handle)
+        stamped = stamp_document(doc, input_files, split_filename, tsv_file)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(stamped, handle, ensure_ascii=False)
+            handle.write("\n")
+        n += 1
+    return n
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="stamp-solr-lineage",
+        description="Add InputFiles, SplitFilename and TsvFile to translated JSON.",
+    )
+    parser.add_argument("--dir", required=True, help="directory of translated JSON files")
+    parser.add_argument("--input-files", default="",
+                        help="PCS parent in File Manager, the split product Filename")
+    parser.add_argument("--split", default="", help="parent split Filename")
+    parser.add_argument("--tsv", default="", help="original TSV Filename")
+    args = parser.parse_args(argv)
+    if not os.path.isdir(args.dir):
+        print("not a directory: %s" % args.dir, file=sys.stderr)
+        return 1
+    n = stamp_dir(args.dir, args.input_files, args.split, args.tsv)
+    print("stamped %d documents in %s" % (n, args.dir), file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

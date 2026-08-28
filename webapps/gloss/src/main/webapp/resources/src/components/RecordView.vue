@@ -54,7 +54,10 @@ const LABELS = {
   latitude: 'Latitude',
   longitude: 'Longitude',
   url: 'Original URL',
-  id: 'Solr id'
+  id: 'Solr id',
+  InputFiles: 'Input files',
+  SplitFilename: 'Parent split',
+  TsvFile: 'Original TSV'
 }
 
 export default {
