@@ -29,6 +29,8 @@ import pytest
 from conftest import BIN, CONF, POLICY, REPO, RESOURCES, WORKFLOW_POLICY
 
 PGE_CONFIG = POLICY / "no_filter" / "PgeConfig_BigTranslate.xml"
+SPLIT_CONFIG = POLICY / "no_filter" / "PgeConfig_Split.xml"
+METOUT = POLICY / "metout"
 TASKS = WORKFLOW_POLICY / "tasks.xml"
 
 
@@ -64,9 +66,8 @@ class TestJdk21Runtime:
         assert "-Djava.endorsed.dirs" not in script.read_text()
 
     def test_pge_config_carries_no_ext_dirs(self):
-        # The fmdel alias is embedded in the PGE config, not a launcher, and
-        # was the easiest of the fourteen call sites to miss.
         assert "java.ext.dirs" not in PGE_CONFIG.read_text()
+        assert "java.ext.dirs" not in SPLIT_CONFIG.read_text()
 
 
 class TestAvroTransport:
@@ -177,6 +178,72 @@ class TestTranslateStep:
     def test_poster_reads_the_translated_directory(self):
         text = PGE_CONFIG.read_text()
         assert re.search(r"find \[JobOutputDir\]/translated .*\| poster", text)
+
+
+def _pge_output_dirs(path):
+    root = ET.parse(path).getroot()
+    output = root.find("output")
+    assert output is not None, "%s has no <output>" % path
+    return list(output.findall("dir"))
+
+
+def _metout_keys(path):
+    root = ET.parse(path).getroot()
+    found = {}
+    for node in root.findall("metadata"):
+        found[node.get("key")] = node.get("val")
+    return found
+
+
+class TestBigTranslateIngest:
+    """Translate used to throw away its outputs; pedigree needs them cataloged."""
+
+    def test_split_still_writes_met_via_generic_metout(self):
+        dirs = _pge_output_dirs(SPLIT_CONFIG)
+        assert dirs
+        files = dirs[0].find("files")
+        assert files.get("metFileWriterClass").endswith("MetadataListPcsMetFileWriter")
+        assert files.get("args").endswith("generic_metout.xml")
+
+    def test_translate_ingests_each_output_dir(self):
+        dirs = _pge_output_dirs(PGE_CONFIG)
+        paths = [d.get("path") for d in dirs]
+        assert "[JobOutputDir]/aggregatejson" in paths
+        assert "[JobOutputDir]/employmentjobs" in paths
+        assert "[JobOutputDir]/translated" in paths
+        for d in dirs:
+            files = d.find("files")
+            assert files is not None
+            assert files.get("metFileWriterClass").endswith("MetadataListPcsMetFileWriter")
+            assert files.get("args").endswith(".xml")
+            assert files.get("regExp") == r".*\.json$"
+
+    def test_does_not_delete_the_split_parent(self):
+        text = PGE_CONFIG.read_text()
+        assert "DeleteProduct" not in text
+        assert "fmdel" not in text
+
+    def test_does_not_wipe_outputs_before_ingest(self):
+        text = PGE_CONFIG.read_text()
+        assert "rm -rf [JobOutputDir]" not in text
+
+    def test_aggregate_json_name_is_the_split_filename(self):
+        root = ET.parse(PGE_CONFIG).getroot()
+        keys = {m.get("key"): m.get("val") for m in root.find("customMetadata").findall("metadata")}
+        assert keys["AggregateJsonFile"] == "[TsvFile].json"
+        assert "[AggregateJsonFile]" in PGE_CONFIG.read_text()
+
+    def test_metout_sets_product_type_and_immediate_parent(self):
+        aggregates = _metout_keys(METOUT / "generic_metout_aggregates.xml")
+        jobs = _metout_keys(METOUT / "generic_metout_jobs.xml")
+        translated = _metout_keys(METOUT / "generic_metout_translated.xml")
+        assert aggregates["ProductType"] == "EmploymentJobAggregates"
+        assert aggregates["InputFiles"] is None
+        assert jobs["ProductType"] == "EmploymentJob"
+        assert jobs["InputFiles"] == "[AggregateJsonFile]"
+        assert translated["ProductType"] == "EmploymentJobTranslated"
+        assert translated["InputFiles"] == "[Filename]"
+        assert translated["Filename"] == "[Filename].translated.json"
 
     def test_tika_server_classpath_is_retired(self):
         text = (BIN / "setenv.sh").read_text()

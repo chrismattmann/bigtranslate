@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<metadataList>
+    
+   <metadata key="TagAccumulator" val="value"/>
+   <metadata key="JobId" val="[JobId]"/>
+   <!-- Filename is still the per-job JSON name (job-1001.json) here. Capture
+        that as InputFiles, then give the translated product its own name so
+        FilenameQuery can tell parent and child apart. -->
+   <metadata key="InputFiles" val="[Filename]"/>
+   <metadata key="Filename" val="[Filename].translated.json"/>
+   <metadata key="ProductionDateTime"/>
+   <metadata key="ProductType" val="EmploymentJobTranslated"/>
+   <metadata key="FileLocation"/>
+   <metadata key="FileSize"/>
+   <metadata key="ProductName" val="[Filename]"/>
+        
+</metadataList>
