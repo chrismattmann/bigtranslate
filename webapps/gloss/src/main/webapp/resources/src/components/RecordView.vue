@@ -21,6 +21,13 @@
               target="_blank"
               rel="noopener"
             >{{ field.value }}</a>
+            <a
+              v-else-if="isLineageField(field.name) && field.value"
+              :href="opsuiHref(field.value)"
+              target="_blank"
+              rel="noopener"
+              title="Open in File Manager (new tab)"
+            >{{ field.value }}</a>
             <span v-else-if="field.name === 'postedDate' || field.name === 'firstSeenDate' || field.name === 'lastSeenDate'">
               {{ prettyDate(field.value) }}
             </span>
@@ -28,12 +35,14 @@
           </dd>
         </div>
       </dl>
+      <p v-if="hasLineage" class="hop-note">File Manager links open in a new tab so this posting stays here.</p>
     </div>
   </section>
 </template>
 
 <script>
 import { computed } from 'vue'
+import { isLineageField, opsuiProductUrl } from '../opsuiLinks.js'
 
 const LABELS = {
   title: 'Title',
@@ -76,6 +85,9 @@ export default {
     const visibleFields = computed(() => {
       return (props.payload.fields || []).filter((f) => f.name !== 'title')
     })
+    const hasLineage = computed(() =>
+      visibleFields.value.some((f) => isLineageField(f.name) && f.value)
+    )
     function label(name) {
       return LABELS[name] || name
     }
@@ -85,7 +97,10 @@ export default {
       }
       return String(value).replace('T00:00:00Z', '').replace('T00:00:00.000Z', '')
     }
-    return { title, visibleFields, label, prettyDate }
+    function opsuiHref(value) {
+      return opsuiProductUrl(window.location.origin, value)
+    }
+    return { title, visibleFields, hasLineage, label, prettyDate, isLineageField, opsuiHref }
   }
 }
 </script>
@@ -159,6 +174,13 @@ dd a {
   color: var(--muted);
   font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
   padding: 1.2rem 0;
+}
+
+.hop-note {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 @media (max-width: 700px) {
