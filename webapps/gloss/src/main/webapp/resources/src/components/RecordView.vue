@@ -21,6 +21,10 @@
               target="_blank"
               rel="noopener"
             >{{ field.value }}</a>
+            <a
+              v-else-if="isLineageField(field.name) && field.value"
+              :href="opsuiHref(field.value)"
+            >{{ field.value }}</a>
             <span v-else-if="field.name === 'postedDate' || field.name === 'firstSeenDate' || field.name === 'lastSeenDate'">
               {{ prettyDate(field.value) }}
             </span>
@@ -34,6 +38,7 @@
 
 <script>
 import { computed } from 'vue'
+import { isLineageField, opsuiProductUrl } from '../opsuiLinks.js'
 
 const LABELS = {
   title: 'Title',
@@ -85,7 +90,10 @@ export default {
       }
       return String(value).replace('T00:00:00Z', '').replace('T00:00:00.000Z', '')
     }
-    return { title, visibleFields, label, prettyDate }
+    function opsuiHref(value) {
+      return opsuiProductUrl(window.location.origin, value)
+    }
+    return { title, visibleFields, label, prettyDate, isLineageField, opsuiHref }
   }
 }
 </script>
