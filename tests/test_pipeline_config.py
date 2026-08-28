@@ -243,7 +243,8 @@ class TestBigTranslateIngest:
         assert jobs["InputFiles"] == "[AggregateJsonFile]"
         assert translated["ProductType"] == "EmploymentJobTranslated"
         assert translated["InputFiles"] == "[Filename]"
-        assert translated["Filename"] == "[Filename].translated.json"
+        assert translated["ProductName"] == "[Filename].translated.json"
+        assert "Filename" not in translated or translated.get("Filename") in (None, "")
 
     def test_tika_server_classpath_is_retired(self):
         text = (BIN / "setenv.sh").read_text()

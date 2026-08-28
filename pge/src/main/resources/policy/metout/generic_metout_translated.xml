@@ -4,15 +4,14 @@
     
    <metadata key="TagAccumulator" val="value"/>
    <metadata key="JobId" val="[JobId]"/>
-   <!-- Filename is still the per-job JSON name (job-1001.json) here. Capture
-        that as InputFiles, then give the translated product its own name so
-        FilenameQuery can tell parent and child apart. -->
+   <!-- Filename stays the on-disk name so ingest can find the file. InputFiles
+        is that same job JSON name, which is the EmploymentJob parent.
+        ProductName is distinct so pedigree skip-self does not hide the parent. -->
    <metadata key="InputFiles" val="[Filename]"/>
-   <metadata key="Filename" val="[Filename].translated.json"/>
    <metadata key="ProductionDateTime"/>
    <metadata key="ProductType" val="EmploymentJobTranslated"/>
    <metadata key="FileLocation"/>
    <metadata key="FileSize"/>
-   <metadata key="ProductName" val="[Filename]"/>
+   <metadata key="ProductName" val="[Filename].translated.json"/>
         
 </metadataList>
