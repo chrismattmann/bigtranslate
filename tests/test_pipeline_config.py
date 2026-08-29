@@ -135,6 +135,36 @@ class TestAvroTransport:
         text = (REPO / "workflow/src/main/resources/etc/workflow.properties").read_text()
         assert "AvroRpcWorkflowManagerFactory" in text
 
+    def test_avro_request_timeout_is_exported(self):
+        text = (BIN / "setenv.sh").read_text()
+        assert "org.apache.oodt.avro.client.requestTimeoutMillis" in text
+
+    def test_opsui_overlay_is_vue_not_wicket(self):
+        web = (REPO / "webapps/opsui/src/main/webapp/WEB-INF/web.xml").read_text()
+        assert "index.html" in web
+        assert "WicketFilter" not in web
+        assert "OpsuiApp" not in web
+        ctx = (REPO / "webapps/opsui/src/main/webapp/META-INF/context.xml").read_text()
+        assert "opsui.skin" not in ctx
+        assert "ganglia.url" not in ctx
+
+    def test_pcs_ll_conf_filename_is_not_typoed(self):
+        ctx = (REPO / "webapps/pcs-services/src/main/webapp/META-INF/context.xml").read_text()
+        assert "pcs-ll-conf.xml" in ctx
+        assert "pcs-ll-conf.xmnl" not in ctx
+
+    def test_workflow_cli_spring_paths_are_runtime_urls(self):
+        text = (REPO / "workflow/src/main/resources/etc/workflow.properties").read_text()
+        assert "file://[WORKFLOW_HOME]/policy/cmd-line-actions.xml" in text
+        assert "src/main/resources/cmd-line-actions.xml" not in text
+
+    def test_no_curator_or_docker_overlay(self):
+        names = [p.name.lower() for p in REPO.rglob("*")
+                 if "/target/" not in str(p) and "/.git/" not in str(p)
+                 and p.is_file()]
+        assert not any("curator" in n for n in names)
+        assert "docker-compose.yml" not in names
+
     def test_property_keys_are_not_corrupted(self):
         # Two keys carried stray xsorg./orxsg. prefixes from a 2016 edit, which
         # silently disabled both File Manager timeout settings.

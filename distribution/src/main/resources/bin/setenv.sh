@@ -27,3 +27,9 @@ export FMPROD_HOME=$BIGTRANSLATE_HOME/tomcat/webapps/fmprod/WEB-INF/classes/
 export BIGTRANSLATE_EXCLUDE=${BIGTRANSLATE_EXCLUDE:-}
 # Translation runs locally through Pantogloss; the Tika translation server
 # and its API credentials are no longer part of this pipeline.
+
+# Bound every Avro client call (Mnemosyne #197). Ten minutes is the code
+# default; 0 waits forever. JDK_JAVA_OPTIONS reaches File Manager, Workflow
+# Manager, Resource Manager, and Tomcat.
+AVRO_CLIENT_TIMEOUT_MS=${AVRO_CLIENT_TIMEOUT_MS:-600000}
+export JDK_JAVA_OPTIONS="${JDK_JAVA_OPTIONS:+$JDK_JAVA_OPTIONS }-Dorg.apache.oodt.avro.client.requestTimeoutMillis=${AVRO_CLIENT_TIMEOUT_MS}"
