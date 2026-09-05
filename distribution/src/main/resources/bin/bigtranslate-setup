@@ -86,6 +86,18 @@ echo "Installing from $REQUIREMENTS"
 #
 # Point PANTOGLOSS_SOURCE at a checkout, a wheel, or any pip specifier:
 #   PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
+#
+# The version matters, so it is checked after installing rather than asked
+# for in the specifier: Pantogloss is not published, so PANTOGLOSS_SOURCE is
+# usually a working checkout and pip has no version to resolve against. What
+# it lands on is whatever that checkout is on, which is worth knowing.
+#
+# 0.18.0 is the floor. It defaults the server to one inference slot, which is
+# the only safe setting on Apple silicon: eight concurrent translate() calls
+# share one Keras model and one Metal execution context, and MPSGraph aborts
+# the process on the mismatched shapes. It also fixes the server's queue
+# timeouts on Python 3.10.
+PANTOGLOSS_REQUIRED=${PANTOGLOSS_REQUIRED:-0.18.0}
 if [ -n "$PANTOGLOSS_SOURCE" ]; then
     echo
     echo "Installing Pantogloss from $PANTOGLOSS_SOURCE"
@@ -129,8 +141,32 @@ for tool in tsvtojson repackage poster; do
     fi
 done
 if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
-    echo "  pantogloss"
     # Said here rather than left to fail at run time.
+    installed=$("$VENV/bin/python" -c \
+        "import importlib.metadata as m; print(m.version('pantogloss'))" 2>/dev/null)
+    if [ -n "$installed" ]; then
+        if "$VENV/bin/python" - "$installed" "$PANTOGLOSS_REQUIRED" <<'VERSION'
+import sys
+def parts(v):
+    out = []
+    for piece in v.split(".")[:3]:
+        digits = "".join(c for c in piece if c.isdigit())
+        out.append(int(digits) if digits else 0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out)
+sys.exit(0 if parts(sys.argv[1]) >= parts(sys.argv[2]) else 1)
+VERSION
+        then
+            echo "  pantogloss $installed"
+        else
+            echo "  pantogloss $installed  TOO OLD, wanted $PANTOGLOSS_REQUIRED or"
+            echo "                    later. Older servers default to more than one"
+            echo "                    inference slot, which aborts the process on"
+            echo "                    Apple silicon. Check out v$PANTOGLOSS_REQUIRED or"
+            echo "                    later in \$PANTOGLOSS_SOURCE and run this again."
+        fi
+    fi
     if "$VENV/bin/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then
         echo "  pantogloss serve  (the translation service)"
     else
