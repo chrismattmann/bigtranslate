@@ -91,11 +91,28 @@ input[type="text"]:focus {
 .pill.error { background: #f7dede; color: var(--bad); }
 
 .dot {
-  width: 0.55rem;
-  height: 0.55rem;
+  /*
+   * Bigger, and outlined. A 0.55rem dot in a mid green on this cream ground
+   * is about the least visible thing on the page: the eye has to hunt for
+   * the one control that says whether the system is up. The ring gives it an
+   * edge whatever it sits on, and the two states now differ in more than
+   * hue, so it reads without relying on colour vision.
+   */
+  width: 0.72rem;
+  height: 0.72rem;
   border-radius: 50%;
   display: inline-block;
+  vertical-align: -0.05rem;
+  margin-right: 0.15rem;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-.dot.on { background: var(--good); }
-.dot.off { background: #c4b8a6; }
+.dot.on {
+  background: #1f9d4d;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 0 3px rgba(31, 157, 77, 0.22);
+}
+
+.dot.off {
+  background: #b9ab97;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}

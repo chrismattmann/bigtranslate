@@ -98,20 +98,65 @@ public final class FileConstants {
   public static String filemgrUrl() {
     String url = firstNonEmpty(System.getenv("FILEMGR_URL"),
         System.getProperty("FILEMGR_URL"));
-    return url == null ? "http://localhost:9000" : url;
+    return url == null ? "http://localhost:" + filemgrPort() : url;
   }
 
   public static String solrCoreUrl() {
     String url = firstNonEmpty(System.getenv("SOLR_URL"),
         System.getProperty("SOLR_URL"));
-    return url == null ? "http://localhost:8983/solr/bigtranslate" : url;
+    return url == null ? "http://localhost:" + solrPort() + "/solr/bigtranslate" : url;
+  }
+
+  /**
+   * A port a service listens on, from the environment, falling back to the
+   * default this project has always used.
+   *
+   * <p>
+   * The defaults are shared with DRAT and with any stock RADiX deployment, so
+   * on a machine running more than one of them they belong to whichever
+   * started first. Reading them from the environment is what lets a
+   * deployment be moved out of the way; it is set in bin/setenv.sh, which is
+   * also what the services themselves are started with.
+   * </p>
+   */
+  static int portFor(String name, int fallback) {
+    String value = firstNonEmpty(System.getenv(name), System.getProperty(name));
+    if (value == null) {
+      return fallback;
+    }
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException e) {
+      return fallback;
+    }
+  }
+
+  public static int filemgrPort() {
+    return portFor("FILEMGR_PORT", 9000);
+  }
+
+  public static int workflowPort() {
+    return portFor("WORKFLOW_PORT", 9001);
+  }
+
+  public static int resmgrPort() {
+    return portFor("RESMGR_PORT", 9002);
+  }
+
+  public static int tomcatPort() {
+    return portFor("TOMCAT_PORT", 8080);
+  }
+
+  public static int solrPort() {
+    return portFor("SOLR_PORT", 8983);
   }
 
   public static String solrBaseUrl() {
     String core = solrCoreUrl();
     int slash = core.lastIndexOf('/');
-    if (slash <= "http://localhost:8983/solr".length()) {
-      return "http://localhost:8983/solr";
+    String fallbackBase = "http://localhost:" + solrPort() + "/solr";
+    if (slash <= fallbackBase.length()) {
+      return fallbackBase;
     }
     // core url is .../solr/bigtranslate -> .../solr
     int solr = core.lastIndexOf("/solr");

@@ -456,7 +456,12 @@ class TestBuild:
     def test_cli_translate_still_exists_alongside_gloss(self):
         text = (BIN / "bigtranslate").read_text()
         assert "function translate" in text
-        assert "8080/gloss" in text
+        # The script still points people at Gloss, but by the port the
+        # deployment was started on rather than the literal 8080: that
+        # default belongs to whatever OODT stack came first on a machine
+        # running more than one. See tests/test_port_isolation.py.
+        assert "/gloss/" in text
+        assert "${TOMCAT_PORT}/gloss/" in text
 
     def test_gloss_services_expose_table_and_facets(self):
         text = (REPO / "webapps/gloss-services/src/main/java/org/bigtranslate/gloss/rest"

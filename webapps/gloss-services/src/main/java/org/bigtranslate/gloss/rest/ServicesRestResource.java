@@ -54,11 +54,16 @@ public class ServicesRestResource {
   @Path("/status/oodt")
   public Map<String, Object> oodtStatus() {
     Map<String, Object> status = new LinkedHashMap<String, Object>();
-    boolean fm = SolrSupport.portOpen("localhost", 9000);
-    boolean wm = SolrSupport.portOpen("localhost", 9001);
-    boolean rm = SolrSupport.portOpen("localhost", 9002);
-    boolean tomcat = SolrSupport.portOpen("localhost", 8080);
-    boolean solr = SolrSupport.portOpen("localhost", 8983);
+    // The ports this deployment was actually started on. These were the
+    // defaults, written in: on a machine running a second OODT stack they are
+    // somebody else's, so the panel reported a neighbour's services as this
+    // deployment's -- green when BigTranslate was down, and red when it was
+    // up on ports of its own.
+    boolean fm = SolrSupport.portOpen("localhost", FileConstants.filemgrPort());
+    boolean wm = SolrSupport.portOpen("localhost", FileConstants.workflowPort());
+    boolean rm = SolrSupport.portOpen("localhost", FileConstants.resmgrPort());
+    boolean tomcat = SolrSupport.portOpen("localhost", FileConstants.tomcatPort());
+    boolean solr = SolrSupport.portOpen("localhost", FileConstants.solrPort());
     status.put("fm", Boolean.valueOf(fm));
     status.put("wm", Boolean.valueOf(wm));
     status.put("rm", Boolean.valueOf(rm));
