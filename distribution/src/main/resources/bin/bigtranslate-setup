@@ -100,6 +100,55 @@ if [ -n "$PANTOGLOSS_SOURCE" ]; then
     # A specifier the extra cannot be appended to -- a URL, a wheel path --
     # is installed as given and the extra requested separately, so the
     # server half arrives either way.
+    # On Apple silicon, with the Metal plugin.
+    #
+    # Pantogloss declares a [metal] extra -- tensorflow-metal -- and without
+    # it TensorFlow sees no GPU at all, so --device auto has nothing to
+    # choose and every translation runs on the CPU. That is not a fallback
+    # anyone asked for; it is just what happens when the plugin is missing,
+    # and it is invisible unless somebody reads /info and notices the backend.
+    # The GPU extra for this machine, if there is one to have.
+    #
+    # Pantogloss ships two: [metal] for Apple silicon and [cuda] for Linux
+    # with an NVIDIA card. Without whichever applies, TensorFlow sees no GPU
+    # at all, so --device auto has nothing to choose and every translation
+    # runs on the CPU -- invisibly, unless somebody reads /info and notices
+    # the backend.
+    #
+    # The CUDA extra pulls a large stack, so it is asked for only when there
+    # is a card to use it: nvidia-smi answering is the cheapest reliable sign
+    # of a usable driver, and a machine without one gets the CPU build rather
+    # than a gigabyte of libraries it cannot use.
+    EXTRAS=server
+    case "$(uname -s)" in
+        Darwin)
+            if [ "$(uname -m)" = "arm64" ]; then
+                EXTRAS="server,metal"
+                echo "  Apple silicon: including the Metal extra"
+            else
+                echo "  Intel Mac: no GPU extra (Metal needs Apple silicon)"
+            fi
+            ;;
+        Linux)
+            if command -v nvidia-smi > /dev/null 2>&1 && nvidia-smi > /dev/null 2>&1; then
+                EXTRAS="server,cuda"
+                echo "  NVIDIA GPU found: including the CUDA extra"
+            else
+                echo "  No usable NVIDIA GPU (nvidia-smi did not answer);"
+                echo "  installing the CPU build. Set PANTOGLOSS_EXTRAS=server,cuda"
+                echo "  to force it."
+            fi
+            ;;
+        *)
+            echo "  $(uname -s): no GPU extra known for this platform"
+            ;;
+    esac
+    # The last word, for a machine this guessed wrong about.
+    if [ -n "${PANTOGLOSS_EXTRAS:-}" ]; then
+        EXTRAS="$PANTOGLOSS_EXTRAS"
+        echo "  PANTOGLOSS_EXTRAS is set: using [$EXTRAS]"
+    fi
+
     case "$PANTOGLOSS_SOURCE" in
         *"["*"]"*)
             "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
@@ -109,9 +158,9 @@ if [ -n "$PANTOGLOSS_SOURCE" ]; then
             "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
             ;;
         *)
-            "$VENV/bin/pip" install "${PANTOGLOSS_SOURCE}[server]" \
+            "$VENV/bin/pip" install "${PANTOGLOSS_SOURCE}[${EXTRAS}]" \
                 || {
-                    echo "  [server] extra not available; installing plain"
+                    echo "  extras not available; installing plain"
                     "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
                     "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
                 }
@@ -133,6 +182,21 @@ if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
     # Said here rather than left to fail at run time.
     if "$VENV/bin/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then
         echo "  pantogloss serve  (the translation service)"
+        # Said here, because the alternative is finding out from a run that
+        # took as long as it always did.
+        # Whether a GPU will actually be used, asked of TensorFlow itself
+        # rather than inferred from what was installed. This is the answer
+        # that matters and it is one line to get.
+        gpus=$("$VENV/bin/python" -c \
+            "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))" \
+            2>/dev/null)
+        if [ "${gpus:-0}" -gt 0 ] 2>/dev/null; then
+            echo "  GPU               $gpus visible to TensorFlow"
+        else
+            echo "  GPU               NONE visible to TensorFlow -- translation"
+            echo "                    will run on the CPU whatever"
+            echo "                    PANTOGLOSS_DEVICE says."
+        fi
     else
         echo "  pantogloss serve  NOT AVAILABLE -- no fastapi/uvicorn."
         echo "                    The translate step will load the model per"
