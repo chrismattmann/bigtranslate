@@ -47,6 +47,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -81,6 +82,10 @@ DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
 
 class ServiceUnavailable(Exception):
     """The service is not there, is not ready, or is not Pantogloss."""
+
+
+class ServiceBusy(Exception):
+    """The service is there and working, but its queue is full right now."""
 
 
 def _get_json(url, timeout):
@@ -137,8 +142,40 @@ def check_service(base_url, timeout=10):
     return payload
 
 
+# A queue timeout is not a fault, it is a queue.
+#
+# With one inference slot and eight workers submitting into it -- which is the
+# only safe arrangement on Metal -- waiting is the normal path. The service
+# answers 503 queue_timeout when a request has waited longer than it allows,
+# and treating that as fatal loses a whole split: a run finished with 1,546 of
+# 43,851 postings, every missing one belonging to a batch that had been told
+# to come back later and was not asked again.
+#
+# This is the one condition worth retrying. A service that is absent, or is
+# not Pantogloss, or has no model, will still be absent on the next attempt;
+# a busy one will not.
+QUEUE_TIMEOUT_ATTEMPTS = 6
+QUEUE_TIMEOUT_BACKOFF = 10
+
+
 def translate_batch(base_url, texts, beam_size, max_length, timeout):
     """One batch through the service, answered in the order it was given."""
+    for attempt in range(QUEUE_TIMEOUT_ATTEMPTS):
+        try:
+            return _translate_once(base_url, texts, beam_size, max_length,
+                                   timeout)
+        except ServiceBusy as busy:
+            if attempt == QUEUE_TIMEOUT_ATTEMPTS - 1:
+                raise ServiceUnavailable(
+                    "the translation service at %s kept its queue full for "
+                    "%d attempts (%s). Nothing has been written for this "
+                    "batch." % (base_url, QUEUE_TIMEOUT_ATTEMPTS, busy))
+            wait = QUEUE_TIMEOUT_BACKOFF * (attempt + 1)
+            log("  service busy, waiting %ds and trying again" % wait)
+            time.sleep(wait)
+
+
+def _translate_once(base_url, texts, beam_size, max_length, timeout):
     body = {"text": list(texts), "max_length": max_length}
     if beam_size and beam_size > 1:
         body["beam_size"] = beam_size
@@ -156,12 +193,16 @@ def translate_batch(base_url, texts, beam_size, max_length, timeout):
     except urllib.error.HTTPError as e:
         detail = ""
         try:
-            detail = ": " + e.read().decode("utf-8")[:200]
+            detail = e.read().decode("utf-8")[:200]
         except Exception:
             pass
+        # 503 with a queue timeout means "busy, ask again", which is a
+        # different thing from a refusal.
+        if e.code == 503 and "queue" in detail.lower():
+            raise ServiceBusy(detail.strip() or "queue wait timed out")
         raise ServiceUnavailable(
             "the translation service at %s refused a batch of %d (HTTP %s)%s"
-            % (base_url, len(texts), e.code, detail))
+            % (base_url, len(texts), e.code, (": " + detail) if detail else ""))
     except urllib.error.URLError as e:
         raise ServiceUnavailable(
             "the translation service at %s stopped answering partway through "

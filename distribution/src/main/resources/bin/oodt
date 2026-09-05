@@ -197,6 +197,27 @@ pantogloss_pid() {
 #
 # On CPU and CUDA there is no such limit, so it follows the pool: the service
 # is there to be shared, and one slot would serialise every worker behind it.
+# How long a request may wait for a slot.
+#
+# The service's own default is thirty seconds, which suits a server with as
+# many slots as callers. It is the wrong number for this one: on Metal there
+# is a single inference slot by necessity, eight workers submit into it, and
+# waiting is the normal path rather than a fault. At thirty seconds the
+# service began refusing batches with "translation queue wait timed out",
+# each refusal losing a whole split, and a run finished with 1,546 of 43,851
+# postings and no other sign of trouble.
+#
+# Sized from the queue: a batch takes a couple of seconds, so a full queue
+# drains in a couple of minutes. Ten gives room for a slow batch without
+# waiting forever on a service that has actually stopped answering.
+pantogloss_queue_timeout() {
+  if [ -n "$PANTOGLOSS_QUEUE_TIMEOUT" ]; then
+    echo "$PANTOGLOSS_QUEUE_TIMEOUT"
+    return 0
+  fi
+  echo 600
+}
+
 pantogloss_concurrency() {
   if [ -n "$PANTOGLOSS_CONCURRENCY" ]; then
     echo "$PANTOGLOSS_CONCURRENCY"
@@ -250,10 +271,12 @@ start_pantogloss() {
   fi
 
   concurrency=$(pantogloss_concurrency)
+  PANTOGLOSS_QUEUE_TIMEOUT=$(pantogloss_queue_timeout)
   mkdir -p "$(dirname "$PANTOGLOSS_PID")" "$(dirname "$PANTOGLOSS_LOG")" 2>/dev/null
   nohup "$serve_bin" serve --port "$PANTOGLOSS_PORT" --no-browser \
     --max-concurrency "$concurrency" \
     --max-queued-requests $((concurrency * 8 + 24)) \
+    --queue-timeout "$PANTOGLOSS_QUEUE_TIMEOUT" \
     --device "$PANTOGLOSS_DEVICE" \
     >> "$PANTOGLOSS_LOG" 2>&1 &
   echo $! > "$PANTOGLOSS_PID"
