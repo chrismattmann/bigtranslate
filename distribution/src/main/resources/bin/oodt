@@ -102,84 +102,11 @@ fi
 # The ports these services listen on, so start and stop can tell whether they
 # actually did anything.
 #
-# The translation service is deliberately not in this list. It loads a model
-# before it answers -- half a minute or so -- and a start that waited for it
-# would look hung; the translate step checks it for itself and says plainly
-# if it is not ready. Its port is still stopped and started with everything
-# else.
+# The translation service is deliberately not in this list: it loads a model
+# before it answers, and a start that waited for it would look hung. Its port
+# is still started and stopped with everything else.
 oodt_ports() {
   echo "$FILEMGR_PORT $WORKFLOW_PORT $RESMGR_PORT $TOMCAT_PORT $SOLR_PORT"
-}
-
-PANTOGLOSS_LOG="$OODT_BASE/logs/pantogloss-serve.log"
-PANTOGLOSS_PID="$OODT_BASE/run/pantogloss-serve.pid"
-
-# One resident model for the deployment, rather than one load per split.
-#
-# Started here because the translate step is run by the workflow manager, and
-# a service that has to be remembered separately is one that is not running
-# when it matters -- the model then loads inside every split's own process,
-# thirty seconds at a time, which is the cost this removes.
-start_pantogloss() {
-  serve_bin="$OODT_BASE/.venv/bin/pantogloss"
-  if [ ! -x "$serve_bin" ]; then
-    echo "No Pantogloss in $OODT_BASE/.venv -- run bin/bigtranslate-setup."
-    echo "Translation will fail until it is there."
-    return 0
-  fi
-  if ! "$OODT_BASE"/.venv/bin/python -c "import uvicorn, fastapi" > /dev/null 2>&1; then
-    echo "Pantogloss is installed without its server extra, so the"
-    echo "translation service cannot start. Re-run bin/bigtranslate-setup."
-    return 0
-  fi
-  if port_busy "$PANTOGLOSS_PORT"; then
-    echo "Something is already listening on $PANTOGLOSS_PORT;"
-    echo "leaving it alone. If it is not Pantogloss, set PANTOGLOSS_PORT."
-    return 0
-  fi
-
-  # As many at once as the engine runs splits at once. The service defaults
-  # to one, and one is the wrong answer here: every worker but the first
-  # waits, and the queue is longer than the work.
-  concurrency="$PANTOGLOSS_CONCURRENCY"
-  if [ -z "$concurrency" ]; then
-    concurrency=$(sed -n 's/^org.apache.oodt.cas.workflow.engine.minPoolSize=\([0-9]*\).*/\1/p' \
-      "$OODT_BASE/workflow/etc/workflow.properties" 2>/dev/null | tail -1)
-  fi
-  if [ -z "$concurrency" ]; then
-    concurrency=8
-  fi
-
-  mkdir -p "$(dirname "$PANTOGLOSS_PID")" "$(dirname "$PANTOGLOSS_LOG")" 2>/dev/null
-  nohup "$serve_bin" serve --port "$PANTOGLOSS_PORT" --no-browser \
-    --max-concurrency "$concurrency" \
-    --max-queued-requests $((concurrency * 8)) \
-    --device "$PANTOGLOSS_DEVICE" \
-    >> "$PANTOGLOSS_LOG" 2>&1 &
-  echo $! > "$PANTOGLOSS_PID"
-  echo "Translation service starting on $PANTOGLOSS_PORT: $concurrency at a time"
-  echo "on $PANTOGLOSS_DEVICE. It answers once the model is loaded"
-  echo "(see $PANTOGLOSS_LOG)."
-}
-
-stop_pantogloss() {
-  if [ -f "$PANTOGLOSS_PID" ]; then
-    pid=$(cat "$PANTOGLOSS_PID" 2>/dev/null)
-    if [ -n "$pid" ] && kill -0 "$pid" > /dev/null 2>&1; then
-      kill "$pid" > /dev/null 2>&1
-    fi
-    rm -f "$PANTOGLOSS_PID"
-  fi
-
-  waited=0
-  while [ "$waited" -lt 60 ]; do
-    port_busy "$PANTOGLOSS_PORT" || return 0
-    sleep 2
-    waited=$((waited + 2))
-  done
-  # Not fatal: it may be somebody else's, which start_pantogloss also
-  # declines to touch.
-  echo "Port $PANTOGLOSS_PORT is still busy after ${waited}s."
 }
 
 port_busy() {
@@ -190,12 +117,12 @@ port_busy() {
   fi
 }
 
-# Wait until every port is free, or say which ones are not.
+# Wait until every port is free, or say which are not.
 #
 # stop used to return as soon as it had asked each service to stop, which is
-# not the same as their having stopped: a start immediately afterwards found
-# Solr still holding its port, failed with "Port ... is already being used",
-# and left the deployment with nothing running at all.
+# not the same as their having stopped: a start straight afterwards found Solr
+# still holding its port, failed with "Port already being used", and left the
+# deployment with nothing running.
 wait_for_stopped() {
   waited=0
   while [ "$waited" -lt 180 ]; do
@@ -211,8 +138,6 @@ wait_for_stopped() {
   return 1
 }
 
-# Wait until every port answers, so a caller that starts and then immediately
-# uses the services is not racing them.
 wait_for_started() {
   waited=0
   while [ "$waited" -lt 120 ]; do
@@ -229,7 +154,159 @@ wait_for_started() {
   return 1
 }
 
+PANTOGLOSS_LOG="$OODT_BASE/logs/pantogloss-serve.log"
+PANTOGLOSS_PID="$OODT_BASE/run/pantogloss-serve.pid"
+
+# The pid of our translation service, or nothing.
+#
+# From the pid file when it is still true, and otherwise by asking what is on
+# the port and whether it is a Pantogloss out of this deployment. The file
+# alone was not enough: a service outliving its file, or a file outliving its
+# service, left start and stop disagreeing with what was actually running.
+pantogloss_pid() {
+  if [ -f "$PANTOGLOSS_PID" ]; then
+    filed=$(cat "$PANTOGLOSS_PID" 2>/dev/null)
+    if [ -n "$filed" ] && kill -0 "$filed" > /dev/null 2>&1; then
+      echo "$filed"
+      return 0
+    fi
+    rm -f "$PANTOGLOSS_PID"
+  fi
+
+  command -v lsof > /dev/null 2>&1 || return 0
+  for candidate in $(lsof -ti tcp:"$PANTOGLOSS_PORT" 2>/dev/null); do
+    # Only a Pantogloss from this deployment's own environment. Anything else
+    # on the port belongs to somebody else and is not ours to stop, which is
+    # the rule start follows too.
+    if ps -p "$candidate" -o command= 2>/dev/null \
+        | grep -q "$OODT_BASE/.venv/bin/pantogloss"; then
+      echo "$candidate" > "$PANTOGLOSS_PID"
+      echo "$candidate"
+      return 0
+    fi
+  done
+}
+
+# How many translations the service may run at once.
+#
+# One on Apple silicon with Metal, whatever the engine's pool size says.
+# Eight simultaneous translate() calls share one Keras model and one Metal
+# execution context, and MPSGraph asserts on the mismatched shapes --
+# "Placeholder shape mismatches" -- which aborts the process mid-run. The
+# eight workers still submit at once; they queue inside the service instead.
+#
+# On CPU and CUDA there is no such limit, so it follows the pool: the service
+# is there to be shared, and one slot would serialise every worker behind it.
+pantogloss_concurrency() {
+  if [ -n "$PANTOGLOSS_CONCURRENCY" ]; then
+    echo "$PANTOGLOSS_CONCURRENCY"
+    return 0
+  fi
+
+  # Asked of TensorFlow, not of the import system. tensorflow-metal is a
+  # PluggableDevice rather than a module: "import tensorflow_metal" raises
+  # ModuleNotFoundError on a machine where the plugin is installed and
+  # working, so testing for it that way silently answered "no Metal here" and
+  # started the service with eight slots -- the one setting that crashes it.
+  if [ "$PANTOGLOSS_DEVICE" != "cpu" ] \
+     && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+    gpus=$("$OODT_BASE"/.venv/bin/python -c \
+      "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))" \
+      2>/dev/null)
+    if [ "${gpus:-0}" -gt 0 ] 2>/dev/null; then
+      echo 1
+      return 0
+    fi
+  fi
+
+  pool=$(sed -n 's/^org.apache.oodt.cas.workflow.engine.minPoolSize=\([0-9]*\).*/\1/p' \
+    "$OODT_BASE/workflow/etc/workflow.properties" 2>/dev/null | tail -1)
+  echo "${pool:-8}"
+}
+
+start_pantogloss() {
+  serve_bin="$OODT_BASE/.venv/bin/pantogloss"
+  if [ ! -x "$serve_bin" ]; then
+    echo "No Pantogloss in $OODT_BASE/.venv -- run bin/bigtranslate-setup."
+    echo "Translation will fail until it is there."
+    return 0
+  fi
+  if ! "$OODT_BASE"/.venv/bin/python -c "import uvicorn, fastapi" > /dev/null 2>&1; then
+    echo "Pantogloss is installed without its server extra, so the"
+    echo "translation service cannot start. Re-run bin/bigtranslate-setup."
+    return 0
+  fi
+
+  running_pid=$(pantogloss_pid)
+  if [ -n "$running_pid" ]; then
+    echo "Translation service already running (pid $running_pid)."
+    return 0
+  fi
+  if port_busy "$PANTOGLOSS_PORT"; then
+    echo "Something is already listening on $PANTOGLOSS_PORT and it is not"
+    echo "one of ours, so it is left alone. If it should be the translation"
+    echo "service, stop it or set PANTOGLOSS_PORT to a free port."
+    return 0
+  fi
+
+  concurrency=$(pantogloss_concurrency)
+  mkdir -p "$(dirname "$PANTOGLOSS_PID")" "$(dirname "$PANTOGLOSS_LOG")" 2>/dev/null
+  nohup "$serve_bin" serve --port "$PANTOGLOSS_PORT" --no-browser \
+    --max-concurrency "$concurrency" \
+    --max-queued-requests $((concurrency * 8 + 24)) \
+    --device "$PANTOGLOSS_DEVICE" \
+    >> "$PANTOGLOSS_LOG" 2>&1 &
+  echo $! > "$PANTOGLOSS_PID"
+  echo "Translation service starting on $PANTOGLOSS_PORT: $concurrency at a time"
+  echo "on $PANTOGLOSS_DEVICE (pid $(cat "$PANTOGLOSS_PID")). It answers once"
+  echo "the model is loaded (see $PANTOGLOSS_LOG)."
+}
+
+stop_pantogloss() {
+  pid=$(pantogloss_pid)
+  if [ -z "$pid" ]; then
+    if port_busy "$PANTOGLOSS_PORT"; then
+      # Said rather than waited out in silence.
+      echo "Port $PANTOGLOSS_PORT is held by a process we did not start;"
+      echo "leaving it alone. Stop it yourself, or set PANTOGLOSS_PORT."
+    fi
+    rm -f "$PANTOGLOSS_PID"
+    return 0
+  fi
+
+  echo "Stopping the translation service (pid $pid)."
+  kill "$pid" > /dev/null 2>&1
+  waited=0
+  while [ "$waited" -lt 60 ]; do
+    kill -0 "$pid" > /dev/null 2>&1 || break
+    sleep 2
+    waited=$((waited + 2))
+  done
+  if kill -0 "$pid" > /dev/null 2>&1; then
+    echo "It did not stop in ${waited}s; ending it."
+    kill -9 "$pid" > /dev/null 2>&1
+    sleep 2
+  fi
+  rm -f "$PANTOGLOSS_PID"
+}
+
+# The directories the services need to exist before they will start.
+#
+# Empty directories do not survive the tarball, so a freshly unpacked
+# distribution has no tomcat/logs -- and Tomcat does not report that as a
+# problem it can see: catalina.sh fails at "touch .../catalina.out: No such
+# file or directory" and exits, leaving no catalina.out to read and nothing
+# listening. The first sign is a webapp that is simply not there.
+ensure_working_dirs() {
+  for dir in "$OODT_BASE/tomcat/logs" "$OODT_BASE/tomcat/work" \
+             "$OODT_BASE/tomcat/temp" "$OODT_BASE/logs" "$OODT_BASE/run" \
+             "$OODT_BASE/data/jobs"; do
+    [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null
+  done
+}
+
 start_oodt() {
+  ensure_working_dirs
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &  
@@ -262,10 +339,9 @@ if [ "$1" = "start" ]; then
 elif [ "$1" = "stop" ]; then
   stop_oodt
 elif [ "$1" = "restart" ]; then
-  # The README has told people to run this since before it existed, and the
-  # script answered by printing its usage and exiting 1 -- quietly enough that
-  # a configuration change made just beforehand looked as though it had been
-  # picked up when the services were still running with the old one.
+  # The README has told people to run this since before it existed; it fell
+  # through to the usage branch, quietly enough that a configuration change
+  # made just beforehand looked as though it had been picked up.
   stop_oodt || exit 1
   start_oodt
 else

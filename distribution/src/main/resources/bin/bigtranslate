@@ -93,6 +93,19 @@ OPSUI_URL=http://${OODT_HOST}:${TOMCAT_PORT}/opsui
 # --exclude file/directory name.
 
 
+
+# Say what is happening, to the terminal and to the log Gloss reads.
+#
+# That log held nothing but the directory-stack echoes of pushd and popd --
+# "~/bt-w1/crawler/bin ~/bt-w1" -- because those were the only things ever
+# redirected into it. Gloss shows the tail of it under "In progress", so a
+# reader watching a forty minute run saw two lines of shell bookkeeping and
+# nothing about the run at all.
+say() {
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" \
+        | tee -a "$BIGTRANSLATE_HOME/logs/bigtranslate.log"
+}
+
 # Record what is running, where the other half can read it.
 #
 # Gloss kept this in a field of the web application, set only when a run was
@@ -184,7 +197,69 @@ validate_corpus_path() {
         exit 1
     fi
     echo "Translating $count TSV file(s) from $CORPUS_PATH"
+    CORPUS_FILE_COUNT="$count"
 }
+
+
+# Wait for the workflow to finish, then say the run is over.
+#
+# The crawl is quick; the translating is not, and it happens in the workflow
+# manager after this script's crawl returns. Marking the run and walking away
+# left the marker behind for ever: every instance finished, and Gloss went on
+# reporting TRANSLATING because the only thing that could have said otherwise
+# had exited. Nothing else is watching, so this waits.
+#
+# Counted from the workflow manager rather than from a timer: a run is over
+# when its instances are, and how long that takes is the thing we do not know.
+wait_for_workflow() {
+    local waited=0
+    local quiet=0
+    local running
+
+    while [ "$waited" -lt "$TRANSLATE_TIMEOUT" ]; do
+        running=$(running_instance_count)
+
+        # Every couple of minutes, not every poll: the pane shows the tail of
+        # this file, and a line every fifteen seconds would push everything
+        # else off it.
+        if [ $((waited % 120)) -eq 0 ]; then
+            say "Translating: $running workflow instances still running (${waited}s)"
+        fi
+
+        if [ "$running" = "0" ]; then
+            # Two quiet passes, not one. Instances are created as splits are
+            # made, so early on there is a moment with none running and more
+            # still to come; ending the run there would report success in the
+            # middle of it.
+            quiet=$((quiet + 1))
+            if [ "$quiet" -ge 2 ]; then
+                say "Workflow finished after ${waited}s."
+                return 0
+            fi
+        else
+            quiet=0
+        fi
+
+        sleep "$TRANSLATE_POLL"
+        waited=$((waited + TRANSLATE_POLL))
+    done
+
+    say "Still running after ${waited}s; leaving it to carry on."
+    say "Gloss and OPSUI will show it finish."
+    return 1
+}
+
+# How many BigTranslate instances are not in a terminal state.
+running_instance_count() {
+    "$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$CLIENT_URL" \
+        --operation --getWorkflowInsts 2>/dev/null \
+        | grep -oE "status=[A-Za-z]+" \
+        | grep -vcE "status=(FINISHED|ERROR|Success|Failure|Stopped)" \
+        || echo 0
+}
+
+TRANSLATE_TIMEOUT=${TRANSLATE_TIMEOUT:-86400}
+TRANSLATE_POLL=${TRANSLATE_POLL:-15}
 
 function translate {
     check_services_running
@@ -203,18 +278,30 @@ function translate {
     PRODUCT_PATH="$CORPUS_PATH"
 
     mark_run "TRANSLATING" "$PRODUCT_PATH" "$BIGTRANSLATE_EXCLUDE"
-    # The crawl is the part this script waits for; the translation itself runs
-    # on in the workflow manager, so the marker is cleared by whoever sees the
-    # workflow finish rather than here.
-    pushd $BIGTRANSLATE_HOME/crawler/bin >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
+    # Cleared when the workflow drains, below. Interrupting this script leaves
+    # the marker behind on purpose: the translation carries on in the workflow
+    # manager, and saying otherwise would be a lie about what is happening.
+    say "Crawling $PRODUCT_PATH"
+    if [ -n "$BIGTRANSLATE_EXCLUDE" ]; then
+        say "  skipping anything matching $BIGTRANSLATE_EXCLUDE"
+    fi
 
-   ./crawler_launcher --operation --metPC --metExtractorConfig \
-   $BIGTRANSLATE_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
-   --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
-   --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
+    # A subshell rather than pushd/popd: the directory stack was echoed into
+    # the log, and it was the only thing in there.
+    (
+        cd "$BIGTRANSLATE_HOME/crawler/bin" || exit 1
+        ./crawler_launcher --operation --metPC --metExtractorConfig \
+        $BIGTRANSLATE_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
+        --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
+        --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
+    )
 
-    popd >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
+    say "Crawl finished; the workflow manager is translating."
     export BIGTRANSLATE_EXCLUDE=""
+
+    # The run is not over when the crawl is over.
+    wait_for_workflow
+    unmark_run
 }
 
 # Get the current list of RatAuditTasks running.
