@@ -218,19 +218,53 @@ pantogloss_queue_timeout() {
   echo 600
 }
 
+# Whether the installed Pantogloss serialises concurrent callers into the
+# model for us, which 0.19 does and earlier versions do not. Read from the
+# package metadata rather than by running the CLI: "serve --help" imports
+# TensorFlow, which costs seconds every time the stack starts.
+pantogloss_batches_dynamically() {
+  "$OODT_BASE"/.venv/bin/python - <<'VERSION' 2>/dev/null
+import sys
+from importlib.metadata import version
+def parts(v):
+    out = []
+    for piece in v.split(".")[:3]:
+        digits = "".join(c for c in piece if c.isdigit())
+        out.append(int(digits) if digits else 0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out)
+try:
+    sys.exit(0 if parts(version("pantogloss")) >= (0, 19, 0) else 1)
+except Exception:
+    sys.exit(1)
+VERSION
+}
+
 pantogloss_concurrency() {
   if [ -n "$PANTOGLOSS_CONCURRENCY" ]; then
     echo "$PANTOGLOSS_CONCURRENCY"
     return 0
   fi
 
-  # Asked of TensorFlow, not of the import system. tensorflow-metal is a
-  # PluggableDevice rather than a module: "import tensorflow_metal" raises
-  # ModuleNotFoundError on a machine where the plugin is installed and
-  # working, so testing for it that way silently answered "no Metal here" and
-  # started the service with eight slots -- the one setting that crashes it.
+  # Pantogloss 0.19 admits concurrent callers on Metal and funnels them
+  # through one TensorFlow worker itself, combining those that are waiting
+  # into a single model call. Before it, the server ran each caller straight
+  # into a shared Keras model and MPSGraph aborted the process, so the only
+  # safe answer on Apple silicon was a single slot -- and that single slot
+  # was what left the queue six times longer than the inference it guarded.
+  #
+  # The clamp therefore belongs to the old server, not to Metal, and it is
+  # asked of the installed version rather than the platform.
   if [ "$PANTOGLOSS_DEVICE" != "cpu" ] \
-     && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+     && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] \
+     && ! pantogloss_batches_dynamically; then
+    # Asked of TensorFlow, not of the import system. tensorflow-metal is a
+    # PluggableDevice rather than a module: "import tensorflow_metal" raises
+    # ModuleNotFoundError on a machine where the plugin is installed and
+    # working, so testing for it that way silently answered "no Metal here"
+    # and started the service with eight slots -- the one setting that
+    # crashes it.
     gpus=$("$OODT_BASE"/.venv/bin/python -c \
       "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))" \
       2>/dev/null)
@@ -273,15 +307,26 @@ start_pantogloss() {
   concurrency=$(pantogloss_concurrency)
   PANTOGLOSS_QUEUE_TIMEOUT=$(pantogloss_queue_timeout)
   mkdir -p "$(dirname "$PANTOGLOSS_PID")" "$(dirname "$PANTOGLOSS_LOG")" 2>/dev/null
+  # Dynamic batching is 0.19's, and asking an older server for it is a
+  # startup failure rather than an ignored flag, so the flags go on only
+  # when the installed server has them.
+  batching=""
+  if pantogloss_batches_dynamically; then
+    batching="--dynamic-batch-wait-ms $PANTOGLOSS_BATCH_WAIT_MS"
+    batching="$batching --max-coalesced-batch-size $PANTOGLOSS_COALESCED_BATCH"
+    batching="$batching --max-coalesced-input-characters $PANTOGLOSS_COALESCED_CHARS"
+  fi
   nohup "$serve_bin" serve --port "$PANTOGLOSS_PORT" --no-browser \
     --max-concurrency "$concurrency" \
     --max-queued-requests $((concurrency * 8 + 24)) \
     --queue-timeout "$PANTOGLOSS_QUEUE_TIMEOUT" \
     --device "$PANTOGLOSS_DEVICE" \
+    $batching \
     >> "$PANTOGLOSS_LOG" 2>&1 &
   echo $! > "$PANTOGLOSS_PID"
   echo "Translation service starting on $PANTOGLOSS_PORT: $concurrency at a time"
-  echo "on $PANTOGLOSS_DEVICE (pid $(cat "$PANTOGLOSS_PID")). It answers once"
+  echo "on $PANTOGLOSS_DEVICE${batching:+, batching waiting callers together}"
+  echo "(pid $(cat "$PANTOGLOSS_PID")). It answers once"
   echo "the model is loaded (see $PANTOGLOSS_LOG)."
 }
 

@@ -84,20 +84,28 @@ echo "Installing from $REQUIREMENTS"
 # bin/pantogloss-translatejson through "#!/usr/bin/env python3" and that
 # resolves to whichever interpreter is first on PATH, which is this one.
 #
-# Point PANTOGLOSS_SOURCE at a checkout, a wheel, or any pip specifier:
+# Pantogloss is on PyPI, so the default is simply its name and the release
+# pip resolves is the one that arrives. Point PANTOGLOSS_SOURCE at a
+# checkout, a wheel, or any other pip specifier to override that:
 #   PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
 #
-# The version matters, so it is checked after installing rather than asked
-# for in the specifier: Pantogloss is not published, so PANTOGLOSS_SOURCE is
-# usually a working checkout and pip has no version to resolve against. What
-# it lands on is whatever that checkout is on, which is worth knowing.
+# The version is checked after installing rather than asked for in the
+# specifier, because PANTOGLOSS_SOURCE is often a working checkout that pip
+# has no version to resolve against. What it lands on is whatever that
+# checkout is on, which is worth knowing -- and an editable checkout reports
+# the version in its pyproject, which can trail the release it contains.
 #
-# 0.18.0 is the floor. It defaults the server to one inference slot, which is
-# the only safe setting on Apple silicon: eight concurrent translate() calls
-# share one Keras model and one Metal execution context, and MPSGraph aborts
-# the process on the mismatched shapes. It also fixes the server's queue
-# timeouts on Python 3.10.
-PANTOGLOSS_REQUIRED=${PANTOGLOSS_REQUIRED:-0.18.0}
+# 0.19.0 is the floor. It admits concurrent callers on Apple silicon and
+# serialises them into the model itself, combining those already waiting
+# into one call; before it, concurrent translate() calls shared one Keras
+# model and one Metal execution context and MPSGraph aborted the process.
+# 0.18.0 avoided that with a single inference slot, which was safe and left
+# the queue far longer than the work it guarded. 0.19 also memory-maps the
+# tokenizer caches, which takes a warm start from about 5.4s to about 0.2s.
+PANTOGLOSS_REQUIRED=${PANTOGLOSS_REQUIRED:-0.19.0}
+# The name alone, so the extras are appended to it below and pip resolves the
+# newest release. The floor is enforced afterwards either way.
+PANTOGLOSS_SOURCE=${PANTOGLOSS_SOURCE:-pantogloss}
 if [ -n "$PANTOGLOSS_SOURCE" ]; then
     echo
     echo "Installing Pantogloss from $PANTOGLOSS_SOURCE"
@@ -210,10 +218,11 @@ VERSION
             echo "  pantogloss $installed"
         else
             echo "  pantogloss $installed  TOO OLD, wanted $PANTOGLOSS_REQUIRED or"
-            echo "                    later. Older servers default to more than one"
-            echo "                    inference slot, which aborts the process on"
-            echo "                    Apple silicon. Check out v$PANTOGLOSS_REQUIRED or"
-            echo "                    later in \$PANTOGLOSS_SOURCE and run this again."
+            echo "                    later. Older servers cannot batch concurrent"
+            echo "                    callers into one model call, so on Apple"
+            echo "                    silicon they run one translation at a time."
+            echo "                    Check out v$PANTOGLOSS_REQUIRED or later in"
+            echo "                    \$PANTOGLOSS_SOURCE and run this again."
         fi
     fi
     if "$VENV/bin/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then

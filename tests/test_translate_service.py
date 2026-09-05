@@ -175,20 +175,19 @@ def test_the_model_is_not_loaded_in_this_process():
 
 
 def test_setup_requires_a_pantogloss_new_enough_to_be_safe():
-    """0.18.0 defaults the server to one inference slot.
+    """0.19.0 serialises concurrent callers into the model itself.
 
-    Earlier ones default to more, and more than one is what aborts the process
-    on Apple silicon: concurrent translate() calls share a Keras model and a
-    Metal execution context, and MPSGraph asserts on the mismatched shapes.
-    Pantogloss is not published, so PANTOGLOSS_SOURCE is usually a working
-    checkout and pip has no version to resolve against; what it lands on is
-    whatever that checkout is on, which is why this is checked afterwards
-    rather than asked for in the specifier.
+    Earlier servers ran them straight into a shared Keras model and Metal
+    execution context, and MPSGraph aborted the process on the mismatched
+    shapes; 0.18.0 avoided that by allowing only one at a time. The version
+    is checked after installing rather than asked for in the specifier
+    because PANTOGLOSS_SOURCE may be a working checkout, whose reported
+    version is whatever its pyproject says.
     """
     setup = (REPO / "distribution" / "src" / "main" / "resources"
              / "bin" / "bigtranslate-setup").read_text()
     assert "PANTOGLOSS_REQUIRED" in setup, "no version floor is declared"
-    assert "0.18.0" in setup, "the floor is not 0.18.0"
+    assert "0.19.0" in setup, "the floor is not 0.19.0"
     assert "importlib.metadata" in setup, (
         "the installed version is never read, so the floor is not enforced")
     assert "TOO OLD" in setup, "an older Pantogloss is installed silently"
@@ -197,7 +196,51 @@ def test_setup_requires_a_pantogloss_new_enough_to_be_safe():
 def test_the_floor_can_be_overridden():
     setup = (REPO / "distribution" / "src" / "main" / "resources"
              / "bin" / "bigtranslate-setup").read_text()
-    assert "${PANTOGLOSS_REQUIRED:-0.18.0}" in setup
+    assert "${PANTOGLOSS_REQUIRED:-0.19.0}" in setup
+
+
+def test_pantogloss_is_installed_from_pypi_by_default():
+    """It is published now, so setup no longer needs a checkout to point at."""
+    setup = (REPO / "distribution" / "src" / "main" / "resources"
+             / "bin" / "bigtranslate-setup").read_text()
+    assert "PANTOGLOSS_SOURCE=${PANTOGLOSS_SOURCE:-pantogloss}" in setup, (
+        "without a source the setup installs no Pantogloss at all")
+
+
+def test_the_metal_single_slot_clamp_is_gated_on_the_version():
+    """The clamp belongs to the old server, not to Apple silicon.
+
+    0.19 admits callers concurrently and funnels them through one TensorFlow
+    worker, so pinning Metal to a single slot there reintroduces exactly the
+    queue the single slot caused: on the ten-file corpus it left 26,921
+    summed queue seconds against 3,973 of inference.
+    """
+    oodt = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "oodt").read_text()
+    assert "pantogloss_batches_dynamically" in oodt, (
+        "nothing asks whether the server can batch for us")
+    assert "! pantogloss_batches_dynamically" in oodt, (
+        "the single-slot clamp is not gated on the version")
+
+
+def test_dynamic_batching_flags_are_only_sent_to_servers_that_have_them():
+    """An older server treats them as unknown arguments and refuses to start."""
+    oodt = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "oodt").read_text()
+    assert "--dynamic-batch-wait-ms" in oodt, "the collection window is never set"
+    assert "--max-coalesced-batch-size" in oodt
+    body = oodt[oodt.index("batching=\"\""):oodt.index("--dynamic-batch-wait-ms")]
+    assert "pantogloss_batches_dynamically" in body, (
+        "the flags are sent unconditionally")
+
+
+def test_the_batching_window_is_configurable():
+    env = (REPO / "distribution" / "src" / "main" / "resources"
+           / "bin" / "setenv.sh").read_text()
+    for name in ("PANTOGLOSS_BATCH_WAIT_MS", "PANTOGLOSS_COALESCED_BATCH",
+                 "PANTOGLOSS_COALESCED_CHARS"):
+        assert "export %s=${%s:-" % (name, name) in env, (
+            "%s cannot be overridden" % name)
 
 
 class _Busy(_Handler):
