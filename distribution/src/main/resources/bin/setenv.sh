@@ -62,6 +62,11 @@ export PANTOGLOSS_CONCURRENCY=${PANTOGLOSS_CONCURRENCY:-}
 # on Linux -- and falls back to the CPU when there is none. Set "cpu" to keep
 # the GPU free for something else.
 export PANTOGLOSS_DEVICE=${PANTOGLOSS_DEVICE:-auto}
+
+# How long a translation may wait for an inference slot. Empty takes the
+# deployment's own default, which allows for a full queue draining through a
+# single slot; the service's thirty second default assumes a slot per caller.
+export PANTOGLOSS_QUEUE_TIMEOUT=${PANTOGLOSS_QUEUE_TIMEOUT:-}
 export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs

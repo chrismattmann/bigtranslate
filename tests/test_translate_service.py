@@ -198,3 +198,76 @@ def test_the_floor_can_be_overridden():
     setup = (REPO / "distribution" / "src" / "main" / "resources"
              / "bin" / "bigtranslate-setup").read_text()
     assert "${PANTOGLOSS_REQUIRED:-0.18.0}" in setup
+
+
+class _Busy(_Handler):
+    """Answers 503 queue_timeout a few times, then succeeds.
+
+    This is what a single inference slot does when eight workers submit into
+    it: the service is healthy and the request is fine, it simply waited
+    longer than the server allows.
+    """
+
+    refusals = 2
+    seen = 0
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        asked = json.loads(self.rfile.read(length))
+        type(self).seen += 1
+        if type(self).seen <= type(self).refusals:
+            self._send(503, {"detail": {"code": "queue_timeout",
+                                        "message": "translation queue wait timed out"}})
+            return
+        self._send(200, {"translation": ["EN:" + t for t in asked["text"]]})
+
+
+def test_a_busy_queue_is_waited_out_not_treated_as_a_failure(server, monkeypatch):
+    """Losing a split to a queue timeout cost 42 batches on one run, which
+    finished with 1,546 of 43,851 postings and no other sign of trouble."""
+    monkeypatch.setattr(tj, "QUEUE_TIMEOUT_BACKOFF", 0)
+    _Busy.seen = 0
+    url = server(_Busy)
+
+    out = tj.translate_batch(url, ["uno", "dos"], 1, 50, 10)
+
+    assert out == ["EN:uno", "EN:dos"], "the batch was lost to a busy queue"
+    assert _Busy.seen == 3, "it did not retry twice before succeeding"
+
+
+def test_a_queue_that_never_clears_eventually_gives_up(server, monkeypatch):
+    """Retrying is for a queue that drains; a service wedged for good should
+    still say so rather than hanging on it."""
+    monkeypatch.setattr(tj, "QUEUE_TIMEOUT_BACKOFF", 0)
+
+    class Always(_Busy):
+        refusals = 10 ** 6
+        seen = 0
+
+    url = server(Always)
+    with pytest.raises(tj.ServiceUnavailable) as raised:
+        tj.translate_batch(url, ["uno"], 1, 50, 10)
+    assert "queue full" in str(raised.value)
+
+
+def test_other_refusals_are_still_fatal(server):
+    """Only a queue timeout is worth retrying. A service that is absent, or
+    not Pantogloss, or has no model, will be the same on the next attempt."""
+    class Broken(_Handler):
+        def do_POST(self):
+            self._send(413, {"detail": {"code": "batch_too_large"}})
+
+    url = server(Broken)
+    with pytest.raises(tj.ServiceUnavailable) as raised:
+        tj.translate_batch(url, ["uno"], 1, 50, 10)
+    said = str(raised.value)
+    assert "refused" in said and "413" in said
+
+
+def test_the_service_is_given_a_queue_wait_that_suits_one_slot():
+    """Thirty seconds is the service's own default and assumes a slot per
+    caller. With one slot and eight workers, waiting is the normal path."""
+    oodt = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "oodt").read_text()
+    assert "--queue-timeout" in oodt, "the service keeps its 30s default"
+    assert "pantogloss_queue_timeout" in oodt
