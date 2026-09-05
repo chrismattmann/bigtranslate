@@ -78,14 +78,46 @@ public class ProcessBtWrapper {
   ProcessBtWrapper() {
   }
 
+  /**
+   * What is happening, from where it is written down before this process's
+   * own memory.
+   *
+   * <p>
+   * A translation is normally started from the command line, and this web
+   * application had no way of knowing that: the fields below are set only
+   * when a run is started through Gloss, so Gloss reported IDLE throughout
+   * somebody else's run. The marker is written by whichever side starts one.
+   * </p>
+   */
   public synchronized Map<String, Object> snapshot() {
     Map<String, Object> snap = new LinkedHashMap<String, Object>();
+
+    Map<String, Object> recorded = RunMarker.read();
+    if (recorded != null && !TRANSLATING.equals(status)
+        && !RESETTING.equals(status)) {
+      // Something is running and it was not started here.
+      snap.put("status", asText(recorded.get("status"), TRANSLATING));
+      snap.put("path", asText(recorded.get("path"), ""));
+      snap.put("exclude", asText(recorded.get("exclude"), ""));
+      snap.put("message", "started from the command line");
+      snap.put("startedAt", recorded.get("startedAt"));
+      return snap;
+    }
+
     snap.put("status", status);
     snap.put("path", path);
     snap.put("exclude", exclude);
     snap.put("message", message);
     snap.put("startedAt", startedAt == 0 ? null : Long.valueOf(startedAt));
     return snap;
+  }
+
+  private static String asText(Object value, String fallback) {
+    if (value == null) {
+      return fallback;
+    }
+    String text = String.valueOf(value);
+    return text.isEmpty() ? fallback : text;
   }
 
   public synchronized String getStatus() {
@@ -111,6 +143,9 @@ public class ProcessBtWrapper {
     this.path = productPath.trim();
     this.exclude = excludePattern == null ? "" : excludePattern.trim();
     this.status = TRANSLATING;
+    // Written down as well as held, so a reader that is not this process --
+    // another browser, a restarted Tomcat -- can still see the run.
+    RunMarker.write(TRANSLATING, "gloss", productPath, excludePattern);
     this.message = "";
     this.startedAt = System.currentTimeMillis();
     final List<String> command = buildTranslateCommand(
@@ -125,9 +160,11 @@ public class ProcessBtWrapper {
           synchronized (ProcessBtWrapper.this) {
             if (code == 0) {
               status = IDLE;
+              RunMarker.clear();
               message = "translate finished";
             } else {
               status = ERROR;
+              RunMarker.clear();
               message = "translate exited " + code;
             }
           }
@@ -135,6 +172,7 @@ public class ProcessBtWrapper {
         } catch (Exception e) {
           synchronized (ProcessBtWrapper.this) {
             status = ERROR;
+            RunMarker.clear();
             message = e.getLocalizedMessage();
           }
           appendLog("ERROR translate " + e.getLocalizedMessage());
@@ -150,18 +188,21 @@ public class ProcessBtWrapper {
       throw new IOException("A run is already " + status);
     }
     status = RESETTING;
+    RunMarker.write(RESETTING, "gloss", "", "");
     message = "";
     startedAt = System.currentTimeMillis();
     try {
       appendLog("START reset");
       liveReset();
       status = IDLE;
+      RunMarker.clear();
       message = "reset finished";
       path = "";
       exclude = "";
       appendLog("END reset");
     } catch (IOException e) {
       status = ERROR;
+      RunMarker.clear();
       message = e.getLocalizedMessage();
       appendLog("ERROR reset " + e.getLocalizedMessage());
       throw e;

@@ -78,7 +78,13 @@
 	  <property name="TranslateCachePath" value="[BIGTRANSLATE_HOME]/data/translationcache/cache.sqlite" envReplace="true"/>
           <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
           <property name="TranslateBatchSize" value="32"/>
-          <property name="SolrUrl" value="http://localhost:8983/solr/bigtranslate/update/json?commit=true"/>
+          <!-- Env replaced like everything around it. Written in, this sent every
+               run's output to whatever owns 8983, which on a machine running a
+               second OODT stack is that stack's Solr: the posts 404 against a
+               core that is not there and the translations are lost with nothing
+               reported. SOLR_URL is the core url, so the update handler hangs
+               off it. -->
+          <property name="SolrUrl" value="[SOLR_URL]/update/json?commit=true" envReplace="true"/>
           <requiredMetFields>
             <metfield name="Filename"/>
           </requiredMetFields>

@@ -98,7 +98,61 @@ if [ ! -x "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" ]; then
   exit 1
 fi
 
-if [ "$1" = "start" ]; then
+
+# The ports these services listen on, so start and stop can tell whether they
+# actually did anything.
+oodt_ports() {
+  echo "$FILEMGR_PORT $WORKFLOW_PORT $RESMGR_PORT $TOMCAT_PORT $SOLR_PORT"
+}
+
+port_busy() {
+  if command -v lsof > /dev/null 2>&1; then
+    lsof -ti tcp:"$1" > /dev/null 2>&1
+  else
+    nc -z localhost "$1" > /dev/null 2>&1
+  fi
+}
+
+# Wait until every port is free, or say which ones are not.
+#
+# stop used to return as soon as it had asked each service to stop, which is
+# not the same as their having stopped: a start immediately afterwards found
+# Solr still holding its port, failed with "Port ... is already being used",
+# and left the deployment with nothing running at all.
+wait_for_stopped() {
+  waited=0
+  while [ "$waited" -lt 180 ]; do
+    busy=""
+    for p in $(oodt_ports); do
+      port_busy "$p" && busy="$busy $p"
+    done
+    [ -z "$busy" ] && return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "Still listening after ${waited}s:$busy"
+  return 1
+}
+
+# Wait until every port answers, so a caller that starts and then immediately
+# uses the services is not racing them.
+wait_for_started() {
+  waited=0
+  while [ "$waited" -lt 120 ]; do
+    missing=""
+    for p in $(oodt_ports); do
+      port_busy "$p" || missing="$missing $p"
+    done
+    [ -z "$missing" ] && return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "Not listening after ${waited}s:$missing"
+  echo "See $OODT_OUT"
+  return 1
+}
+
+start_oodt() {
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &  
@@ -110,7 +164,10 @@ if [ "$1" = "start" ]; then
     nohup "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" start -p "$SOLR_PORT" \
       --solr-home "$OODT_BASE"/solr --user-managed >> "$OODT_OUT" 2>&1 &
   fi
-elif [ "$1" = "stop" ]; then
+  wait_for_started
+}
+
+stop_oodt() {
   "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" stop "$@" >> "$OODT_OUT" 2>&1  &
   "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
   "$RESMGR_HOME"/bin/"$RESMGR_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
@@ -118,11 +175,26 @@ elif [ "$1" = "stop" ]; then
   if [ -x "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" ]; then
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
   fi
+  wait_for_stopped
+}
+
+if [ "$1" = "start" ]; then
+  start_oodt
+elif [ "$1" = "stop" ]; then
+  stop_oodt
+elif [ "$1" = "restart" ]; then
+  # The README has told people to run this since before it existed, and the
+  # script answered by printing its usage and exiting 1 -- quietly enough that
+  # a configuration change made just beforehand looked as though it had been
+  # picked up when the services were still running with the old one.
+  stop_oodt || exit 1
+  start_oodt
 else
   echo "Usage: oodt.sh ( commands ... )"
   echo "commands:"
   echo "  start             Start OODT in a separate window"
-  echo "  stop              Stop OODT, waiting up to 5 seconds for the process to end"
+  echo "  stop              Stop OODT and wait for its ports to be free"
+  echo "  restart           Stop OODT, wait for it, and start it again"
 #  echo "  version           What version of OODT are you running?"
   exit 1
 fi

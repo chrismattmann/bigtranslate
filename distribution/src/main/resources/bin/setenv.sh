@@ -12,9 +12,29 @@
 ############################
 
 export BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-/usr/local/bigtranslate}
-export FILEMGR_URL=http://localhost:9000
-export WORKFLOW_URL=http://localhost:9001
-export RESMGR_URL=http://localhost:9002
+# Ports first, urls derived from them. The launchers bind FILEMGR_PORT and its
+# siblings while everything else looks up the urls, so setting only the urls
+# left each service listening on the default and every client looking
+# elsewhere. Setting a port here moves both.
+#
+# A machine running more than one OODT stack needs these to differ: the
+# defaults below are what DRAT and a stock RADiX deployment also use, and two
+# stacks on the same port do not fail loudly -- the second one's clients talk
+# to the first one's services.
+export FILEMGR_PORT=${FILEMGR_PORT:-9000}
+export WORKFLOW_PORT=${WORKFLOW_PORT:-9001}
+export RESMGR_PORT=${RESMGR_PORT:-9002}
+export SOLR_PORT=${SOLR_PORT:-8983}
+export TOMCAT_PORT=${TOMCAT_PORT:-8080}
+
+export FILEMGR_URL=http://localhost:$FILEMGR_PORT
+export WORKFLOW_URL=http://localhost:$WORKFLOW_PORT
+export RESMGR_URL=http://localhost:$RESMGR_PORT
+
+# The core url rather than the base. Gloss reads SOLR_URL as the collection it
+# queries and derives the base from it, so a base url here sends every Gloss
+# query to /solr/select and it reports no documents while Solr fills up.
+export SOLR_URL=http://localhost:$SOLR_PORT/solr/bigtranslate
 export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs

@@ -33,11 +33,26 @@ function print_help {
 }
 
 function print_ui_info {
-    echo "Navigate to http://${OODT_HOST}:8080/gloss/ for Gloss, http://${OODT_HOST}:8080/opsui/ for the OODT browser, and http://${OODT_HOST}:8983/solr for the Solr catalog."
+    echo "Navigate to http://${OODT_HOST}:${TOMCAT_PORT}/gloss/ for Gloss, http://${OODT_HOST}:${TOMCAT_PORT}/opsui/ for the OODT browser, and http://${OODT_HOST}:${SOLR_PORT}/solr for the Solr catalog."
 }
 
-FILEMGR_URL=http://${OODT_HOST}:9000
-SOLR_URL=http://${OODT_HOST}:8983/solr/bigtranslate
+# Read from setenv.sh, which is what the services themselves were started
+# with. These were fixed at the defaults, so a deployment moved off them --
+# to sit beside another OODT stack on the same machine -- had its driver
+# script still talking to 9000 and 8983. Those belong to somebody else there:
+# the service checks passed against a neighbour's ports and the run posted its
+# output into a neighbour's Solr, where it 404'd and was lost.
+if [ -f "$(dirname "$0")/setenv.sh" ]; then
+    . "$(dirname "$0")/setenv.sh"
+fi
+FILEMGR_PORT=${FILEMGR_PORT:-9000}
+WORKFLOW_PORT=${WORKFLOW_PORT:-9001}
+RESMGR_PORT=${RESMGR_PORT:-9002}
+SOLR_PORT=${SOLR_PORT:-8983}
+TOMCAT_PORT=${TOMCAT_PORT:-8080}
+
+FILEMGR_URL=http://${OODT_HOST}:${FILEMGR_PORT}
+SOLR_URL=http://${OODT_HOST}:${SOLR_PORT}/solr/bigtranslate
 
 # This script is not started through env.sh, so pick the virtual environment up
 # the same way env.sh does before looking for anything in it.
@@ -70,12 +85,31 @@ function check_python_tools {
         exit 1
     fi
 }
-CLIENT_URL=http://${OODT_HOST}:9001
-OPSUI_URL=http://${OODT_HOST}:8080/opsui
+CLIENT_URL=http://${OODT_HOST}:${WORKFLOW_PORT}
+OPSUI_URL=http://${OODT_HOST}:${TOMCAT_PORT}/opsui
 
 # Crawl and translate the given TSV dataset.
 # Expects one or three argument(s) -- the file path of the TSV files to be crawled and
 # --exclude file/directory name.
+
+
+# Record what is running, where the other half can read it.
+#
+# Gloss kept this in a field of the web application, set only when a run was
+# started through Gloss. Runs are started here, so Gloss reported IDLE for the
+# whole of every real translation. The file is the shared fact; both sides
+# write it and both sides read it.
+RUN_MARKER="$BIGTRANSLATE_HOME/data/run"
+
+mark_run() {
+    mkdir -p "$(dirname "$RUN_MARKER")" 2>/dev/null
+    printf '{"status":"%s","startedBy":"cli","path":"%s","exclude":"%s","startedAt":%s}\n' \
+        "$1" "${2//\"/}" "${3//\"/}" "$(($(date +%s) * 1000))" > "$RUN_MARKER" 2>/dev/null
+}
+
+unmark_run() {
+    rm -f "$RUN_MARKER" 2>/dev/null
+}
 
 function translate {
     check_services_running
@@ -88,8 +122,12 @@ function translate {
 	export BIGTRANSLATE_EXCLUDE=""
 	PRODUCT_PATH=$1
     fi
+    mark_run "TRANSLATING" "$PRODUCT_PATH" "$BIGTRANSLATE_EXCLUDE"
+    # The crawl is the part this script waits for; the translation itself runs
+    # on in the workflow manager, so the marker is cleared by whoever sees the
+    # workflow finish rather than here.
     pushd $BIGTRANSLATE_HOME/crawler/bin >> $BIGTRANSLATE_HOME/logs/bigtranslate.log 2>&1
-    
+
    ./crawler_launcher --operation --metPC --metExtractorConfig \
    $BIGTRANSLATE_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
    --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
@@ -143,12 +181,12 @@ function check_port {
 # Otherwise, check the ports are not busy.
 function check_services_running {
     if [[ $# == 0 ]]; then
-        if [[ ! -n $(check_port 9000) ]] || [[ ! -n $(check_port 9001) ]] || [[ ! -n $(check_port 9002) ]] || [[ ! -n $(check_port 8080) ]]; then
+        if [[ ! -n $(check_port ${FILEMGR_PORT}) ]] || [[ ! -n $(check_port ${WORKFLOW_PORT}) ]] || [[ ! -n $(check_port ${RESMGR_PORT}) ]] || [[ ! -n $(check_port ${TOMCAT_PORT}) ]]; then
             echo "Please start OODT by running '\$BIGTRANSLATE_HOME/bin/oodt start'"
             echo "Aborting..."
             exit 1
         fi
-    elif [[ -n $(check_port 9000) ]] || [[ -n $(check_port 9001) ]] || [[ -n $(check_port 9002) ]] || [[ -n $(check_port 8080) ]]; then
+    elif [[ -n $(check_port ${FILEMGR_PORT}) ]] || [[ -n $(check_port ${WORKFLOW_PORT}) ]] || [[ -n $(check_port ${RESMGR_PORT}) ]] || [[ -n $(check_port ${TOMCAT_PORT}) ]]; then
         echo "Please stop OODT by running '\$BIGTRANSLATE_HOME/bin/oodt stop'"
         echo "Aborting..."
         exit 1
@@ -183,6 +221,9 @@ function do_reset {
 # Reset bigtranslate to prepare for translating a new dataset.
 # Optional --yes skips the confirmation prompt (used by Gloss).
 function reset {
+    mark_run "RESETTING" "" ""
+    trap 'unmark_run' EXIT
+
     local yes=0
     if [ "$1" = "--yes" ]; then
         yes=1

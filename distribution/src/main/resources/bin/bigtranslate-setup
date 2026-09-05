@@ -89,7 +89,34 @@ echo "Installing from $REQUIREMENTS"
 if [ -n "$PANTOGLOSS_SOURCE" ]; then
     echo
     echo "Installing Pantogloss from $PANTOGLOSS_SOURCE"
-    "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+    # With its [server] extra, which is fastapi and uvicorn.
+    #
+    # "pantogloss serve" keeps one translator loaded behind a local HTTP API,
+    # which is how the translate step avoids reloading the model for every
+    # invocation -- about thirty seconds each time. Installed plain, serve
+    # exists as a subcommand and fails with "No module named 'uvicorn'" the
+    # moment it is asked to run, which is a poor way to find out.
+    #
+    # A specifier the extra cannot be appended to -- a URL, a wheel path --
+    # is installed as given and the extra requested separately, so the
+    # server half arrives either way.
+    case "$PANTOGLOSS_SOURCE" in
+        *"["*"]"*)
+            "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+            ;;
+        *://*|*.whl|*.tar.gz)
+            "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+            "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
+            ;;
+        *)
+            "$VENV/bin/pip" install "${PANTOGLOSS_SOURCE}[server]" \
+                || {
+                    echo "  [server] extra not available; installing plain"
+                    "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+                    "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
+                }
+            ;;
+    esac
 fi
 
 echo
@@ -103,6 +130,14 @@ for tool in tsvtojson repackage poster; do
 done
 if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
     echo "  pantogloss"
+    # Said here rather than left to fail at run time.
+    if "$VENV/bin/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then
+        echo "  pantogloss serve  (the translation service)"
+    else
+        echo "  pantogloss serve  NOT AVAILABLE -- no fastapi/uvicorn."
+        echo "                    The translate step will load the model per"
+        echo "                    invocation instead of using the service."
+    fi
 else
     echo "  pantogloss  NOT INSTALLED -- the translate step will fail."
     echo "              Re-run with PANTOGLOSS_SOURCE set to a checkout or wheel."
