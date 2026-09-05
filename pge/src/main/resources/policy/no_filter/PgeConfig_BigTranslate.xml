@@ -22,7 +22,7 @@
           Tika-backed predecessor made an HTTP call per field, so a process
           per file cost nothing; Pantogloss loads a local model, so the same
           shape would reload it once per posting. -->
-     <cmd>[BIGTRANSLATE_HOME]/bin/pantogloss-translatejson --in-dir [JobOutputDir]/employmentjobs --out-dir [JobOutputDir]/translated -c [TranslateCols] -f es --cache [TranslateCachePath] --glossary [TranslateGlossary] --batch-size [TranslateBatchSize] --offline -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/pantogloss-translatejson --in-dir [JobOutputDir]/employmentjobs --out-dir [JobOutputDir]/translated -c [TranslateCols] -f es --cache [TranslateCachePath] --glossary [TranslateGlossary] --batch-size [TranslateBatchSize] --service-url [PantoglossUrl] --offline -v >> [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/stamp-solr-lineage --dir [JobOutputDir]/translated --input-files '[SplitFilename]' --split '[SplitFilename]' --tsv '[SourceTsv]' >> [JobLogDir]/stamp_solr_lineage_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>find [JobOutputDir]/translated -name "*.json" | poster -u "[SolrUrl]" -v > [JobLogDir]/solrjsonposter_[DateMilis].log 2[GreaterThan][Ampersand]1 </cmd>
      <!-- Working copies are ephemeral. File Manager only catalogs the TSV and

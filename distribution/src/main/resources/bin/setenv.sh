@@ -35,6 +35,33 @@ export RESMGR_URL=http://localhost:$RESMGR_PORT
 # queries and derives the base from it, so a base url here sends every Gloss
 # query to /solr/select and it reports no documents while Solr fills up.
 export SOLR_URL=http://localhost:$SOLR_PORT/solr/bigtranslate
+
+# The translation service. One resident model for the whole deployment
+# instead of a fresh load in every split's process -- about thirty seconds
+# each, and a ten-file run does it dozens of times.
+#
+# 8765 is Pantogloss's own default and is an ordinary enough port to be
+# somebody else's; move it here if it is.
+export PANTOGLOSS_PORT=${PANTOGLOSS_PORT:-8765}
+export PANTOGLOSS_URL=${PANTOGLOSS_URL:-http://127.0.0.1:$PANTOGLOSS_PORT}
+
+# How many translations the service will do at once.
+#
+# This has to match the number of splits the workflow engine runs at once,
+# and it is not a free choice: pantogloss serve defaults to one, so eight
+# workers sharing it queue behind a single translation. Measured on the ten
+# file corpus that spent 1,885 seconds queued against 347 seconds actually
+# translating -- slower than loading the model separately in every worker,
+# which is the thing the service exists to avoid.
+#
+# Left unset it is read from the engine's own pool size below, so the two
+# cannot drift apart.
+export PANTOGLOSS_CONCURRENCY=${PANTOGLOSS_CONCURRENCY:-}
+
+# Which device the model runs on. "auto" prefers the GPU -- Metal here, CUDA
+# on Linux -- and falls back to the CPU when there is none. Set "cpu" to keep
+# the GPU free for something else.
+export PANTOGLOSS_DEVICE=${PANTOGLOSS_DEVICE:-auto}
 export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs

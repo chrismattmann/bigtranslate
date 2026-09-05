@@ -111,6 +111,81 @@ unmark_run() {
     rm -f "$RUN_MARKER" 2>/dev/null
 }
 
+
+# Check the corpus path before anything is started.
+#
+# The path is pasted, and a pasted path picks things up: a trailing comma from
+# a list, a stray quote, a shell-expanded "~" that never expanded because it
+# was quoted. DRAT accepted one of those and reported a running audit over a
+# directory that did not exist -- the catalog was cleared, the crawl found
+# nothing, and the first sign of trouble was a zero where a count should have
+# been. Refusing costs a second; a run that translates nothing costs an hour.
+#
+# Sets CORPUS_PATH to the resolved, absolute path.
+validate_corpus_path() {
+    local given="$1"
+
+    if [[ -z "$given" ]]; then
+        echo "No path given. Pass the directory holding the TSV files."
+        exit 1
+    fi
+
+    # Anything that cannot be part of a real path here is almost certainly
+    # punctuation that came along for the ride.
+    local trimmed="${given%"${given##*[![:space:]]}"}"
+    trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+    if [[ "$trimmed" != "$given" ]]; then
+        echo "The path has whitespace around it: [$given]"
+        echo "Quote it, or remove the spaces."
+        exit 1
+    fi
+    case "$given" in
+        *,|*\"|*\'|*\;|*\||*\&)
+            echo "The path ends in '${given: -1}': [$given]"
+            echo "That usually means it picked something up when it was pasted."
+            exit 1
+            ;;
+    esac
+    case "$given" in
+        "~"*)
+            echo "The path starts with a literal ~: [$given]"
+            echo "It was quoted, so the shell did not expand it. Use \$HOME."
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -e "$given" ]]; then
+        echo "There is nothing at [$given]."
+        exit 1
+    fi
+    if [[ ! -d "$given" ]]; then
+        echo "[$given] is a file, not a directory."
+        echo "Pass the directory that holds the TSV files."
+        exit 1
+    fi
+    if [[ ! -r "$given" ]]; then
+        echo "[$given] cannot be read."
+        exit 1
+    fi
+
+    CORPUS_PATH=$(cd "$given" 2>/dev/null && pwd -P)
+    if [[ -z "$CORPUS_PATH" ]]; then
+        echo "[$given] could not be resolved."
+        exit 1
+    fi
+
+    # An empty directory is a crawl that finishes instantly having done
+    # nothing, which reads exactly like success.
+    local count
+    count=$(find "$CORPUS_PATH" -maxdepth 1 -type f -name '*.tsv' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$count" == "0" ]]; then
+        echo "No .tsv files in [$CORPUS_PATH]."
+        echo "BigTranslate crawls TSV; there is nothing here to translate."
+        exit 1
+    fi
+    echo "Translating $count TSV file(s) from $CORPUS_PATH"
+}
+
 function translate {
     check_services_running
     if [ $1 = "--exclude" ]; then
@@ -122,6 +197,11 @@ function translate {
 	export BIGTRANSLATE_EXCLUDE=""
 	PRODUCT_PATH=$1
     fi
+
+    # Before the services are touched and before anything is marked running.
+    validate_corpus_path "$PRODUCT_PATH"
+    PRODUCT_PATH="$CORPUS_PATH"
+
     mark_run "TRANSLATING" "$PRODUCT_PATH" "$BIGTRANSLATE_EXCLUDE"
     # The crawl is the part this script waits for; the translation itself runs
     # on in the workflow manager, so the marker is cleared by whoever sees the

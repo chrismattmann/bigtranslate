@@ -47,6 +47,8 @@ import json
 import os
 import sqlite3
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 _verbose = False
@@ -55,6 +57,125 @@ _verbose = False
 def log(message):
     if _verbose:
         print(message, file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
+# the translation service
+# --------------------------------------------------------------------------
+#
+# Translation goes through a running "pantogloss serve" rather than loading
+# the model in this process. A model load is about thirty seconds, and this
+# program runs once per split: a baseline over ten TSV files spent forty-nine
+# loads on one run, every one of them loading the same model again.
+#
+# There is deliberately no fallback to loading it here. A fallback would be
+# invisible: the run would simply take the time it always did, and the fact
+# that the service was never reached would show up only as slowness. Every
+# silent fallback in this pipeline has cost a run -- posting to a Solr core
+# that was not there, services running with configuration they had not
+# reloaded -- so this stops instead, and says which of the things that can be
+# wrong is wrong.
+
+DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
+
+
+class ServiceUnavailable(Exception):
+    """The service is not there, is not ready, or is not Pantogloss."""
+
+
+def _get_json(url, timeout):
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _port_of(base_url):
+    tail = base_url.rsplit(":", 1)[-1]
+    port = tail.split("/")[0]
+    return port if port.isdigit() else "8765"
+
+
+def check_service(base_url, timeout=10):
+    """Confirm the service is up, is Pantogloss, and has its model loaded.
+
+    Three different faults needing three different answers, so they are told
+    apart rather than all reported as "unreachable". The middle one is not
+    hypothetical: Pantogloss's default port is an ordinary one, and a plain
+    ``python3 -m http.server`` sitting on it answers with a cheerful 404 that
+    is not a connection failure at all.
+    """
+    health = base_url.rstrip("/") + "/health"
+    try:
+        payload = _get_json(health, timeout)
+    except urllib.error.HTTPError as e:
+        raise ServiceUnavailable(
+            "something is listening at %s but it is not Pantogloss: GET "
+            "/health returned HTTP %s. Check what is on that port, or point "
+            "PANTOGLOSS_URL at the right one." % (base_url, e.code))
+    except urllib.error.URLError as e:
+        raise ServiceUnavailable(
+            "no translation service at %s (%s). Start one with 'pantogloss "
+            "serve --port %s', or set PANTOGLOSS_URL to where it is running."
+            % (base_url, e.reason, _port_of(base_url)))
+    except ValueError:
+        raise ServiceUnavailable(
+            "something is listening at %s but it is not Pantogloss: GET "
+            "/health did not return JSON. Check what is on that port."
+            % base_url)
+
+    if not isinstance(payload, dict) or "model_status" not in payload:
+        raise ServiceUnavailable(
+            "something is listening at %s but it is not Pantogloss: GET "
+            "/health returned %s. Check what is on that port."
+            % (base_url, json.dumps(payload)[:120]))
+
+    if not payload.get("ready"):
+        raise ServiceUnavailable(
+            "the translation service at %s is not ready: the model is %s. "
+            "Wait for it to finish loading and run this again."
+            % (base_url, payload.get("model_status", "in an unknown state")))
+
+    return payload
+
+
+def translate_batch(base_url, texts, beam_size, max_length, timeout):
+    """One batch through the service, answered in the order it was given."""
+    body = {"text": list(texts), "max_length": max_length}
+    if beam_size and beam_size > 1:
+        body["beam_size"] = beam_size
+        body["preset"] = "custom"
+
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/translate",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = ": " + e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        raise ServiceUnavailable(
+            "the translation service at %s refused a batch of %d (HTTP %s)%s"
+            % (base_url, len(texts), e.code, detail))
+    except urllib.error.URLError as e:
+        raise ServiceUnavailable(
+            "the translation service at %s stopped answering partway through "
+            "(%s)." % (base_url, e.reason))
+
+    out = payload.get("translation")
+    if isinstance(out, str):
+        out = [out]
+    if not isinstance(out, list) or len(out) != len(texts):
+        raise ServiceUnavailable(
+            "the translation service at %s returned %s results for a batch of "
+            "%d; refusing to guess which goes with which"
+            % (base_url, "no" if out is None else len(out), len(texts)))
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -274,7 +395,16 @@ def main(argv=None):
     parser.add_argument("--glossary", default=None,
                         help="TSV of authoritative source<TAB>target overrides")
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--model", default="pantogloss-500-en")
+    parser.add_argument("--model", default="pantogloss-500-en",
+                        help="recorded for provenance; the service decides "
+                             "which model it serves")
+    parser.add_argument("--service-url",
+                        default=os.environ.get("PANTOGLOSS_URL",
+                                               DEFAULT_SERVICE_URL),
+                        help="a running 'pantogloss serve' (PANTOGLOSS_URL)")
+    parser.add_argument("--service-timeout", type=int,
+                        default=int(os.environ.get("PANTOGLOSS_TIMEOUT", "600")),
+                        help="seconds to wait on one request to the service")
     parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="auto")
     parser.add_argument("--beam-size", type=int, default=1,
                         help="1 (greedy) suits short formulaic job-posting fields")
@@ -333,31 +463,25 @@ def main(argv=None):
         log("cache: %d hit, %d miss" % (len(cached), len(missing)))
 
         if missing:
-            # Import lazily so --help and argument errors do not pay for
-            # TensorFlow, which takes several seconds to load.
-            from pantogloss import Translator
-
-            translator = Translator.from_pretrained(
-                args.model,
-                device=args.device,
-                local_files_only=args.offline,
-            )
-            log("model on %s" % translator.device_info.selected)
+            # Checked once, before any work: a service that is not there is
+            # not something to discover on the last batch of a long run.
+            health = check_service(args.service_url, args.service_timeout)
+            log("service at %s, model %s"
+                % (args.service_url, health.get("model_status")))
 
             fresh = {}
             for i in range(0, len(missing), args.batch_size):
                 batch = missing[i:i + args.batch_size]
-                out = translator.translate(
-                    batch,
-                    beam_size=args.beam_size,
-                    max_length=args.max_length,
-                )
-                if isinstance(out, str):
-                    out = [out]
+                out = translate_batch(args.service_url, batch,
+                                      args.beam_size, args.max_length,
+                                      args.service_timeout)
                 fresh.update(dict(zip(batch, out)))
+                # Written as they are produced. A service that dies halfway
+                # through leaves what it did translate in the cache, so the
+                # re-run pays only for what is left.
+                cache.put_many(dict(zip(batch, out)))
                 log("  translated %d/%d" % (min(i + args.batch_size, len(missing)),
                                             len(missing)))
-            cache.put_many(fresh)
             translations.update(fresh)
     finally:
         cache.close()
@@ -378,4 +502,12 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except ServiceUnavailable as unavailable:
+        # One line on stderr and a non-zero exit, rather than a traceback.
+        # The PGE that runs this writes its output to a log nobody reads
+        # until something has gone wrong, and a stack trace there says only
+        # that Python was upset, not what to do about it.
+        print("pantogloss-translatejson: %s" % unavailable, file=sys.stderr)
+        sys.exit(2)

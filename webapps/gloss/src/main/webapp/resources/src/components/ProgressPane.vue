@@ -4,12 +4,28 @@
       <h2>In progress</h2>
       <p>
         {{ progress.status || 'TRANSLATING' }}
+        <!-- Who started it. A run begun from the command line is the ordinary
+             case, and the back end says so; the panel used to drop that on the
+             floor, leaving no way to tell it from one started here. -->
+        <span v-if="progress.message" class="whose"> ({{ progress.message }})</span>
         <span v-if="progress.path"> · {{ progress.path }}</span>
         <span v-if="progress.solrDocs != null"> · {{ progress.solrDocs }} in Solr</span>
         <span v-if="progress.jobDirs != null"> · {{ progress.jobDirs }} job dirs</span>
       </p>
     </header>
-    <pre>{{ log || 'Waiting for log…' }}</pre>
+    <!--
+      A run started from the command line writes to the deployment's own log,
+      not to the one Gloss keeps of what it did itself, so this waited for a
+      log that was never going to arrive and said "Waiting for log…" for the
+      length of the run. The back end now hands over whichever log the run is
+      actually writing; when there genuinely is not one yet, say that rather
+      than implying something is stuck.
+    -->
+    <pre v-if="log">{{ log }}</pre>
+    <p v-else class="nolog">
+      No log output yet. The workflow manager is running this; its progress
+      shows above and in OPSUI.
+    </p>
   </section>
 </template>
 
@@ -30,6 +46,18 @@ export default {
   border-radius: 4px;
   margin: 0.5rem 0 1rem;
   overflow: hidden;
+}
+
+.whose {
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.nolog {
+  margin: 0;
+  padding: 0.8rem 1rem 1rem;
+  opacity: 0.7;
+  font-size: 0.85rem;
 }
 
 header {

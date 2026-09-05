@@ -344,9 +344,20 @@ public class ProcessBtWrapper {
     }
   }
 
+  /**
+   * The tail of whichever log this run is writing.
+   *
+   * <p>
+   * Gloss keeps a log of what it did itself, and reads it here. A run started
+   * from the command line writes to the deployment's own log instead, so this
+   * returned nothing for the whole of every real run and the page sat on
+   * "Waiting for log..." -- waiting for a file that was never going to be
+   * written. Prefer the one with something in it, most recent first.
+   * </p>
+   */
   public static String readLogTail(int maxBytes) {
-    File log = new File(FileConstants.logFile());
-    if (!log.exists()) {
+    File log = mostRecentLog();
+    if (log == null || !log.exists()) {
       return "";
     }
     try {
@@ -358,6 +369,22 @@ public class ProcessBtWrapper {
     } catch (IOException e) {
       return e.getLocalizedMessage();
     }
+  }
+
+  /** Whichever of the two logs was written to last, or null if neither was. */
+  static File mostRecentLog() {
+    File[] candidates = {
+        new File(FileConstants.logFile()),
+        new File(FileConstants.path("/logs/bigtranslate.log"))
+    };
+    File best = null;
+    for (File candidate : candidates) {
+      if (candidate.exists() && candidate.length() > 0
+          && (best == null || candidate.lastModified() > best.lastModified())) {
+        best = candidate;
+      }
+    }
+    return best;
   }
 
   public static long countJobDirs() {

@@ -101,8 +101,85 @@ fi
 
 # The ports these services listen on, so start and stop can tell whether they
 # actually did anything.
+#
+# The translation service is deliberately not in this list. It loads a model
+# before it answers -- half a minute or so -- and a start that waited for it
+# would look hung; the translate step checks it for itself and says plainly
+# if it is not ready. Its port is still stopped and started with everything
+# else.
 oodt_ports() {
   echo "$FILEMGR_PORT $WORKFLOW_PORT $RESMGR_PORT $TOMCAT_PORT $SOLR_PORT"
+}
+
+PANTOGLOSS_LOG="$OODT_BASE/logs/pantogloss-serve.log"
+PANTOGLOSS_PID="$OODT_BASE/run/pantogloss-serve.pid"
+
+# One resident model for the deployment, rather than one load per split.
+#
+# Started here because the translate step is run by the workflow manager, and
+# a service that has to be remembered separately is one that is not running
+# when it matters -- the model then loads inside every split's own process,
+# thirty seconds at a time, which is the cost this removes.
+start_pantogloss() {
+  serve_bin="$OODT_BASE/.venv/bin/pantogloss"
+  if [ ! -x "$serve_bin" ]; then
+    echo "No Pantogloss in $OODT_BASE/.venv -- run bin/bigtranslate-setup."
+    echo "Translation will fail until it is there."
+    return 0
+  fi
+  if ! "$OODT_BASE"/.venv/bin/python -c "import uvicorn, fastapi" > /dev/null 2>&1; then
+    echo "Pantogloss is installed without its server extra, so the"
+    echo "translation service cannot start. Re-run bin/bigtranslate-setup."
+    return 0
+  fi
+  if port_busy "$PANTOGLOSS_PORT"; then
+    echo "Something is already listening on $PANTOGLOSS_PORT;"
+    echo "leaving it alone. If it is not Pantogloss, set PANTOGLOSS_PORT."
+    return 0
+  fi
+
+  # As many at once as the engine runs splits at once. The service defaults
+  # to one, and one is the wrong answer here: every worker but the first
+  # waits, and the queue is longer than the work.
+  concurrency="$PANTOGLOSS_CONCURRENCY"
+  if [ -z "$concurrency" ]; then
+    concurrency=$(sed -n 's/^org.apache.oodt.cas.workflow.engine.minPoolSize=\([0-9]*\).*/\1/p' \
+      "$OODT_BASE/workflow/etc/workflow.properties" 2>/dev/null | tail -1)
+  fi
+  if [ -z "$concurrency" ]; then
+    concurrency=8
+  fi
+
+  mkdir -p "$(dirname "$PANTOGLOSS_PID")" "$(dirname "$PANTOGLOSS_LOG")" 2>/dev/null
+  nohup "$serve_bin" serve --port "$PANTOGLOSS_PORT" --no-browser \
+    --max-concurrency "$concurrency" \
+    --max-queued-requests $((concurrency * 8)) \
+    --device "$PANTOGLOSS_DEVICE" \
+    >> "$PANTOGLOSS_LOG" 2>&1 &
+  echo $! > "$PANTOGLOSS_PID"
+  echo "Translation service starting on $PANTOGLOSS_PORT: $concurrency at a time"
+  echo "on $PANTOGLOSS_DEVICE. It answers once the model is loaded"
+  echo "(see $PANTOGLOSS_LOG)."
+}
+
+stop_pantogloss() {
+  if [ -f "$PANTOGLOSS_PID" ]; then
+    pid=$(cat "$PANTOGLOSS_PID" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" > /dev/null 2>&1; then
+      kill "$pid" > /dev/null 2>&1
+    fi
+    rm -f "$PANTOGLOSS_PID"
+  fi
+
+  waited=0
+  while [ "$waited" -lt 60 ]; do
+    port_busy "$PANTOGLOSS_PORT" || return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  # Not fatal: it may be somebody else's, which start_pantogloss also
+  # declines to touch.
+  echo "Port $PANTOGLOSS_PORT is still busy after ${waited}s."
 }
 
 port_busy() {
@@ -164,6 +241,7 @@ start_oodt() {
     nohup "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" start -p "$SOLR_PORT" \
       --solr-home "$OODT_BASE"/solr --user-managed >> "$OODT_OUT" 2>&1 &
   fi
+  start_pantogloss
   wait_for_started
 }
 
@@ -175,6 +253,7 @@ stop_oodt() {
   if [ -x "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" ]; then
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
   fi
+  stop_pantogloss
   wait_for_stopped
 }
 
