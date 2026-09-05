@@ -172,3 +172,29 @@ def test_the_model_is_not_loaded_in_this_process():
     assert "Translator.from_pretrained" not in source, (
         "the PGE still loads the model itself")
     assert "DEFAULT_SERVICE_URL" in source
+
+
+def test_setup_requires_a_pantogloss_new_enough_to_be_safe():
+    """0.18.0 defaults the server to one inference slot.
+
+    Earlier ones default to more, and more than one is what aborts the process
+    on Apple silicon: concurrent translate() calls share a Keras model and a
+    Metal execution context, and MPSGraph asserts on the mismatched shapes.
+    Pantogloss is not published, so PANTOGLOSS_SOURCE is usually a working
+    checkout and pip has no version to resolve against; what it lands on is
+    whatever that checkout is on, which is why this is checked afterwards
+    rather than asked for in the specifier.
+    """
+    setup = (REPO / "distribution" / "src" / "main" / "resources"
+             / "bin" / "bigtranslate-setup").read_text()
+    assert "PANTOGLOSS_REQUIRED" in setup, "no version floor is declared"
+    assert "0.18.0" in setup, "the floor is not 0.18.0"
+    assert "importlib.metadata" in setup, (
+        "the installed version is never read, so the floor is not enforced")
+    assert "TOO OLD" in setup, "an older Pantogloss is installed silently"
+
+
+def test_the_floor_can_be_overridden():
+    setup = (REPO / "distribution" / "src" / "main" / "resources"
+             / "bin" / "bigtranslate-setup").read_text()
+    assert "${PANTOGLOSS_REQUIRED:-0.18.0}" in setup
