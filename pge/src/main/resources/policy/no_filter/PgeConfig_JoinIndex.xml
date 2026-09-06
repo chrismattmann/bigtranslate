@@ -13,10 +13,9 @@
      <cmd>echo "shard [ShardIndex] of [JoinShards] indexed" [GreaterThan] [JobOutputDir]/shard-[ShardIndex].done</cmd>
   </exe>
 
+  <!-- Nothing to ingest. The documents are in Solr; the shard marker is for
+       the log, not the catalog. -->
   <output>
-    <dir path="[JobOutputDir]" createBeforeExe="false">
-       <files regExp="shard-.*\.done" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout.xml"/>
-     </dir>
   </output>
 
   <customMetadata>
