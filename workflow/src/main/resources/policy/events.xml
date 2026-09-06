@@ -25,4 +25,19 @@
     <workflow id="urn:bigtranslate:BigTranslateWorkflow"/>
  </event>
 
+
+ <!-- The W2 pipeline, chained by what each stage produces. Extract makes
+      chunk products; each chunk triggers its own translate instance; the
+      join is kicked off by hand or by a chunk count, because it must not
+      start until every chunk has an answer. -->
+ <event name="EmploymentCorpusReady">
+    <workflow id="urn:bigtranslate:ExtractStringsWorkflow"/>
+ </event>
+ <event name="EmploymentStringChunkIngest">
+    <workflow id="urn:bigtranslate:TranslateChunkWorkflow"/>
+ </event>
+ <event name="EmploymentTranslationsComplete">
+    <workflow id="urn:bigtranslate:JoinIndexWorkflow"/>
+ </event>
+
 </cas:workflowevents>

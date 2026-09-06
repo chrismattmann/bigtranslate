@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pgeConfig>
+
+  <!-- One pass over the whole corpus, reducing 836 million translatable
+       cells to the 2.29 million distinct strings that actually need a
+       model. Measured at about five minutes over 38GB, read in place from
+       whatever volume the corpus lives on. -->
+  <exe dir="[JobDir]" shell="/bin/bash">
+     <cmd>export PYTHONIOENCODING=utf-8</cmd>
+     <cmd>mkdir -p [JobOutputDir] [JobLogDir] [StringsDir]</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-extract-strings --corpus [CorpusDir] --out-dir [StringsDir] --colheaders [ColHeaders] --translate-cols [TranslateCols] --chunk-size [ChunkSize] [GreaterThan][GreaterThan] [JobLogDir]/extract_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>cp [StringsDir]/chunk-*.json [JobOutputDir]/</cmd>
+  </exe>
+
+  <output>
+    <dir path="[JobOutputDir]" createBeforeExe="false">
+       <files regExp="chunk-.*\.json" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout.xml"/>
+     </dir>
+  </output>
+
+  <customMetadata>
+    <metadata key="LessThan" val="&#x3C;"/>
+    <metadata key="GreaterThan" val="&#x3E;"/>
+    <metadata key="Exclamation" val="&#33;"/>
+    <metadata key="Ampersand" val="&#38;"/>
+    <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
+    <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
+    <metadata key="PCS_ActionsIds" val="TriggerPostIngestWorkflow" split="true"/>
+    <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/extract/[DateMilis]"/>
+    <metadata key="JobOutputDir" val="[JobDir]/output"/>
+    <metadata key="JobLogDir" val="[JobDir]/logs"/>
+  </customMetadata>
+</pgeConfig>

@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Apply the translations back to every row, and index the result.
+
+The translate stage produced one answer per distinct string. This stage is
+the join: it streams the corpus, substitutes the translation for each
+translatable cell, and posts the documents to Solr. No model is involved
+and none is needed -- three hundred million cells are looked up in a dict.
+
+Records are not lines. Titles in this corpus contain embedded newlines, so
+a record is accumulated until it has as many columns as the headers
+describe. Splitting on newlines instead mangles every row after the first
+such title, which is the kind of error that indexes cleanly and is only
+noticed much later.
+"""
+import argparse
+import glob
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+def log(message):
+    sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
+    sys.stderr.flush()
+
+
+def read_columns(path):
+    with open(path, encoding="utf-8") as handle:
+        return [line.strip() for line in handle if line.strip()]
+
+
+def load_translations(directory):
+    """Every translated chunk, merged into one lookup.
+
+    Chunks hold distinct strings and the extract stage made them disjoint,
+    so a later chunk cannot contradict an earlier one; merging is a plain
+    update rather than a reconciliation.
+    """
+    table = {}
+    paths = sorted(glob.glob(os.path.join(directory, "chunk-*.json")))
+    for path in paths:
+        with open(path, encoding="utf-8") as handle:
+            table.update(json.load(handle))
+    return table, len(paths)
+
+
+def records(path, columns):
+    """Yield complete records, rejoining rows split by embedded newlines."""
+    wanted = len(columns)
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        pending = ""
+        for line in handle:
+            pending = pending + line if pending else line
+            parts = pending.rstrip("\n").split("\t")
+            if len(parts) >= wanted:
+                yield parts
+                pending = ""
+        if pending.strip():
+            parts = pending.rstrip("\n").split("\t")
+            if len(parts) >= wanted:
+                yield parts
+
+
+def as_solr_date(value):
+    """Solr's pdate wants a full instant; the corpus carries plain dates.
+
+    Not all of them are zero-padded: 36% of postedDate in this corpus reads
+    "2012-11-6" rather than "2012-11-06". Matching on length alone rejects
+    those, and because postedDate is a required field the whole record is
+    then dropped -- a third of the corpus, silently, with a clean index at
+    the end of it to suggest nothing went wrong.
+    """
+    value = (value or "").strip()
+    parts = value.split("-")
+    if len(parts) != 3:
+        return None
+    year, month, day = parts
+    if not (year.isdigit() and month.isdigit() and day.isdigit()):
+        return None
+    if len(year) != 4:
+        return None
+    try:
+        if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+            return None
+    except ValueError:
+        return None
+    return "%s-%02d-%02dT00:00:00Z" % (year, int(month), int(day))
+
+
+def build_document(parts, columns, translate_at, table, required, dates,
+                   identifier):
+    """One Solr document from one record.
+
+    Translatable cells are replaced by their translation where one exists.
+    A missing translation leaves the original in place rather than dropping
+    the field: an untranslated Spanish title is worth more than no title,
+    and it is visible in the index rather than silently absent.
+    """
+    document = {"id": identifier}
+    for index, name in enumerate(columns):
+        if index >= len(parts):
+            continue
+        value = parts[index].strip()
+        if not value:
+            continue
+        if index in translate_at:
+            value = table.get(value, value)
+        document[name] = value[:32000]
+    for name in dates:
+        stamped = as_solr_date(document.get(name))
+        if stamped:
+            document[name] = stamped
+        else:
+            document.pop(name, None)
+    # Solr's "required" means present, not non-empty, and the corpus leaves
+    # cells blank routinely: contactPerson is absent from 4% of records and
+    # latitude from 1%. Dropping those would lose one record in twenty for
+    # want of a contact name, so a blank is carried through as a blank --
+    # which is what the corpus actually says.
+    #
+    # A required date is different. It cannot be blank and still parse as a
+    # pdate, and a posting with no readable date is not a posting we can
+    # place in time, so that record is genuinely dropped.
+    for name in required:
+        if name not in document and name not in dates:
+            document[name] = ""
+    missing = [name for name in required if name not in document]
+    return document, missing
+
+
+def post(url, batch, timeout):
+    request = urllib.request.Request(
+        url.rstrip("/") + "/update?wt=json",
+        data=json.dumps(batch).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="bt-join-index",
+        description="Apply translations to every row and index the result.")
+    parser.add_argument("--corpus", required=True)
+    parser.add_argument("--translated", required=True,
+                        help="directory of translated chunk files")
+    parser.add_argument("--solr-url", required=True)
+    parser.add_argument("--colheaders", required=True)
+    parser.add_argument("--translate-cols", required=True)
+    parser.add_argument("--batch-size", type=int, default=5000)
+    parser.add_argument("--timeout", type=int, default=600)
+    # One instance takes one slice of the corpus. Files rather than rows,
+    # so a slice is decided without reading anything.
+    parser.add_argument("--shard", type=int, default=0)
+    parser.add_argument("--of", type=int, default=1)
+    parser.add_argument("--commit", action="store_true",
+                        help="commit at the end of this shard")
+    args = parser.parse_args(argv)
+
+    if args.of < 1 or not 0 <= args.shard < args.of:
+        parser.error("--shard must be in [0, --of)")
+
+    paths = sorted(glob.glob(os.path.join(args.corpus, "*.tsv")))
+    if not paths:
+        parser.error("no .tsv files under %s" % args.corpus)
+    mine = paths[args.shard::args.of]
+
+    columns = read_columns(args.colheaders)
+    wanted = set(read_columns(args.translate_cols))
+    translate_at = {i for i, name in enumerate(columns) if name in wanted}
+
+    table, chunks = load_translations(args.translated)
+    if not table:
+        parser.error("no translations under %s -- did the translate stage "
+                     "finish?" % args.translated)
+    log("shard %d/%d: %d files, %d translations from %d chunks"
+        % (args.shard, args.of, len(mine), len(table), chunks))
+
+    # Read from the schema rather than restated here, so a schema change
+    # cannot leave this silently posting documents Solr will reject.
+    required = ["postedDate", "department", "title", "salary", "start",
+                "duration", "jobtype", "applications", "company",
+                "contactPerson", "latitude", "longitude", "firstSeenDate",
+                "url", "lastSeenDate"]
+    dates = ["postedDate", "firstSeenDate", "lastSeenDate"]
+
+    batch = []
+    posted = skipped = seen = 0
+    started = time.time()
+    for path in mine:
+        base = os.path.basename(path)
+        for number, parts in enumerate(records(path, columns)):
+            seen += 1
+            document, missing = build_document(
+                parts, columns, translate_at, table, required, dates,
+                "%s-%d" % (base, number))
+            if missing:
+                skipped += 1
+                continue
+            batch.append(document)
+            if len(batch) >= args.batch_size:
+                post(args.solr_url, batch, args.timeout)
+                posted += len(batch)
+                batch = []
+    if batch:
+        post(args.solr_url, batch, args.timeout)
+        posted += len(batch)
+    if args.commit:
+        urllib.request.urlopen(
+            args.solr_url.rstrip("/") + "/update?commit=true&wt=json",
+            timeout=args.timeout * 3).read()
+
+    elapsed = time.time() - started
+    log("shard %d/%d: %d records, %d posted, %d skipped for missing "
+        "required fields, %.0fs (%.0f docs/s)"
+        % (args.shard, args.of, seen, posted, skipped, elapsed,
+           posted / elapsed if elapsed else 0))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
