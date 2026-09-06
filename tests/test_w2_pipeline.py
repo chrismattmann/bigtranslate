@@ -166,12 +166,21 @@ def test_an_untranslated_string_keeps_its_original(tmp_path):
 
 
 def test_join_reports_documents_solr_would_reject(tmp_path):
-    """Counted and reported, not posted and silently 400ed."""
+    """Counted and reported, not posted and silently 400ed.
+
+    Only a required date can leave a document unpostable now: everything
+    else Solr merely wants present, and a blank satisfies that.
+    """
     join = load("bt-join-index")
     doc, missing = join.build_document(
         ["only a title"], ["title"], set(), {},
+        required=["title", "postedDate"], dates=["postedDate"],
+        identifier="x-1")
+    assert missing == ["postedDate"]
+    doc, missing = join.build_document(
+        ["only a title"], ["title"], set(), {},
         required=["title", "url"], dates=[], identifier="x-1")
-    assert missing == ["url"]
+    assert not missing, "a blank url should not reject the document"
 
 
 def test_shards_partition_the_corpus_exactly_once(corpus):
@@ -226,3 +235,61 @@ def test_each_stage_has_a_pge_config():
             "%s does not run %s" % (config.name, command))
         assert config.name in tasks, "%s is not wired into a task" % config.name
         assert (BIN / command).exists(), "%s does not exist" % command
+
+
+def test_dates_that_are_not_zero_padded_are_still_dates():
+    """36% of postedDate in this corpus reads "2012-11-6", not "2012-11-06".
+
+    Matching on length alone rejects those, and because postedDate is
+    required the whole record is dropped -- a third of the corpus, with a
+    clean index at the end of it to suggest nothing went wrong.
+    """
+    as_date = load("bt-join-index").as_solr_date
+    assert as_date("2012-11-6") == "2012-11-06T00:00:00Z"
+    assert as_date("2012-1-6") == "2012-01-06T00:00:00Z"
+    assert as_date("2012-11-06") == "2012-11-06T00:00:00Z"
+
+
+def test_a_thing_that_is_not_a_date_is_rejected():
+    as_date = load("bt-join-index").as_solr_date
+    for value in ("", "x", "2012-13-01", "2012-11", "2012-11-32", None,
+                  "12-11-06"):
+        assert as_date(value) is None, "%r was accepted as a date" % value
+
+
+def test_an_unpadded_date_does_not_drop_the_record():
+    """The bug end to end: the record survives, not just the parser."""
+    join = load("bt-join-index")
+    doc, missing = join.build_document(
+        ["2012-11-6", "Programador"], ["postedDate", "title"], {1},
+        {"Programador": "Programmer"},
+        required=["postedDate", "title"], dates=["postedDate"],
+        identifier="x-1")
+    assert not missing, "an unpadded date still drops the record: %s" % missing
+    assert doc["postedDate"] == "2012-11-06T00:00:00Z"
+
+
+def test_a_blank_required_field_is_carried_through_not_dropped():
+    """Solr requires presence, not content, and the corpus leaves cells blank.
+
+    contactPerson is absent from 4% of records and latitude from 1%.
+    Dropping those loses one record in twenty for want of a contact name.
+    """
+    join = load("bt-join-index")
+    doc, missing = join.build_document(
+        ["2012-11-6", "Programador"], ["postedDate", "title"], set(), {},
+        required=["postedDate", "title", "contactPerson"],
+        dates=["postedDate"], identifier="x-1")
+    assert not missing, "a blank field dropped the record: %s" % missing
+    assert doc["contactPerson"] == ""
+
+
+def test_a_record_with_no_readable_date_is_still_dropped():
+    """A posting we cannot place in time is not one we can index."""
+    join = load("bt-join-index")
+    doc, missing = join.build_document(
+        ["not a date", "Programador"], ["postedDate", "title"], set(), {},
+        required=["postedDate", "title"], dates=["postedDate"],
+        identifier="x-1")
+    assert missing == ["postedDate"]
+

@@ -79,11 +79,29 @@ def records(path, columns):
 
 
 def as_solr_date(value):
-    """Solr's pdate wants a full instant; the corpus carries plain dates."""
+    """Solr's pdate wants a full instant; the corpus carries plain dates.
+
+    Not all of them are zero-padded: 36% of postedDate in this corpus reads
+    "2012-11-6" rather than "2012-11-06". Matching on length alone rejects
+    those, and because postedDate is a required field the whole record is
+    then dropped -- a third of the corpus, silently, with a clean index at
+    the end of it to suggest nothing went wrong.
+    """
     value = (value or "").strip()
-    if len(value) == 10 and value[4] == "-" and value[7] == "-":
-        return value + "T00:00:00Z"
-    return None
+    parts = value.split("-")
+    if len(parts) != 3:
+        return None
+    year, month, day = parts
+    if not (year.isdigit() and month.isdigit() and day.isdigit()):
+        return None
+    if len(year) != 4:
+        return None
+    try:
+        if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+            return None
+    except ValueError:
+        return None
+    return "%s-%02d-%02dT00:00:00Z" % (year, int(month), int(day))
 
 
 def build_document(parts, columns, translate_at, table, required, dates,
@@ -111,6 +129,18 @@ def build_document(parts, columns, translate_at, table, required, dates,
             document[name] = stamped
         else:
             document.pop(name, None)
+    # Solr's "required" means present, not non-empty, and the corpus leaves
+    # cells blank routinely: contactPerson is absent from 4% of records and
+    # latitude from 1%. Dropping those would lose one record in twenty for
+    # want of a contact name, so a blank is carried through as a blank --
+    # which is what the corpus actually says.
+    #
+    # A required date is different. It cannot be blank and still parse as a
+    # pdate, and a posting with no readable date is not a posting we can
+    # place in time, so that record is genuinely dropped.
+    for name in required:
+        if name not in document and name not in dates:
+            document[name] = ""
     missing = [name for name in required if name not in document]
     return document, missing
 
