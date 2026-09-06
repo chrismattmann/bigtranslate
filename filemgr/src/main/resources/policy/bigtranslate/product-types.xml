@@ -165,7 +165,12 @@ limitations under the License.
 
   <type id="urn:bigtranslate:EmploymentStringChunk" name="EmploymentStringChunk">
     <repository path="file://[BIGTRANSLATE_HOME]/data/strings"/>
-    <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
+    <!-- Not InPlaceVersioner: the chunks are written to a job directory and
+         this repository is where the ingest puts them. Leaving them in
+         place while naming this as the repository asks the transfer to
+         move a file onto itself, which fails with "File canonical paths
+         are equal" and catalogues nothing. -->
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.BasicVersioner"/>
     <description>One chunk of distinct strings awaiting translation. The extract stage writes these; each one becomes a translate instance, and the translate stage looks its own file up here by name.</description>
     <metExtractors>
       <extractor
@@ -187,8 +192,11 @@ limitations under the License.
   </type>
 
   <type id="urn:bigtranslate:EmploymentTranslatedChunk" name="EmploymentTranslatedChunk">
-    <repository path="file://[BIGTRANSLATE_HOME]/data/translated"/>
-    <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
+    <repository path="file://[BIGTRANSLATE_HOME]/data/translated-catalog"/>
+    <!-- Its own repository, apart from the flat directory the join reads:
+         this versioner nests each product in a directory named after it,
+         which would leave the join globbing an empty level. -->
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.BasicVersioner"/>
     <description>One chunk of distinct strings, translated. The join stage reads every one of these into a single lookup.</description>
     <metExtractors>
       <extractor

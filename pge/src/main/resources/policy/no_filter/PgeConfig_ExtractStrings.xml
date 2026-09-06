@@ -7,9 +7,15 @@
        whatever volume the corpus lives on. -->
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
-     <cmd>mkdir -p [JobOutputDir] [JobLogDir] [StringsDir]</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-extract-strings --corpus [CorpusDir] --out-dir [StringsDir] --colheaders [ColHeaders] --translate-cols [TranslateCols] --chunk-size [ChunkSize] [GreaterThan][GreaterThan] [JobLogDir]/extract_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
-     <cmd>cp [StringsDir]/chunk-*.json [JobOutputDir]/</cmd>
+     <cmd>mkdir -p [JobOutputDir] [JobLogDir]</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker start --path [CorpusDir] --started-by workflow</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-extract-strings --corpus [CorpusDir] --out-dir [JobOutputDir] --colheaders [ColHeaders] --translate-cols [TranslateCols] --chunk-size [ChunkSize] [GreaterThan][GreaterThan] [JobLogDir]/extract_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <!-- Start the join once, here, rather than once per chunk. It waits
+          on TranslationsSettled, so it sits until every chunk has an
+          answer and then runs a single time. Triggering it from each
+          catalogued chunk instead would create one join per chunk, all
+          waiting on the same condition and then all doing the same work. -->
+     <cmd>[BIGTRANSLATE_HOME]/workflow/bin/wmgr-client --url [PCS_WorkflowManagerUrl] --operation --sendEvent --eventName EmploymentTranslationsComplete [GreaterThan][GreaterThan] [JobLogDir]/extract_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <output>

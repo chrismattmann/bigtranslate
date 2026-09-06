@@ -18,4 +18,25 @@
 <!--
   TODO: Add some examples
 -->
+
+  <!-- The join must not start until every chunk has an answer.
+       A count that has stopped rising is how it knows: translated chunks
+       are catalogued as they are produced, and when no new one has arrived
+       for a while there are no more coming.
+
+       Without this the join has to be started by hand, which over a run of
+       several hours means somebody watching for the moment to do it. -->
+  <condition id="urn:bigtranslate:TranslationsSettled" name="Translations Settled"
+             class="org.apache.oodt.cas.pge.condition.ProductCountSettledCondition">
+    <configuration>
+      <property name="FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
+      <property name="ProductTypeName" value="EmploymentTranslatedChunk"/>
+      <!-- At least one, so the join cannot run against nothing at all. -->
+      <property name="MinCount" value="1"/>
+      <!-- A chunk takes minutes, so a couple of minutes of quiet is a real
+           pause rather than the gap between two of them. -->
+      <property name="QuietSeconds" value="120"/>
+    </configuration>
+  </condition>
+
 </cas:conditions>

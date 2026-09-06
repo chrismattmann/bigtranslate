@@ -10,6 +10,7 @@
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>mkdir -p [JobOutputDir] [JobLogDir]</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard [ShardIndex] --of [JoinShards] --commit [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>
      <cmd>echo "shard [ShardIndex] of [JoinShards] indexed" [GreaterThan] [JobOutputDir]/shard-[ShardIndex].done</cmd>
   </exe>
 

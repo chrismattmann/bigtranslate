@@ -474,12 +474,21 @@ def test_only_the_stage_whose_output_is_needed_ingests_it():
     assert "<files regExp=" in extract, (
         "extract must catalogue its chunks; nothing else starts a translate")
 
-    for name in ("TranslateChunk", "JoinIndex"):
-        config = (policy / ("PgeConfig_%s.xml" % name)).read_text()
-        block = config[config.index("<output>"):config.index("</output>")]
-        assert "<files" not in block and "<dir" not in block, (
-            "%s declares an output to ingest; a failure there would mark "
-            "work that succeeded as failed" % name)
+    # Translate catalogues its chunk again, because the join needs a count
+    # to wait on. That ingest was what marked successful work as Failure,
+    # but the cause was a versioner writing into the directory it read
+    # from, not the ingest itself.
+    translate = (policy / "PgeConfig_TranslateChunk.xml").read_text()
+    assert "<files regExp=" in translate, (
+        "nothing counts the translated chunks, so the join cannot know "
+        "when they are all done")
+
+    # The join's shard markers are for the log; nothing queries them.
+    join = (policy / "PgeConfig_JoinIndex.xml").read_text()
+    block = join[join.index("<output>"):join.index("</output>")]
+    assert "<files" not in block and "<dir" not in block, (
+        "the join declares an output to ingest; a failure there would "
+        "mark work that succeeded as failed")
 
 
 def test_the_chunk_pattern_cannot_match_its_own_met_file():
@@ -493,3 +502,123 @@ def test_the_chunk_pattern_cannot_match_its_own_met_file():
         "the pattern no longer matches a chunk: %s" % pattern)
     assert not compiled.fullmatch("chunk-00003.json.met"), (
         "the pattern also matches the met file written beside the chunk")
+
+
+def test_every_stage_can_resolve_its_crawler_actions():
+    """PCS_ActionsIds names beans; PCS_ActionRepoFile says where they are.
+
+    Without the repo file the named action cannot be resolved, so the post
+    ingest trigger never runs. The products are catalogued and the stage
+    that should follow them is simply never started -- nothing fails, and
+    nothing is logged. The chain just stops.
+    """
+    tasks = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+             / "tasks.xml").read_text()
+    for name in ("Extract_Strings_Task", "Translate_Chunk_Task",
+                 "Join_Index_Task"):
+        start = tasks.index('<task id="urn:bigtranslate:%s"' % name)
+        block = tasks[start:tasks.index("</task>", start)]
+        if "PCS_ActionsIds" in block or name == "Extract_Strings_Task":
+            assert "PCS_ActionRepoFile" in block, (
+                "%s cannot resolve crawler actions" % name)
+
+
+def test_the_stage_that_catalogues_chunks_triggers_the_next_one():
+    """Extract's products are what start the translates."""
+    pge = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+           / "no_filter" / "PgeConfig_ExtractStrings.xml").read_text()
+    assert "TriggerPostIngestWorkflow" in pge, (
+        "nothing starts a translate when a chunk is catalogued")
+    events = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+              / "events.xml").read_text()
+    # The crawler fires [ProductType]Ingest, so that is the name that has
+    # to be mapped, not the workflow's own id.
+    assert "EmploymentStringChunkIngest" in events, (
+        "the event the crawler fires is not mapped to any workflow")
+
+
+def test_extract_does_not_write_into_the_repository_it_ingests_into():
+    """Writing there first and then ingesting into it moves a file onto
+    itself: "File canonical paths are equal", and nothing is catalogued."""
+    pge = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+           / "no_filter" / "PgeConfig_ExtractStrings.xml").read_text()
+    assert "--out-dir [JobOutputDir]" in pge, (
+        "extract writes chunks somewhere other than its job output dir")
+    # The class the element declares, not any mention of it: the comment
+    # explaining the choice names the wrong versioner on purpose.
+    import xml.etree.ElementTree as ET
+    types = ET.parse(REPO / "filemgr" / "src" / "main" / "resources"
+                     / "policy" / "bigtranslate" / "product-types.xml")
+    for node in types.getroot().iter("type"):
+        if node.get("name") == "EmploymentStringChunk":
+            versioner = node.find("versioner")
+            assert versioner is not None
+            assert "InPlaceVersioner" not in versioner.get("class", ""), (
+                "an in place versioner cannot move a chunk into its "
+                "repository; the transfer is asked to move a file onto "
+                "itself and nothing is catalogued")
+            break
+    else:
+        raise AssertionError("EmploymentStringChunk is not declared")
+
+
+def test_the_join_starts_itself():
+    """Nobody should have to watch for the moment to fire stage three.
+
+    Over a run of several hours that is a person sitting with it. The join
+    is created once by extract and held by a condition until every chunk
+    has an answer.
+    """
+    conditions = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+                  / "conditions.xml").read_text()
+    assert "ProductCountSettledCondition" in conditions, (
+        "nothing waits for the translations to finish")
+    assert "EmploymentTranslatedChunk" in conditions, (
+        "the condition counts the wrong thing")
+
+    tasks = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+             / "tasks.xml").read_text()
+    start = tasks.index('<task id="urn:bigtranslate:Join_Index_Task"')
+    block = tasks[start:tasks.index("</task>", start)]
+    assert "TranslationsSettled" in block, (
+        "the join is not held by the condition, so it would run against a "
+        "partial set of translations")
+
+    extract = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+               / "no_filter" / "PgeConfig_ExtractStrings.xml").read_text()
+    assert "EmploymentTranslationsComplete" in extract, (
+        "nothing ever creates the join instance")
+
+
+def test_the_join_is_started_once_not_once_per_chunk():
+    """Triggering it from each catalogued chunk makes one join per chunk."""
+    events = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+              / "events.xml").read_text()
+    assert "EmploymentTranslatedChunkIngest" not in events, (
+        "a translated chunk starts a join, so every chunk starts one")
+
+
+def test_the_translated_chunks_are_counted_without_disturbing_the_join():
+    """The join globs a flat directory; the versioner nests what it stores."""
+    import xml.etree.ElementTree as ET
+    types = ET.parse(REPO / "filemgr" / "src" / "main" / "resources"
+                     / "policy" / "bigtranslate" / "product-types.xml")
+    for node in types.getroot().iter("type"):
+        if node.get("name") == "EmploymentTranslatedChunk":
+            repo = node.find("repository").get("path")
+            assert repo.rstrip("/").endswith("translated-catalog"), (
+                "the catalogued copies share the directory the join globs, "
+                "so the versioner's nesting would hide them: %s" % repo)
+            return
+    raise AssertionError("EmploymentTranslatedChunk is not declared")
+
+
+def test_an_engine_driven_run_is_visible():
+    """bin/bigtranslate writes the marker for a run it starts. A run the
+    engine drives has no such caller, and Gloss showed IDLE throughout one."""
+    policy = REPO / "pge" / "src" / "main" / "resources" / "policy" / "no_filter"
+    assert "bt-run-marker start" in (policy / "PgeConfig_ExtractStrings.xml").read_text()
+    assert "bt-run-marker beat" in (policy / "PgeConfig_TranslateChunk.xml").read_text()
+    assert "bt-run-marker clear" in (policy / "PgeConfig_JoinIndex.xml").read_text()
+    assert (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+            / "bt-run-marker").exists()
