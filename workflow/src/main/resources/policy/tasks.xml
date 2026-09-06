@@ -77,7 +77,15 @@
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
 	  <property name="TranslateCachePath" value="[BIGTRANSLATE_HOME]/data/translationcache/cache.sqlite" envReplace="true"/>
           <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
+          <!-- 32 suits the CPU service this normally runs against; a CUDA
+               one is fastest nearer 128. Measured on 8,192 strings: CPU 69.8
+               inputs/s at 32 falling to 27.1 at 512, RTX 3080 Ti 190.9 at
+               128. Set per deployment to match its device. -->
           <property name="TranslateBatchSize" value="32"/>
+          <!-- Empty means sorted by length, which is the default and the
+               faster of the two. Pass the PGE's "no sort by length" flag
+               here to restore the order strings were encountered in. -->
+          <property name="TranslateSortFlag" value=""/>
           <!-- Passed rather than inherited. The PGE would read PANTOGLOSS_URL
                from its environment, but that environment is the workflow
                manager's, which is one more thing that has to have been right
