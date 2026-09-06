@@ -223,7 +223,11 @@ wait_for_workflow() {
         # this file, and a line every fifteen seconds would push everything
         # else off it.
         if [ $((waited % 120)) -eq 0 ]; then
-            say "Translating: $running workflow instances still running (${waited}s)"
+            if [ "$running" = "unknown" ]; then
+                say "Translating: the workflow manager did not answer (${waited}s)"
+            else
+                say "Translating: $running workflow instances still running (${waited}s)"
+            fi
         fi
 
         if [ "$running" = "0" ]; then
@@ -251,11 +255,33 @@ wait_for_workflow() {
 
 # How many BigTranslate instances are not in a terminal state.
 running_instance_count() {
-    "$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$CLIENT_URL" \
-        --operation --getWorkflowInsts 2>/dev/null \
+    local instances count
+
+    instances=$("$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$CLIENT_URL" \
+        --operation --getWorkflowInsts 2>/dev/null)
+
+    # No answer at all is not the same as nothing running, and saying "0"
+    # here would end a run that is still going because the manager happened
+    # to be unreachable for one poll.
+    if [ -z "$instances" ]; then
+        echo unknown
+        return 0
+    fi
+
+    # The count comes from grep's output, never from its exit status: "grep
+    # -c" exits 1 when it counts nothing, so an "|| echo 0" fallback fires on
+    # precisely the case it exists to report and appends a second line. The
+    # caller then compares "0\n0" against "0", never matches, and waits out
+    # a finished run -- which is what it did, for three hours, after the work
+    # had actually completed in forty-eight minutes.
+    count=$(printf '%s\n' "$instances" \
         | grep -oE "status=[A-Za-z]+" \
-        | grep -vcE "status=(FINISHED|ERROR|Success|Failure|Stopped)" \
-        || echo 0
+        | grep -vcE "status=(FINISHED|ERROR|Success|Failure|Stopped)")
+
+    case "$count" in
+        '' | *[!0-9]*) echo 0 ;;
+        *) echo "$count" ;;
+    esac
 }
 
 TRANSLATE_TIMEOUT=${TRANSLATE_TIMEOUT:-86400}
