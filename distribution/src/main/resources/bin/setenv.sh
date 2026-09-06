@@ -11,6 +11,26 @@
 #
 ############################
 
+# Where this deployment is, worked out from where this file is rather than
+# assumed. The default used to be /usr/local/bigtranslate, so a deployment
+# unpacked anywhere else worked only if the caller had exported
+# BIGTRANSLATE_HOME first. The servers are always started through bin/oodt,
+# which does that, so the gap showed up only in the client scripts:
+#
+#   ./filemgr-client --url ... --operation --getNumProducts
+#   cd: /usr/local/bigtranslate/filemgr/bin: No such file or directory
+#   ClassNotFoundException: ...FileManagerClientMain
+#
+# which reads like a broken install rather than an unset variable.
+if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
+  # ${BASH_SOURCE[0]} when sourced, $0 when run; either way this file.
+  _bt_setenv="${BASH_SOURCE[0]:-$0}"
+  _bt_bin=$(cd "$(dirname "$_bt_setenv")" 2>/dev/null && pwd)
+  if [ -n "$_bt_bin" ]; then
+    BIGTRANSLATE_HOME=$(cd "$_bt_bin/.." 2>/dev/null && pwd)
+  fi
+  unset _bt_setenv _bt_bin
+fi
 export BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-/usr/local/bigtranslate}
 # Ports first, urls derived from them. The launchers bind FILEMGR_PORT and its
 # siblings while everything else looks up the urls, so setting only the urls
