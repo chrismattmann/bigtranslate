@@ -6,6 +6,9 @@ BigTranslate
 [![JDK](https://img.shields.io/badge/JDK-21-orange.svg)](https://adoptium.net/)
 [![Powered by Mnemosyne](https://img.shields.io/badge/powered%20by-Mnemosyne%201.11.0-6E4B8E.svg)](https://github.com/chrismattmann/mnemosyne)
 [![Website](https://img.shields.io/badge/website-chrismattmann.github.io%2Fbigtranslate-informational.svg)](https://chrismattmann.github.io/bigtranslate/)
+[![Wiki](https://img.shields.io/badge/wiki-github-informational.svg)](https://github.com/chrismattmann/bigtranslate/wiki)
+
+<a href="https://chrismattmann.github.io/bigtranslate/"><img align="left" width="80" height="80" src="https://chrismattmann.github.io/bigtranslate/assets/bt-mark.svg" alt="BigTranslate"></a>
 
 A distributed, parallelized (Map Reduce) system that uses [Pantogloss](https://github.com/chrismattmann/pantogloss) to machine-translate many millions of rows of TSV data. Pantogloss is a TensorFlow/Keras many-to-English library that runs locally — no hosted translation APIs. BigTranslate uses [Mnemosyne](https://github.com/chrismattmann/mnemosyne) to split and distribute those translations. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](https://github.com/chrismattmann/etllib/) (`tsvtojson`, `repackage`, `poster`) to prepare records for Pantogloss. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval. [Gloss](https://github.com/chrismattmann/bigtranslate/wiki/Gloss) is the GUI: Vue 3 at `http://localhost:8080/gloss/`, with Translate/Reset from the browser (the CLI still starts runs) and a D3 density-bubble map of postings by location.
 
