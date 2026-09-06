@@ -296,6 +296,98 @@ def test_a_record_with_no_readable_date_is_still_dropped():
 
 
 
+def test_the_engine_uses_the_wengine_lifecycle():
+    """The queue based engine's states are not the thread pool engine's.
+
+    An instance moves Null, Loaded, Queued, PreConditionEval, Executing,
+    ExecutionComplete, Success. The older file speaks of QUEUED, STARTED,
+    RSUBMIT and FINISHED. Point this engine at that file and every instance
+    is created and then sits at Null forever with nothing logged: the
+    engine asks for a state by name, does not find it, and has nowhere to
+    move the instance to. That cost an afternoon.
+    """
+    props = (REPO / "workflow" / "src" / "main" / "resources" / "etc"
+             / "workflow.properties").read_text()
+    assert "wengine-lifecycle.xml" in props, (
+        "the queue based engine is pointed at the thread pool lifecycle")
+    lifecycle = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+                 / "wengine-lifecycle.xml")
+    assert lifecycle.exists(), "no wengine lifecycle is shipped"
+    text = lifecycle.read_text()
+    for state in ("Null", "Loaded", "Queued", "PreConditionEval",
+                  "Executing", "ExecutionComplete", "Success", "Failure"):
+        assert 'name="%s"' % state in text, (
+            "the lifecycle does not define %s, which the engine asks for"
+            % state)
+
+
+def test_the_two_resource_policies_use_the_attribute_each_parser_reads():
+    """nodes.xml says nodeId; the queue mapping says id.
+
+    They are read by different parsers and the names genuinely differ.
+    Using nodeId in the mapping binds nothing, and the only symptom is the
+    scheduler reporting it cannot find an available node for the job.
+    """
+    import xml.etree.ElementTree as ET
+    policy = REPO / "resmgr" / "src" / "main" / "resources" / "policy"
+    nodes = ET.parse(policy / "nodes.xml").getroot()
+    declared = set()
+    for node in nodes.iter("node"):
+        assert node.get("nodeId"), "a node in nodes.xml has no nodeId"
+        assert node.get("ip"), "a node in nodes.xml has no ip"
+        declared.add(node.get("nodeId"))
+    mapping = ET.parse(policy / "node-to-queue-mapping.xml").getroot()
+    mapped = set()
+    for node in mapping.iter("node"):
+        assert node.get("id"), (
+            "the queue mapping must use id=, not nodeId=; nodeId binds "
+            "nothing and the scheduler simply never finds a node")
+        mapped.add(node.get("id"))
+    assert mapped <= declared, (
+        "the mapping references nodes that nodes.xml does not declare: %s"
+        % (mapped - declared))
+    assert mapped, "no node is mapped to any queue"
+
+
+def test_node_urls_are_substituted_from_the_environment():
+    """Otherwise every host needs its policy XML hand edited."""
+    import xml.etree.ElementTree as ET
+    nodes = ET.parse(REPO / "resmgr" / "src" / "main" / "resources"
+                     / "policy" / "nodes.xml").getroot()
+    for node in nodes.iter("node"):
+        if node.get("ip", "").startswith("["):
+            assert node.get("envReplace") == "true", (
+                "node %s has a placeholder ip but no envReplace, so the "
+                "resource manager reads it literally and fails with "
+                "'no protocol'" % node.get("nodeId"))
+
+
+def test_the_translate_task_names_a_queue():
+    """Ignored by the local runner; without it the resource runner has
+    nowhere to send the task."""
+    tasks = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+             / "tasks.xml").read_text()
+    chunk = tasks[tasks.index("Translate_Chunk_Task"):]
+    chunk = chunk[:chunk.index("</task>")]
+    assert 'name="QueueName"' in chunk, "the translate task names no queue"
+    assert 'name="TaskLoad"' in chunk
+
+
+def test_a_node_can_be_run_without_the_managers():
+    """A compute node needs a batch stub and a translation service, not a
+    file manager. Mnemosyne ships no launcher for the stub."""
+    node = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "bt-node")
+    assert node.exists(), "there is no way to run a machine as a node"
+    text = node.read_text()
+    assert "AvroRpcBatchStub" in text
+    # The stub instantiates the workflow task itself, so it needs the PGE
+    # classes; missing them fails at job time, not at startup.
+    for part in ("resmgr/lib", "workflow/lib", "pge/lib"):
+        assert part in text, (
+            "the stub classpath omits %s, so it will fail when it is given "
+            "a job rather than when it starts" % part)
+
 def test_each_command_imports_the_submodules_it_uses():
     """A submodule attribute is only there if something imported it.
 
