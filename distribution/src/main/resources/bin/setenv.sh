@@ -67,6 +67,19 @@ export PANTOGLOSS_DEVICE=${PANTOGLOSS_DEVICE:-auto}
 # deployment's own default, which allows for a full queue draining through a
 # single slot; the service's thirty second default assumes a slot per caller.
 export PANTOGLOSS_QUEUE_TIMEOUT=${PANTOGLOSS_QUEUE_TIMEOUT:-}
+
+# How long the server collects arriving translations before running them
+# through the model together, and how large the combined call may get.
+#
+# Ten milliseconds is Pantogloss's own default and costs a lightly loaded
+# caller almost nothing. It buys less than it looks like it should here: the
+# PGE already sends thirty-two strings per request and a combined call holds
+# sixty-four, so at most two of our requests ever merge. A longer window
+# fills those pairs more reliably at the price of latency on a quiet queue.
+# Ignored by servers older than 0.19, which have no such flag.
+export PANTOGLOSS_BATCH_WAIT_MS=${PANTOGLOSS_BATCH_WAIT_MS:-10}
+export PANTOGLOSS_COALESCED_BATCH=${PANTOGLOSS_COALESCED_BATCH:-64}
+export PANTOGLOSS_COALESCED_CHARS=${PANTOGLOSS_COALESCED_CHARS:-200000}
 export FILEMGR_HOME=$BIGTRANSLATE_HOME/filemgr
 export PGE_HOME=$BIGTRANSLATE_HOME/pge
 export PCS_HOME=$BIGTRANSLATE_HOME/pcs

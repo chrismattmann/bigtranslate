@@ -3,8 +3,9 @@
 # (hirlite) is not required.
 etllib @ git+https://github.com/chrismattmann/etllib.git
 
-# Pantogloss is not listed here because it is not published: bigtranslate-setup
-# installs it from PANTOGLOSS_SOURCE, with the [server] extra and, on a machine
-# with a GPU, [metal] or [cuda]. It must be 0.18.0 or later; the setup script
-# checks what it landed on and says so if it is older. Earlier servers default
-# to more than one inference slot, which aborts the process on Apple silicon.
+# Pantogloss is not listed here because the extras it needs depend on the
+# machine: bigtranslate-setup installs it with the [server] extra and, where
+# there is a GPU, [metal] or [cuda]. It must be 0.19.0 or later; the setup
+# script checks what it landed on and says so if it is older. Earlier servers
+# cannot batch concurrent callers into one model call, so on Apple silicon
+# they translate one request at a time.
