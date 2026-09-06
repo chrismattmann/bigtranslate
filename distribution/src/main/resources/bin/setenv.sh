@@ -77,6 +77,32 @@ export PANTOGLOSS_QUEUE_TIMEOUT=${PANTOGLOSS_QUEUE_TIMEOUT:-}
 # sixty-four, so at most two of our requests ever merge. A longer window
 # fills those pairs more reliably at the price of latency on a quiet queue.
 # Ignored by servers older than 0.19, which have no such flag.
+# How much heap Solr gets.
+#
+# Solr's own default is 512m, which is ample for the tens of thousands of
+# documents a test run posts and is not what this corpus asks for: the
+# employment set indexes 119,453,210 documents into an 88GB index, and the
+# merging that goes with it is where a small heap stops being survivable.
+# Two gigabytes carried a two million document benchmark comfortably; four
+# is the number to start a full run with.
+export SOLR_HEAP=${SOLR_HEAP:-4g}
+
+# Where the index goes, if not under the deployment. An 88GB index does
+# not have to live beside the code.
+#
+# This is a data *root*, not the index directory: Solr is told through
+# solr.data.home, and the security policy it runs under grants that path
+# and its children by name. Naming a subdirectory of the volume instead
+# fails, because Solr reads the parent on the way in and the parent is not
+# what was granted -- "access denied (FilePermission /Volumes/X read)"
+# while pointed at /Volumes/X/something. Give it the root.
+#
+# The volume needs real filesystem semantics. exFAT has no hard links, no
+# journalling and is case-insensitive; Lucene wants all three, and the
+# failure mode is a corrupt index after a crash rather than an error at
+# startup. A disk image formatted APFS or HFS+ on that volume is fine.
+export SOLR_DATA_DIR=${SOLR_DATA_DIR:-}
+
 export PANTOGLOSS_BATCH_WAIT_MS=${PANTOGLOSS_BATCH_WAIT_MS:-10}
 export PANTOGLOSS_COALESCED_BATCH=${PANTOGLOSS_COALESCED_BATCH:-64}
 export PANTOGLOSS_COALESCED_CHARS=${PANTOGLOSS_COALESCED_CHARS:-200000}
