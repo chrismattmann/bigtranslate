@@ -476,3 +476,39 @@ class TestShippedScripts:
         path = BIN / "pantogloss-translatejson"
         assert path.is_file()
         assert path.stat().st_mode & 0o111, "shim must ship executable"
+
+
+def test_solr_gets_a_heap_a_full_run_can_use():
+    """Solr's own default is 512m.
+
+    Ample for a test run's tens of thousands of documents, and not what
+    this corpus asks for: the employment set indexes 119,453,210 documents
+    into an 88GB index, and the merging that goes with it is where a small
+    heap stops being survivable.
+    """
+    env = (REPO / "distribution" / "src" / "main" / "resources"
+           / "bin" / "setenv.sh").read_text()
+    assert "export SOLR_HEAP=${SOLR_HEAP:-" in env, "the heap is not settable"
+    oodt = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "oodt").read_text()
+    assert "SOLR_JAVA_MEM=" in oodt and "$SOLR_HEAP" in oodt, (
+        "SOLR_HEAP is declared but never reaches Solr")
+
+
+def test_an_index_off_the_deployment_is_told_through_data_home():
+    """Not through a dataDir in core.properties.
+
+    Solr runs under a security manager whose policy grants file access to
+    ${solr.data.home} and its children by name. A core pointed anywhere
+    else fails to load with an AccessControlException naming a file inside
+    the directory it was just told to use.
+    """
+    oodt = (REPO / "distribution" / "src" / "main" / "resources"
+            / "bin" / "oodt").read_text()
+    assert "-Dsolr.data.home=" in oodt, (
+        "the index location never reaches Solr's security policy")
+    assert "SOLR_DATA_DIR" in oodt
+    env = (REPO / "distribution" / "src" / "main" / "resources"
+           / "bin" / "setenv.sh").read_text()
+    assert "export SOLR_DATA_DIR=${SOLR_DATA_DIR:-}" in env, (
+        "the index location cannot be set per deployment")
