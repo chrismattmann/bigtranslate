@@ -12,10 +12,12 @@
      <cmd>cp [TranslatedDir]/[ChunkFile] [JobOutputDir]/</cmd>
   </exe>
 
+  <!-- Nothing to ingest. The join stage reads this directory directly, so
+       cataloguing every translated chunk would add a product per chunk that
+       nothing ever queries. An ingest that fails also takes a translation
+       that succeeded down with it, reporting Failure for work that is on
+       disk and correct. -->
   <output>
-    <dir path="[JobOutputDir]" createBeforeExe="false">
-       <files regExp="chunk-.*\.json" metFileWriterClass="org.apache.oodt.cas.pge.writers.metlist.MetadataListPcsMetFileWriter" args="[BIGTRANSLATE_HOME]/pge/policy/metout/generic_metout.xml"/>
-     </dir>
   </output>
 
   <customMetadata>
