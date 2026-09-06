@@ -20,6 +20,11 @@ TensorFlow: the module imports Pantogloss lazily, inside the branch that has
 strings left to translate, so the tests stay fast and run without the model.
 """
 
+# importlib.machinery is imported explicitly. Importing importlib.util
+# alone does not guarantee the attribute exists; where it appears to,
+# some other import has pulled it in, and that difference is invisible
+# until the code runs on a machine whose Python has not.
+import importlib.machinery
 import importlib.util
 import sys
 from pathlib import Path

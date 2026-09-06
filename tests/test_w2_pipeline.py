@@ -20,6 +20,7 @@ Measured on the 2,806 file employment corpus: 119,453,210 lines hold
 three hundred and sixty times the model time for the same answer, which is
 the whole reason this pipeline exists.
 """
+import ast
 import importlib.machinery
 import importlib.util
 import json
@@ -293,3 +294,71 @@ def test_a_record_with_no_readable_date_is_still_dropped():
         identifier="x-1")
     assert missing == ["postedDate"]
 
+
+
+def test_each_command_imports_the_submodules_it_uses():
+    """A submodule attribute is only there if something imported it.
+
+    bt-translate-chunk used importlib.machinery while importing only
+    importlib.util, and the whole suite passed. Whether that works is a
+    property of the interpreter build, not of the code:
+
+        M3 python 3.8.12   importlib.util alone gives machinery -> True
+        M3 venv   3.12.9                                        -> True
+        Ubuntu    3.12.3                                        -> False
+
+    So it ran here and died on the first node it was shipped to. No
+    runtime test on this machine can catch that, because this machine is
+    one of the ones where it works. Reading the source can.
+    """
+    for name in ("bt-extract-strings", "bt-translate-chunk", "bt-join-index"):
+        source = (BIN / name).read_text()
+        tree = ast.parse(source)
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    parts = alias.name.split(".")
+                    for i in range(len(parts)):
+                        imported.add(".".join(parts[:i + 1]))
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    imported.add(node.module + "." + alias.name)
+                    imported.add(node.module)
+        used = set()
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Attribute)
+                    and isinstance(node.value.value, ast.Name)):
+                used.add("%s.%s" % (node.value.value.id, node.value.attr))
+        # os.path is not like importlib.machinery: the standard library
+        # documents it as always bound by "import os", and every
+        # interpreter honours that. The submodules worth checking are the
+        # ones whose presence is an accident of what else got imported.
+        always_bound = {"os.path"}
+        for dotted in sorted(used - always_bound):
+            root = dotted.split(".")[0]
+            # Only real submodules. "sys.stderr" is an attribute and is
+            # always there; "importlib.machinery" is a module that has to
+            # be imported by someone.
+            try:
+                if importlib.util.find_spec(dotted) is None:
+                    continue
+            except (ImportError, AttributeError, ValueError):
+                continue
+            if root in imported and dotted not in imported:
+                pytest.fail(
+                    "%s uses %s but only imports %s -- that works only on "
+                    "interpreters where another import happens to pull it "
+                    "in" % (name, dotted, root))
+
+
+def test_each_command_runs_in_a_clean_interpreter():
+    """The cheap smoke test: it at least starts."""
+    for name in ("bt-extract-strings", "bt-translate-chunk", "bt-join-index"):
+        result = subprocess.run(
+            [sys.executable, str(BIN / name), "--help"],
+            capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, (
+            "%s cannot reach --help:\n%s" % (name, result.stderr[-600:]))
+        assert "usage:" in result.stdout.lower()
