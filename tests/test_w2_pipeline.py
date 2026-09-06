@@ -622,3 +622,75 @@ def test_an_engine_driven_run_is_visible():
     assert "bt-run-marker clear" in (policy / "PgeConfig_JoinIndex.xml").read_text()
     assert (REPO / "distribution" / "src" / "main" / "resources" / "bin"
             / "bt-run-marker").exists()
+
+
+def test_the_join_covers_the_whole_corpus():
+    """JoinShards said eight and only shard zero ever ran.
+
+    Nothing created instances for the other seven, so a corpus was indexed
+    one eighth of the way and the run reported Success: 54,634 documents
+    out of 327,232, with every workflow instance green. A wrong answer
+    that looks right is worse than a failure.
+    """
+    join = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+            / "no_filter" / "PgeConfig_JoinIndex.xml").read_text()
+    assert "seq 0" in join and "[JoinShards]" in join, (
+        "the join still runs a single hardcoded shard")
+    assert "--commit-only" in join, (
+        "no single commit after the shards; committing per shard sets "
+        "eight merges competing")
+
+
+def test_commit_only_does_not_also_reindex():
+    source = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+              / "bt-join-index").read_text()
+    assert "if args.commit_only:" in source
+    body = source[source.index("if args.commit_only:"):]
+    body = body[:body.index("paths = sorted")]
+    assert "return 0" in body, (
+        "commit-only falls through and indexes the corpus again")
+
+
+def test_the_join_refuses_a_partial_translation():
+    """The worst failure this pipeline can produce.
+
+    A quiet period is a guess. Chunks are length sorted, so the last ones
+    take the longest and a gap between two of them looks exactly like the
+    end of the run. One join started on seven chunks of ten and indexed
+    every record: 327,232 of 327,232 documents, every workflow instance
+    green, the run marker cleared -- and the longest strings still in
+    Spanish. A wrong answer that looks right.
+    """
+    source = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+              / "bt-join-index").read_text()
+    assert "def wait_for_chunks(" in source, (
+        "the join does not wait for the chunks it needs")
+    assert "refusing to" in source, (
+        "the join proceeds on a partial set rather than refusing")
+    join = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+            / "no_filter" / "PgeConfig_JoinIndex.xml").read_text()
+    assert "--expect" in join, "the join is never told how many to expect"
+    assert "EXPECTED=" in join, (
+        "the expected count is hardcoded rather than counted")
+
+
+def test_waiting_for_chunks_counts_what_is_there(tmp_path):
+    """Exercised, since the consequence of getting it wrong is silent."""
+    import importlib.machinery
+    import importlib.util
+    path = BIN / "bt-join-index"
+    spec = importlib.util.spec_from_loader(
+        "bt_join_index",
+        importlib.machinery.SourceFileLoader("bt_join_index", str(path)))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    d = tmp_path / "translated"
+    d.mkdir()
+    assert module.count_chunks(str(d)) == 0
+    for i in range(3):
+        (d / ("chunk-%05d.json" % i)).write_text("{}")
+    assert module.count_chunks(str(d)) == 3
+    # A partial set must time out rather than be accepted.
+    got = module.wait_for_chunks(str(d), 5, timeout=1, poll=1)
+    assert got == 3, "waiting invented chunks that are not there"
