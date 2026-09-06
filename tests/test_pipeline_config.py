@@ -576,3 +576,45 @@ def test_every_declared_product_type_is_in_the_element_map():
               .iter("type") if n.get("id")}
     missing = sorted(ids - mapped)
     assert not missing, "product types absent from the element map: %s" % missing
+
+
+def test_the_deployment_finds_itself():
+    """setenv.sh must not assume where it was installed.
+
+    The default was /usr/local/bigtranslate, so a deployment unpacked
+    anywhere else worked only if the caller exported BIGTRANSLATE_HOME
+    first. bin/oodt does, which is why the servers were fine and only the
+    client scripts fell over:
+
+      ./filemgr-client --url ... --operation --getNumProducts
+      cd: /usr/local/bigtranslate/filemgr/bin: No such file or directory
+      ClassNotFoundException: ...FileManagerClientMain
+
+    which reads like a broken install rather than an unset variable.
+    """
+    env = (REPO / "distribution" / "src" / "main" / "resources"
+           / "bin" / "setenv.sh").read_text()
+    assert "BASH_SOURCE" in env, (
+        "setenv.sh does not work out where it is; a deployment outside "
+        "/usr/local/bigtranslate will not find its own jars")
+    assert "_bt_bin" in env
+
+
+def test_the_derived_home_is_the_directory_above_bin(tmp_path):
+    """Exercised, not asserted about: source it from elsewhere and look."""
+    import subprocess
+    home = tmp_path / "somewhere" / "else"
+    (home / "bin").mkdir(parents=True)
+    source = (REPO / "distribution" / "src" / "main" / "resources"
+              / "bin" / "setenv.sh").read_text()
+    # Only the block under test; the rest reaches for a live deployment.
+    block = source[:source.index("# Ports first")]
+    (home / "bin" / "setenv.sh").write_text(block)
+    result = subprocess.run(
+        ["bash", "-c",
+         'cd /tmp && unset BIGTRANSLATE_HOME && . "%s" && echo "$BIGTRANSLATE_HOME"'
+         % (home / "bin" / "setenv.sh")],
+        capture_output=True, text=True, timeout=60)
+    got = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    assert got == str(home), (
+        "sourced from /tmp it resolved to %r, wanted %r" % (got, str(home)))
