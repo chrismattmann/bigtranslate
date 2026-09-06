@@ -154,6 +154,16 @@
           <!-- 32 suits the CPU service, 128 a CUDA one. A node translating
                with a GPU should override this in its own deployment. -->
           <property name="TranslateBatchSize" value="32"/>
+          <!-- Which queue this task goes to when the engine is running
+               through the resource manager, and how much of a node it
+               occupies. Ignored entirely by the local runner, so it is
+               harmless on a single machine install.
+
+               A load of one because a chunk is not CPU bound: it spends
+               its life waiting on the translation service, and the node's
+               capacity is already set to that service's inference slots. -->
+          <property name="QueueName" value="translate"/>
+          <property name="TaskLoad" value="1"/>
           <property name="ProductType" value="EmploymentTranslatedChunk"/>
           <requiredMetFields>
             <metfield name="Filename"/>

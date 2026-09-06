@@ -79,11 +79,35 @@ if [ "$1" = "start" ]; then
   # In case this script was run from somewhere else cd to this directory
   cd "$WORKFLOW_HOME"/bin
 
+  # Which engine runner the manager uses. Local by default; "resource"
+  # hands each task to the resource manager, which gives it to whichever
+  # node has capacity.
+  #
+  # The two files are concatenated rather than kept as separate complete
+  # copies, because the manager loads its properties with
+  # System.getProperties().load() -- the file wins over anything passed as
+  # -D, and a second full copy of a forty line file would drift. Later keys
+  # win in a Properties load, so the overrides simply follow the base.
+  WORKFLOW_PROPS="$WORKFLOW_HOME/etc/workflow.properties"
+  if [ "${WORKFLOW_RUNNER:-local}" = "resource" ]; then
+    if [ -f "$WORKFLOW_HOME/etc/workflow-distributed.properties" ]; then
+      mkdir -p "$OODT_TMPDIR"
+      WORKFLOW_PROPS="$OODT_TMPDIR/workflow-effective.properties"
+      cat "$WORKFLOW_HOME/etc/workflow.properties" \
+          "$WORKFLOW_HOME/etc/workflow-distributed.properties" \
+          > "$WORKFLOW_PROPS"
+      echo "Workflow engine: resource manager at ${RESMGR_URL:-unset}"
+    else
+      echo "WORKFLOW_RUNNER=resource but no workflow-distributed.properties;"
+      echo "running locally instead."
+    fi
+  fi
+
   "$_RUNJAVA" $JAVA_OPTS $OODT_OPTS \
     -cp "$WORKFLOW_HOME/lib/*" \
     -Dlog4j.configurationFile="$WORKFLOW_HOME"/etc/log4j2.xml \
     -Djava.util.logging.config.file="$WORKFLOW_HOME"/etc/logging.properties \
-    -Dorg.apache.oodt.cas.workflow.properties="$WORKFLOW_HOME"/etc/workflow.properties \
+    -Dorg.apache.oodt.cas.workflow.properties="$WORKFLOW_PROPS" \
     -Djava.io.tmpdir="$OODT_TMPDIR" \
     -Dorg.apache.oodt.cas.pge.task.metkeys.legacyMode="true" \
     -Dorg.apache.oodt.cas.pge.task.status.legacyMode="true" \

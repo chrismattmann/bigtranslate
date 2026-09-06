@@ -406,6 +406,13 @@ if [ "$1" = "start" ]; then
   start_oodt
 elif [ "$1" = "stop" ]; then
   stop_oodt
+elif [ "$1" = "start-pantogloss" ]; then
+  # For a compute node, which wants the translation service and none of the
+  # managers. bin/bt-node uses these two.
+  ensure_working_dirs
+  start_pantogloss
+elif [ "$1" = "stop-pantogloss" ]; then
+  stop_pantogloss
 elif [ "$1" = "restart" ]; then
   # The README has told people to run this since before it existed; it fell
   # through to the usage branch, quietly enough that a configuration change
@@ -418,6 +425,8 @@ else
   echo "  start             Start OODT in a separate window"
   echo "  stop              Stop OODT and wait for its ports to be free"
   echo "  restart           Stop OODT, wait for it, and start it again"
+  echo "  start-pantogloss  Just the translation service (compute nodes)"
+  echo "  stop-pantogloss   Stop just the translation service"
 #  echo "  version           What version of OODT are you running?"
   exit 1
 fi

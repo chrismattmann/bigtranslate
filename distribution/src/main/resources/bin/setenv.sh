@@ -77,6 +77,27 @@ export PANTOGLOSS_QUEUE_TIMEOUT=${PANTOGLOSS_QUEUE_TIMEOUT:-}
 # sixty-four, so at most two of our requests ever merge. A longer window
 # fills those pairs more reliably at the price of latency on a quiet queue.
 # Ignored by servers older than 0.19, which have no such flag.
+# Running the translate stage across more than one machine.
+#
+# "resource" hands each task to the resource manager, which gives it to a
+# node with capacity in the task's queue; "local" runs it in a thread here
+# and needs none of the rest of this. Local is the default because a single
+# machine install should not have to know what a batch stub is.
+# The corpus, read in place. The extract and join stages are pointed at
+# this; nothing copies it, because a single pass over 38GB takes minutes
+# and copying it takes a volume.
+export BIGTRANSLATE_CORPUS=${BIGTRANSLATE_CORPUS:-$BIGTRANSLATE_HOME/data/corpus}
+
+export WORKFLOW_RUNNER=${WORKFLOW_RUNNER:-local}
+
+# The nodes, as the resource manager addresses them. Each runs bin/bt-node,
+# which is a batch stub plus the translation service that stub's tasks will
+# use. The stub instantiates the workflow task itself, so a node needs the
+# same deployment as this machine, not just the stub.
+export BIGTRANSLATE_NODE_PORT=${BIGTRANSLATE_NODE_PORT:-2001}
+export BIGTRANSLATE_NODE_URL=${BIGTRANSLATE_NODE_URL:-http://localhost:$BIGTRANSLATE_NODE_PORT}
+export BIGTRANSLATE_NODE2_URL=${BIGTRANSLATE_NODE2_URL:-$BIGTRANSLATE_NODE_URL}
+
 export PANTOGLOSS_BATCH_WAIT_MS=${PANTOGLOSS_BATCH_WAIT_MS:-10}
 export PANTOGLOSS_COALESCED_BATCH=${PANTOGLOSS_COALESCED_BATCH:-64}
 export PANTOGLOSS_COALESCED_CHARS=${PANTOGLOSS_COALESCED_CHARS:-200000}

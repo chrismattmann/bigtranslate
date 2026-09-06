@@ -1,0 +1,103 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Run this machine as a compute node: a batch stub, and the translation
+# service the tasks it is given will talk to.
+#
+# The stub is what actually instantiates a workflow task, so a node needs
+# the same deployment as the machine running the managers -- the jars, the
+# PGE policy, the bin scripts. It does not need the managers themselves,
+# and does not start them.
+#
+# Mnemosyne ships no launcher for the stub, so this is it.
+
+if [ -z "$BIGTRANSLATE_HOME" ]; then
+  echo "BIGTRANSLATE_HOME is not set. Source bin/setenv.sh first."
+  exit 1
+fi
+. "$BIGTRANSLATE_HOME"/bin/setenv.sh
+
+NODE_PORT=${BIGTRANSLATE_NODE_PORT:-2001}
+STUB_PID="$BIGTRANSLATE_HOME/run/batch-stub.pid"
+STUB_LOG="$BIGTRANSLATE_HOME/logs/batch-stub.log"
+
+# The stub instantiates the task, so it needs everything the task needs:
+# the resource classes to be a stub at all, the workflow classes for
+# TaskJob, and the PGE classes for StdPGETaskInstance. Missing the last of
+# those fails at job time rather than at startup, with a
+# ClassNotFoundException in the manager's log rather than this one.
+STUB_CP="$BIGTRANSLATE_HOME/resmgr/lib/*:$BIGTRANSLATE_HOME/workflow/lib/*:$BIGTRANSLATE_HOME/pge/lib/*"
+
+stub_pid() {
+  if [ -f "$STUB_PID" ]; then
+    pid=$(cat "$STUB_PID" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      echo "$pid"
+      return 0
+    fi
+    rm -f "$STUB_PID"
+  fi
+  return 1
+}
+
+case "${1:-}" in
+  start)
+    if pid=$(stub_pid); then
+      echo "Batch stub already running (pid $pid)."
+      exit 0
+    fi
+    mkdir -p "$(dirname "$STUB_PID")" "$(dirname "$STUB_LOG")"
+    # The translation service first: a task handed to this node the moment
+    # the stub answers would otherwise find nothing to translate against.
+    "$BIGTRANSLATE_HOME"/bin/oodt start-pantogloss
+    nohup "$JAVA_HOME/bin/java" \
+      -cp "$STUB_CP" \
+      -Dorg.apache.oodt.cas.resource.properties="$BIGTRANSLATE_HOME"/resmgr/etc/resource.properties \
+      -Djava.io.tmpdir="${OODT_TMPDIR:-$BIGTRANSLATE_HOME/tomcat/temp}" \
+      -Dorg.apache.oodt.cas.pge.task.metkeys.legacyMode="true" \
+      -Dorg.apache.oodt.cas.pge.task.status.legacyMode="true" \
+      org.apache.oodt.cas.resource.system.extern.AvroRpcBatchStub \
+      --portNum "$NODE_PORT" >> "$STUB_LOG" 2>&1 &
+    echo $! > "$STUB_PID"
+    echo "Batch stub on $NODE_PORT (pid $(cat "$STUB_PID")); log $STUB_LOG"
+    ;;
+  stop)
+    if pid=$(stub_pid); then
+      kill "$pid" 2>/dev/null
+      rm -f "$STUB_PID"
+      echo "Batch stub stopped."
+    else
+      echo "No batch stub running."
+    fi
+    "$BIGTRANSLATE_HOME"/bin/oodt stop-pantogloss
+    ;;
+  status)
+    if pid=$(stub_pid); then
+      echo "Batch stub running (pid $pid) on $NODE_PORT."
+    else
+      echo "Batch stub not running."
+    fi
+    ;;
+  *)
+    echo "usage: bt-node {start|stop|status}"
+    echo
+    echo "Runs this machine as a compute node for the translate stage:"
+    echo "a batch stub on \$BIGTRANSLATE_NODE_PORT (default 2001) and the"
+    echo "translation service it will be asked to use. The managers are"
+    echo "not started; they live on whichever machine runs bin/oodt."
+    exit 2
+    ;;
+esac

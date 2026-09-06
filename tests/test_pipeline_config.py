@@ -476,3 +476,29 @@ class TestShippedScripts:
         path = BIN / "pantogloss-translatejson"
         assert path.is_file()
         assert path.stat().st_mode & 0o111, "shim must ship executable"
+
+
+def test_no_xml_comment_contains_a_double_hyphen():
+    """"--" is illegal inside an XML comment, and the parser says only that.
+
+    Four separate times in this work a comment explaining something used a
+    dash pair for punctuation, or named a command line flag, and the file
+    stopped parsing with a column number and no hint of the cause.
+    """
+    import glob
+    import re
+    offenders = []
+    for path in glob.glob(str(REPO / "**" / "*.xml"), recursive=True):
+        if "/target/" in path or "node_modules" in path:
+            continue
+        try:
+            source = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for match in re.finditer(r"<!--(.*?)-->", source, re.S):
+            if "--" in match.group(1):
+                offenders.append("%s: %s"
+                                 % (path.replace(str(REPO) + "/", ""),
+                                    match.group(1).strip()[:70]))
+    assert not offenders, (
+        "XML comments cannot contain '--':\n  " + "\n  ".join(offenders[:8]))
