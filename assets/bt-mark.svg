@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BigTranslate">
+  <title>BigTranslate</title>
+  <rect width="64" height="64" rx="14" fill="#990000"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#fff8e7" stroke-width="2.6"/>
+  <ellipse cx="32" cy="32" rx="7" ry="18" fill="none" stroke="#fff8e7" stroke-width="1.8"/>
+  <line x1="14" y1="32" x2="50" y2="32" stroke="#ffcc00" stroke-width="2.6" stroke-linecap="round"/>
+</svg>
