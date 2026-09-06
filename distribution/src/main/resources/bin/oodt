@@ -279,6 +279,20 @@ pantogloss_concurrency() {
   echo "${pool:-8}"
 }
 
+# Where Solr keeps its index.
+#
+# Told through solr.data.home rather than a dataDir in core.properties,
+# because Solr runs under a security manager whose policy grants file
+# access to ${solr.data.home} and its children by name. A core pointed
+# somewhere the policy has never heard of fails to load with an
+# AccessControlException naming a file inside the directory it was just
+# told to use, which reads like corruption rather than a permission.
+solr_index_policy() {
+  if [ -n "${SOLR_DATA_DIR:-}" ]; then
+    echo "-Dsolr.data.home=$SOLR_DATA_DIR"
+  fi
+}
+
 start_pantogloss() {
   serve_bin="$OODT_BASE/.venv/bin/pantogloss"
   if [ ! -x "$serve_bin" ]; then
@@ -383,6 +397,8 @@ start_oodt() {
   # war inside Tomcat. --solr-home points it at the bigtranslate core;
   # --user-managed keeps it out of SolrCloud, which BigTranslate does not use.
   if [ -x "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" ]; then
+    SOLR_JAVA_MEM="-Xms$SOLR_HEAP -Xmx$SOLR_HEAP" \
+    SOLR_OPTS="${SOLR_OPTS:-} $(solr_index_policy)" \
     nohup "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" start -p "$SOLR_PORT" \
       --solr-home "$OODT_BASE"/solr --user-managed >> "$OODT_OUT" 2>&1 &
   fi

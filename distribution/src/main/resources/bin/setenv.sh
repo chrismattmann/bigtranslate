@@ -77,17 +77,17 @@ export PANTOGLOSS_QUEUE_TIMEOUT=${PANTOGLOSS_QUEUE_TIMEOUT:-}
 # sixty-four, so at most two of our requests ever merge. A longer window
 # fills those pairs more reliably at the price of latency on a quiet queue.
 # Ignored by servers older than 0.19, which have no such flag.
+# The corpus, read in place. The extract and join stages are pointed at
+# this; nothing copies it, because a single pass over 38GB takes minutes
+# and copying it takes a volume.
+export BIGTRANSLATE_CORPUS=${BIGTRANSLATE_CORPUS:-$BIGTRANSLATE_HOME/data/corpus}
+
 # Running the translate stage across more than one machine.
 #
 # "resource" hands each task to the resource manager, which gives it to a
 # node with capacity in the task's queue; "local" runs it in a thread here
 # and needs none of the rest of this. Local is the default because a single
 # machine install should not have to know what a batch stub is.
-# The corpus, read in place. The extract and join stages are pointed at
-# this; nothing copies it, because a single pass over 38GB takes minutes
-# and copying it takes a volume.
-export BIGTRANSLATE_CORPUS=${BIGTRANSLATE_CORPUS:-$BIGTRANSLATE_HOME/data/corpus}
-
 export WORKFLOW_RUNNER=${WORKFLOW_RUNNER:-local}
 
 # The nodes, as the resource manager addresses them. Each runs bin/bt-node,
@@ -97,6 +97,32 @@ export WORKFLOW_RUNNER=${WORKFLOW_RUNNER:-local}
 export BIGTRANSLATE_NODE_PORT=${BIGTRANSLATE_NODE_PORT:-2001}
 export BIGTRANSLATE_NODE_URL=${BIGTRANSLATE_NODE_URL:-http://localhost:$BIGTRANSLATE_NODE_PORT}
 export BIGTRANSLATE_NODE2_URL=${BIGTRANSLATE_NODE2_URL:-$BIGTRANSLATE_NODE_URL}
+
+# How much heap Solr gets.
+#
+# Solr's own default is 512m, which is ample for the tens of thousands of
+# documents a test run posts and is not what this corpus asks for: the
+# employment set indexes 119,453,210 documents into an 88GB index, and the
+# merging that goes with it is where a small heap stops being survivable.
+# Two gigabytes carried a two million document benchmark comfortably; four
+# is the number to start a full run with.
+export SOLR_HEAP=${SOLR_HEAP:-4g}
+
+# Where the index goes, if not under the deployment. An 88GB index does
+# not have to live beside the code.
+#
+# This is a data *root*, not the index directory: Solr is told through
+# solr.data.home, and the security policy it runs under grants that path
+# and its children by name. Naming a subdirectory of the volume instead
+# fails, because Solr reads the parent on the way in and the parent is not
+# what was granted -- "access denied (FilePermission /Volumes/X read)"
+# while pointed at /Volumes/X/something. Give it the root.
+#
+# The volume needs real filesystem semantics. exFAT has no hard links, no
+# journalling and is case-insensitive; Lucene wants all three, and the
+# failure mode is a corrupt index after a crash rather than an error at
+# startup. A disk image formatted APFS or HFS+ on that volume is fine.
+export SOLR_DATA_DIR=${SOLR_DATA_DIR:-}
 
 export PANTOGLOSS_BATCH_WAIT_MS=${PANTOGLOSS_BATCH_WAIT_MS:-10}
 export PANTOGLOSS_COALESCED_BATCH=${PANTOGLOSS_COALESCED_BATCH:-64}
