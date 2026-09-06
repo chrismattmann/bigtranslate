@@ -25,6 +25,7 @@ exists is complete. A chunk whose output already exists is skipped, which
 makes a re-run after a failure cost only the chunks that did not finish.
 """
 import argparse
+import importlib.machinery
 import importlib.util
 import json
 import os
