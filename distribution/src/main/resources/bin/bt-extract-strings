@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Reduce a corpus of TSVs to the distinct strings that need translating.
+
+This is the whole reason the pipeline is affordable. Measured on the 2,806
+file employment corpus: 119,453,210 lines hold 836,098,741 cells in the
+seven translatable columns, and those are only 2,286,371 distinct strings --
+a factor of 365. Translating rows instead of distinct strings is three
+hundred times more model time for the same answer.
+
+Output is chunks of a fixed size, globally sorted by length. Sorting is not
+cosmetic: the runtime pads a batch to a power of two by its longest source,
+so a chunk of similar-length strings wastes far less. Measured 29% less
+inference time, worth 1.44x on CPU and 1.17x on CUDA.
+
+Chunks are the unit of work the workflow distributes, so one chunk is one
+workflow instance on one node.
+"""
+import argparse
+import glob
+import json
+import os
+import sys
+import time
+
+
+def log(message):
+    sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
+    sys.stderr.flush()
+
+
+def read_columns(path):
+    """Column names, one per line, in the order they appear in the TSVs."""
+    with open(path, encoding="utf-8") as handle:
+        return [line.strip() for line in handle if line.strip()]
+
+
+def column_indices(headers, wanted):
+    """Which columns to pull, by position.
+
+    A name that appears twice in the headers -- "location" does -- yields
+    both positions, because either may hold the value.
+    """
+    names = set(wanted)
+    return {i for i, name in enumerate(headers) if name in names}
+
+
+def distinct_strings(paths, indices, progress_every=200):
+    """Every distinct value in the wanted columns, as bytes.
+
+    Read in large binary blocks rather than by line: the corpus is 38GB and
+    Python's line iteration is the difference between five minutes and an
+    hour. Values are kept as bytes to avoid decoding 836 million cells that
+    are mostly about to be thrown away as duplicates.
+    """
+    seen = set()
+    cells = rows = nbytes = 0
+    started = time.time()
+    for number, path in enumerate(paths, 1):
+        with open(path, "rb") as handle:
+            tail = b""
+            for block in iter(lambda: handle.read(1 << 24), b""):
+                nbytes += len(block)
+                block = tail + block
+                cut = block.rfind(b"\n")
+                if cut == -1:
+                    tail = block
+                    continue
+                tail = block[cut + 1:]
+                for line in block[:cut].split(b"\n"):
+                    rows += 1
+                    parts = line.split(b"\t")
+                    for index in indices:
+                        if index < len(parts):
+                            value = parts[index].strip()
+                            if value:
+                                cells += 1
+                                seen.add(value)
+            if tail.strip():
+                rows += 1
+                parts = tail.split(b"\t")
+                for index in indices:
+                    if index < len(parts):
+                        value = parts[index].strip()
+                        if value:
+                            cells += 1
+                            seen.add(value)
+        if number % progress_every == 0:
+            log("  %d/%d files, %.1f GB, %d distinct so far"
+                % (number, len(paths), nbytes / 1024.0 ** 3, len(seen)))
+    return seen, cells, rows, nbytes, time.time() - started
+
+
+def write_chunks(strings, out_dir, chunk_size):
+    """Length-sorted chunks, plus a manifest describing the whole set.
+
+    Sorted globally and then cut, so each chunk holds strings of nearly
+    identical length and the model pads almost nothing.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    ordered = sorted(strings, key=len)
+    written = []
+    for start in range(0, len(ordered), chunk_size):
+        piece = ordered[start:start + chunk_size]
+        name = "chunk-%05d.json" % (start // chunk_size)
+        path = os.path.join(out_dir, name)
+        # Decoded here and only here: this is the one point where every
+        # distinct string is touched, and errors are replaced rather than
+        # raised so that one bad byte cannot lose a chunk.
+        text = [value.decode("utf-8", "replace") for value in piece]
+        tmp = path + ".partial"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(text, handle, ensure_ascii=False)
+        # Renamed into place, so a chunk file that exists is a chunk file
+        # that is complete. A run interrupted midway leaves no half chunk
+        # for the translate stage to pick up and silently truncate.
+        os.rename(tmp, path)
+        written.append({"chunk": name, "count": len(piece),
+                        "min_length": len(piece[0]),
+                        "max_length": len(piece[-1])})
+    return written
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="bt-extract-strings",
+        description="Reduce a TSV corpus to the distinct strings needing "
+                    "translation, as length-sorted chunks of work.")
+    parser.add_argument("--corpus", required=True,
+                        help="directory of .tsv files, read in place")
+    parser.add_argument("--out-dir", required=True,
+                        help="where the chunk files are written")
+    parser.add_argument("--colheaders", required=True,
+                        help="column names, one per line, in TSV order")
+    parser.add_argument("--translate-cols", required=True,
+                        help="which of those columns to translate")
+    # 5,000 keeps a chunk around three minutes on the slowest node we
+    # measured, which is short enough that losing one to a restart costs
+    # little and long enough that per-instance overhead disappears.
+    parser.add_argument("--chunk-size", type=int, default=5000)
+    args = parser.parse_args(argv)
+
+    if not os.path.isdir(args.corpus):
+        parser.error("--corpus is not a directory: %s" % args.corpus)
+    paths = sorted(glob.glob(os.path.join(args.corpus, "*.tsv")))
+    if not paths:
+        parser.error("no .tsv files under %s" % args.corpus)
+
+    headers = read_columns(args.colheaders)
+    wanted = read_columns(args.translate_cols)
+    indices = column_indices(headers, wanted)
+    if not indices:
+        parser.error("none of the columns in %s appear in %s"
+                     % (args.translate_cols, args.colheaders))
+
+    log("extracting from %d files, columns %s"
+        % (len(paths), sorted(indices)))
+    seen, cells, rows, nbytes, elapsed = distinct_strings(paths, indices)
+    log("%d lines, %d cells, %d distinct in %.0fs"
+        % (rows, cells, len(seen), elapsed))
+
+    chunks = write_chunks(seen, args.out_dir, args.chunk_size)
+    manifest = {
+        "files": len(paths), "bytes": nbytes, "lines": rows,
+        "cells": cells, "distinct": len(seen),
+        "dedup_factor": round(cells / float(len(seen)), 1) if seen else 0,
+        "chunk_size": args.chunk_size, "chunks": chunks,
+    }
+    path = os.path.join(args.out_dir, "manifest.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2)
+    log("wrote %d chunks and %s" % (len(chunks), path))
+    log("dedup factor %.1fx -- %d strings to translate, not %d cells"
+        % (manifest["dedup_factor"], len(seen), cells))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

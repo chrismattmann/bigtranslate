@@ -98,4 +98,83 @@
     </configuration>
   </task>
 
+
+  <!-- The W2 pipeline. Three stages, of which only the middle one is
+       expensive: the corpus holds 836 million translatable cells but only
+       2.29 million distinct strings, so translating rows rather than
+       distinct strings is three hundred times the model time for the same
+       answer. Extract measures five minutes over 38GB and the join and
+       index about an hour; the translate stage is the rest, and it is the
+       only stage worth distributing. -->
+
+  <task id="urn:bigtranslate:Extract_Strings_Task" name="Extract_Strings_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="Extract_Strings_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_ExtractStrings.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true"/>
+          <property name="PCS_FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <!-- Read in place. The corpus is 38GB on an external volume and
+               copying it buys nothing: a single pass over it takes five
+               minutes and happens once. -->
+          <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
+          <property name="StringsDir" value="[BIGTRANSLATE_HOME]/data/strings" envReplace="true"/>
+          <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
+          <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
+          <property name="ChunkSize" value="5000"/>
+          <property name="ProductType" value="EmploymentStringChunk"/>
+        </configuration>
+  </task>
+
+  <task id="urn:bigtranslate:Translate_Chunk_Task" name="Translate_Chunk_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="Translate_Chunk_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_TranslateChunk.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true"/>
+          <property name="PCS_FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated" envReplace="true"/>
+          <property name="PantoglossUrl" value="[PANTOGLOSS_URL]" envReplace="true"/>
+          <!-- 32 suits the CPU service, 128 a CUDA one. A node translating
+               with a GPU should override this in its own deployment. -->
+          <property name="TranslateBatchSize" value="32"/>
+          <property name="ProductType" value="EmploymentTranslatedChunk"/>
+          <requiredMetFields>
+            <metfield name="Filename"/>
+          </requiredMetFields>
+        </configuration>
+  </task>
+
+  <task id="urn:bigtranslate:Join_Index_Task" name="Join_Index_Task"
+    class="org.apache.oodt.cas.pge.StdPGETaskInstance">
+        <conditions/>
+        <configuration>
+          <property name="PGETask_Name" value="Join_Index_Task"/>
+          <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_JoinIndex.xml" envReplace="true"/>
+          <property name="PGETask_DumpMetadata" value="true"/>
+          <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true"/>
+          <property name="PCS_FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
+          <property name="PCS_MetFileExtension" value="met"/>
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
+          <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated" envReplace="true"/>
+          <property name="SolrUrl" value="[SOLR_URL]" envReplace="true"/>
+          <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
+          <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
+          <!-- Solr posts at about 35,000 documents a second and is not the
+               bottleneck, so the shards exist to overlap reading the corpus
+               with posting rather than to push Solr harder. -->
+          <property name="JoinShards" value="8"/>
+          <property name="ProductType" value="EmploymentIndexedShard"/>
+        </configuration>
+  </task>
+
 </cas:tasks>

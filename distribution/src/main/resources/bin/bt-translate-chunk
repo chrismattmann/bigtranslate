@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Translate one chunk of distinct strings.
+
+This is the unit of work the engine distributes: one chunk, one instance,
+one node. It is deliberately the only stage that talks to a model, and it
+holds no state beyond its own output file, so the same chunk can be run on
+the M3 or on a CUDA box and the result is identical.
+
+Output is written to a temporary name and renamed, so a chunk file that
+exists is complete. A chunk whose output already exists is skipped, which
+makes a re-run after a failure cost only the chunks that did not finish.
+"""
+import argparse
+import importlib.util
+import json
+import os
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_translator():
+    """Borrow the PGE's translate logic rather than reimplementing it.
+
+    pantogloss-translatejson already knows how to talk to the service: the
+    retry on a queue timeout, the distinction between "busy, ask again" and
+    "not there at all", and the batch shape. Loading it by path -- it has no
+    .py suffix, being a command -- keeps one implementation of all that.
+    """
+    path = os.path.join(HERE, "pantogloss-translatejson")
+    spec = importlib.util.spec_from_loader(
+        "pantogloss_translatejson",
+        importlib.machinery.SourceFileLoader("pantogloss_translatejson", path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def log(message):
+    sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
+    sys.stderr.flush()
+
+
+def translate_chunk(translator, strings, service_url, batch_size,
+                    beam_size, max_length, timeout):
+    """Translate in batches, preserving the chunk's existing order.
+
+    The chunk arrives already sorted by length from the extract stage, so
+    batches are cut straight from it and pad almost nothing. Sorting again
+    here would be wasted work.
+    """
+    out = {}
+    for start in range(0, len(strings), batch_size):
+        batch = strings[start:start + batch_size]
+        got = translator.translate_batch(service_url, batch, beam_size,
+                                         max_length, timeout)
+        if len(got) != len(batch):
+            raise RuntimeError(
+                "service returned %d translations for %d inputs"
+                % (len(got), len(batch)))
+        out.update(dict(zip(batch, got)))
+    return out
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="bt-translate-chunk",
+        description="Translate one chunk of distinct strings.")
+    parser.add_argument("--chunk", required=True, help="a chunk JSON file")
+    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--service-url", required=True)
+    parser.add_argument("--batch-size", type=int, default=32,
+                        help="32 suits a CPU service, 128 a CUDA one")
+    parser.add_argument("--beam-size", type=int, default=0)
+    parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument("--service-timeout", type=int, default=1800)
+    parser.add_argument("--force", action="store_true",
+                        help="translate even if the output already exists")
+    args = parser.parse_args(argv)
+
+    name = os.path.basename(args.chunk)
+    os.makedirs(args.out_dir, exist_ok=True)
+    out_path = os.path.join(args.out_dir, name)
+    if os.path.exists(out_path) and not args.force:
+        log("%s already translated, skipping" % name)
+        return 0
+
+    with open(args.chunk, encoding="utf-8") as handle:
+        strings = json.load(handle)
+    if not isinstance(strings, list):
+        parser.error("%s does not hold a list of strings" % args.chunk)
+
+    translator = load_translator()
+    # Checked once, before the work: a service that is not there is not
+    # something to find out on the last batch.
+    health = translator.check_service(args.service_url, 30)
+    log("%s: %d strings, service %s, model %s"
+        % (name, len(strings), args.service_url, health.get("model_status")))
+
+    started = time.time()
+    out = translate_chunk(translator, strings, args.service_url,
+                          args.batch_size, args.beam_size, args.max_length,
+                          args.service_timeout)
+    elapsed = time.time() - started
+
+    tmp = out_path + ".partial"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(out, handle, ensure_ascii=False)
+    os.rename(tmp, out_path)
+    log("%s: %d translated in %.0fs (%.1f strings/s) -> %s"
+        % (name, len(out), elapsed,
+           len(out) / elapsed if elapsed else 0, out_path))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
