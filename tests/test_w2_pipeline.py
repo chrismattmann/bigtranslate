@@ -454,3 +454,42 @@ def test_each_command_runs_in_a_clean_interpreter():
         assert result.returncode == 0, (
             "%s cannot reach --help:\n%s" % (name, result.stderr[-600:]))
         assert "usage:" in result.stdout.lower()
+
+
+def test_only_the_stage_whose_output_is_needed_ingests_it():
+    """An ingest that fails takes a successful stage down with it.
+
+    The PGE marks the whole task failed if any declared output cannot be
+    catalogued, so a translate that wrote all 5,000 pairs to disk was
+    recorded as Failure because the file manager declined the file. Over a
+    four hour run that is the difference between a result you can trust
+    and one you have to go and check by hand.
+
+    Extract is the one stage whose products are genuinely needed: each
+    chunk it catalogues is what triggers a translate. The join reads the
+    translated directory directly, and the shard marker is for the log.
+    """
+    policy = REPO / "pge" / "src" / "main" / "resources" / "policy" / "no_filter"
+    extract = (policy / "PgeConfig_ExtractStrings.xml").read_text()
+    assert "<files regExp=" in extract, (
+        "extract must catalogue its chunks; nothing else starts a translate")
+
+    for name in ("TranslateChunk", "JoinIndex"):
+        config = (policy / ("PgeConfig_%s.xml" % name)).read_text()
+        block = config[config.index("<output>"):config.index("</output>")]
+        assert "<files" not in block and "<dir" not in block, (
+            "%s declares an output to ingest; a failure there would mark "
+            "work that succeeded as failed" % name)
+
+
+def test_the_chunk_pattern_cannot_match_its_own_met_file():
+    """"chunk-.*\\.json" also matches "chunk-00003.json.met"."""
+    import re
+    policy = REPO / "pge" / "src" / "main" / "resources" / "policy" / "no_filter"
+    extract = (policy / "PgeConfig_ExtractStrings.xml").read_text()
+    pattern = re.search(r'<files regExp="([^"]+)"', extract).group(1)
+    compiled = re.compile(pattern)
+    assert compiled.match("chunk-00003.json"), (
+        "the pattern no longer matches a chunk: %s" % pattern)
+    assert not compiled.fullmatch("chunk-00003.json.met"), (
+        "the pattern also matches the met file written beside the chunk")
