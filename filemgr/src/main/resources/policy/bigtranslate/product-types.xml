@@ -162,4 +162,73 @@ limitations under the License.
     </metExtractors>
   </type>
 
+
+  <type id="urn:bigtranslate:EmploymentStringChunk" name="EmploymentStringChunk">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/strings"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
+    <description>One chunk of distinct strings awaiting translation. The extract stage writes these; each one becomes a translate instance, and the translate stage looks its own file up here by name.</description>
+    <metExtractors>
+      <extractor
+        class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
+        <configuration>
+          <property name="nsAware" value="true" />
+          <property name="elementNs" value="CAS" />
+          <property name="elements"
+            value="ProductReceivedTime,ProductName,ProductId" />
+        </configuration>
+      </extractor>
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.MimeTypeExtractor" />
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.FinalFileLocationExtractor">
+        <configuration>
+           <property name="replace" value="true"/>
+        </configuration>
+      </extractor>
+    </metExtractors>
+  </type>
+
+  <type id="urn:bigtranslate:EmploymentTranslatedChunk" name="EmploymentTranslatedChunk">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/translated"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
+    <description>One chunk of distinct strings, translated. The join stage reads every one of these into a single lookup.</description>
+    <metExtractors>
+      <extractor
+        class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
+        <configuration>
+          <property name="nsAware" value="true" />
+          <property name="elementNs" value="CAS" />
+          <property name="elements"
+            value="ProductReceivedTime,ProductName,ProductId" />
+        </configuration>
+      </extractor>
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.MimeTypeExtractor" />
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.FinalFileLocationExtractor">
+        <configuration>
+           <property name="replace" value="true"/>
+        </configuration>
+      </extractor>
+    </metExtractors>
+  </type>
+
+  <type id="urn:bigtranslate:EmploymentIndexedShard" name="EmploymentIndexedShard">
+    <repository path="file://[BIGTRANSLATE_HOME]/data/jobs/join"/>
+    <versioner class="org.apache.oodt.cas.filemgr.versioning.InPlaceVersioner"/>
+    <description>A marker that one shard of the corpus has been joined against the translations and posted to Solr.</description>
+    <metExtractors>
+      <extractor
+        class="org.apache.oodt.cas.filemgr.metadata.extractors.CoreMetExtractor">
+        <configuration>
+          <property name="nsAware" value="true" />
+          <property name="elementNs" value="CAS" />
+          <property name="elements"
+            value="ProductReceivedTime,ProductName,ProductId" />
+        </configuration>
+      </extractor>
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.MimeTypeExtractor" />
+      <extractor class="org.apache.oodt.cas.filemgr.metadata.extractors.examples.FinalFileLocationExtractor">
+        <configuration>
+           <property name="replace" value="true"/>
+        </configuration>
+      </extractor>
+    </metExtractors>
+  </type>
 </cas:producttypes>

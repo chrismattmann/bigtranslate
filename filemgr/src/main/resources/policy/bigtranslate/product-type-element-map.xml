@@ -25,5 +25,8 @@ of elements between the types
   <type id="urn:bigtranslate:EmploymentJobAggregates" parent="urn:oodt:TraceableFile"/>
   <type id="urn:bigtranslate:EmploymentJob" parent="urn:oodt:TraceableFile"/>
   <type id="urn:bigtranslate:EmploymentJobTranslated" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentStringChunk" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentTranslatedChunk" parent="urn:oodt:TraceableFile"/>
+  <type id="urn:bigtranslate:EmploymentIndexedShard" parent="urn:oodt:TraceableFile"/>
 
 </cas:producttypemap>

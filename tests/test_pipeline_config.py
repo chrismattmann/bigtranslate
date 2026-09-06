@@ -537,3 +537,42 @@ def test_an_index_off_the_deployment_is_told_through_data_home():
            / "bin" / "setenv.sh").read_text()
     assert "export SOLR_DATA_DIR=${SOLR_DATA_DIR:-}" in env, (
         "the index location cannot be set per deployment")
+
+
+def test_every_product_type_a_task_writes_is_declared():
+    """A task naming an undeclared type fails only when it runs.
+
+    The failure is "Unknown product type: EmploymentStringChunk" from the
+    catalog, thrown while the PGE builds its config, several layers away
+    from the tasks.xml line that named it.
+    """
+    import re
+    import xml.etree.ElementTree as ET
+    tasks = (WORKFLOW_POLICY / "tasks.xml").read_text()
+    named = set(re.findall(r'<property name="ProductType" value="([^"]+)"',
+                           tasks))
+    assert named, "no task declares a ProductType"
+    types = REPO / "filemgr" / "src" / "main" / "resources" / "policy"
+    declared = set()
+    for path in types.rglob("product-types.xml"):
+        for node in ET.parse(path).getroot().iter("type"):
+            if node.get("name"):
+                declared.add(node.get("name"))
+    missing = sorted(named - declared)
+    assert not missing, (
+        "tasks.xml names product types the file manager does not declare: %s"
+        % missing)
+
+
+def test_every_declared_product_type_is_in_the_element_map():
+    import xml.etree.ElementTree as ET
+    policy = (REPO / "filemgr" / "src" / "main" / "resources" / "policy"
+              / "bigtranslate")
+    ids = {n.get("id") for n in
+           ET.parse(policy / "product-types.xml").getroot().iter("type")
+           if n.get("id")}
+    mapped = {n.get("id") for n in
+              ET.parse(policy / "product-type-element-map.xml").getroot()
+              .iter("type") if n.get("id")}
+    missing = sorted(ids - mapped)
+    assert not missing, "product types absent from the element map: %s" % missing
