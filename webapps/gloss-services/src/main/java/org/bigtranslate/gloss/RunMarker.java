@@ -139,9 +139,24 @@ public final class RunMarker {
         run.put(name, value);
       }
     }
-    Long startedAt = longField(body, "startedAt");
-    if (startedAt != null) {
-      run.put("startedAt", startedAt);
+    // Every numeric field the marker carries, not just the start time.
+    //
+    // Parsing only startedAt cost two visible things. The progress panel drew
+    // no meter, because the counts it renders were never in the map; and
+    // isStale never fired, because it reads heartbeatAt and heartbeatAt was
+    // never parsed -- so the guard against reporting a dead run as live could
+    // not have worked in any deployment since it was written.
+    for (String name : new String[] {
+        "startedAt", "heartbeatAt", "translatingSince",
+        "chunksTotal", "chunksDone"}) {
+      Long value = longField(body, name);
+      if (value != null) {
+        run.put(name, value);
+      }
+    }
+    String stage = stringField(body, "stage");
+    if (stage != null) {
+      run.put("stage", stage);
     }
     return run.isEmpty() ? null : run;
   }

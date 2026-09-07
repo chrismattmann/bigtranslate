@@ -14,6 +14,7 @@
 // limitations under the License.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   percent, rateLabel, remainingLabel, elapsedLabel, stageLabel, duration
 } from './progress.js'
@@ -78,4 +79,14 @@ test('reads durations the way a person would say them', () => {
 test('elapsed falls back to the start when nothing has translated yet', () => {
   assert.equal(elapsedLabel({ startedAt: minutesAgo(30) }, NOW), '30m')
   assert.equal(elapsedLabel({}, NOW), '')
+})
+
+test('the log pane is bounded and scrolls inside itself', () => {
+  // Not arithmetic, but worth pinning: unbounded, the pane printed a whole
+  // log down the page. One run showed ninety lines of a translation from
+  // two days earlier and pushed everything else off the screen.
+  const pane = readFileSync(
+    new URL('./components/ProgressPane.vue', import.meta.url), 'utf8')
+  assert.match(pane, /max-height/, 'the log pane is unbounded')
+  assert.match(pane, /overflow:\s*auto/, 'the log pane does not scroll')
 })

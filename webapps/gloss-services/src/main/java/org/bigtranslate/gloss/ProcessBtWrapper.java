@@ -61,6 +61,9 @@ public class ProcessBtWrapper {
    */
   static final long STALE_AFTER_MILLIS = 10L * 60L * 1000L;
 
+  /** How far before a run's start its own log may already have been written. */
+  static final long STALE_LOG_MARGIN_MILLIS = 60L * 1000L;
+
   /** What the stages record about how far along they are. */
   private static final String[] PROGRESS_KEYS = {
       "stage", "chunksTotal", "chunksDone", "translatingSince"};
@@ -426,18 +429,61 @@ public class ProcessBtWrapper {
 
   /** Whichever of the two logs was written to last, or null if neither was. */
   static File mostRecentLog() {
+    return mostRecentLog(runStartedAt());
+  }
+
+  /**
+   * The most recent log, so long as it belongs to the run in progress.
+   *
+   * <p>Picking the newest of the two files says nothing about which run
+   * wrote it. A run that writes no log of its own leaves the previous
+   * run's as the newest, and the page then shows that instead: one
+   * displayed eleven thousand seconds of a translation from two days
+   * earlier, next to a progress bar describing the run actually
+   * happening.</p>
+   *
+   * <p>A log last written before this run began is a log from an earlier
+   * one. Showing nothing is the honest answer, and the panel already says
+   * so in words.</p>
+   */
+  static File mostRecentLog(long runStartedAt) {
     File[] candidates = {
         new File(FileConstants.logFile()),
         new File(FileConstants.path("/logs/bigtranslate.log"))
     };
     File best = null;
     for (File candidate : candidates) {
-      if (candidate.exists() && candidate.length() > 0
-          && (best == null || candidate.lastModified() > best.lastModified())) {
+      if (!candidate.exists() || candidate.length() == 0) {
+        continue;
+      }
+      // A margin, because a run's first log line lands a moment after the
+      // marker that announces it.
+      if (runStartedAt > 0
+          && candidate.lastModified() < runStartedAt - STALE_LOG_MARGIN_MILLIS) {
+        continue;
+      }
+      if (best == null || candidate.lastModified() > best.lastModified()) {
         best = candidate;
       }
     }
     return best;
+  }
+
+  /** When the run in progress began, or 0 if none is recorded. */
+  private static long runStartedAt() {
+    Map<String, Object> recorded = RunMarker.read();
+    if (recorded == null) {
+      return 0L;
+    }
+    Object started = recorded.get("startedAt");
+    if (started == null) {
+      return 0L;
+    }
+    try {
+      return Long.parseLong(String.valueOf(started).trim());
+    } catch (NumberFormatException e) {
+      return 0L;
+    }
   }
 
   public static long countJobDirs() {

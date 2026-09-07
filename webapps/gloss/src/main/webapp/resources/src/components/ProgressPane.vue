@@ -40,7 +40,7 @@
       actually writing; when there genuinely is not one yet, say that rather
       than implying something is stuck.
     -->
-    <pre v-if="log">{{ log }}</pre>
+    <pre v-if="log" class="tail">{{ log }}</pre>
     <p v-else-if="!hasCounts" class="nolog">
       No log output yet. The workflow manager is running this; its progress
       shows above and in OPSUI.
@@ -87,6 +87,25 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * Bounded, and scrolled inside itself. Unbounded it printed the whole log
+ * down the page -- one run showed ninety lines of a translation from two
+ * days earlier and pushed everything else off the screen.
+ */
+.tail {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 0.9rem;
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  border-radius: 2px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .tally { margin: 0.75rem 0; }
 .bar {
   height: 6px;
