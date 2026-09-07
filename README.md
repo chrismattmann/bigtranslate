@@ -10,54 +10,65 @@ BigTranslate
 
 <a href="https://chrismattmann.github.io/bigtranslate/"><img align="left" width="80" height="80" src="https://chrismattmann.github.io/bigtranslate/assets/bt-mark.svg" alt="BigTranslate"></a>
 
-A distributed, parallelized (Map Reduce) system that uses [Pantogloss](https://github.com/chrismattmann/pantogloss) to machine-translate many millions of rows of TSV data. Pantogloss is a TensorFlow/Keras many-to-English library that runs locally — no hosted translation APIs. BigTranslate uses [Mnemosyne](https://github.com/chrismattmann/mnemosyne) to split and distribute those translations. The system has been tested on up to 190 million rows of TSV data involving millions of translations on 16-core nodes and finishes in reasonable amounts of time. BigTranslate uses [ETLLib](https://github.com/chrismattmann/etllib/) (`tsvtojson`, `repackage`, `poster`) to prepare records for Pantogloss. Once the data is translated it is ingested into Apache&trade; Solr for querying and large scale analytics and retrieval. [Gloss](https://github.com/chrismattmann/bigtranslate/wiki/Gloss) is the GUI: Vue 3 at `http://localhost:8080/gloss/`, with Translate/Reset from the browser (the CLI still starts runs) and a D3 density-bubble map of postings by location.
+A distributed system that machine-translates many millions of rows of TSV data
+and indexes them into Apache&trade; Solr. Translation is
+[Pantogloss](https://github.com/chrismattmann/pantogloss), a TensorFlow/Keras
+many-to-English library that runs locally — no hosted translation APIs.
+[Mnemosyne](https://github.com/chrismattmann/mnemosyne) splits the corpus and
+distributes the work.
 
-Translation is performed by Pantogloss with a Spanish&rarr;English employment glossary and a local cache. The PGE `pantogloss-translatejson` runs the model offline over selected columns.
+## How a run works
 
-BigTranslate needs the Python tools `tsvtojson`, `repackage` and `poster` from
-ETLLib (Python 3.10+, plus libmagic). In an unpacked distribution, one command
-installs them into a virtual environment beside the services:
+Translating every cell of a 38GB corpus is 836 million model calls; translating
+every *distinct* string is 2.3 million. That 365x difference is the design, so
+the pipeline deduplicates globally before translating anything and joins the
+results back afterwards. One 8-core machine finishes in about 14 hours.
+
+| Stage | Workflow | Does |
+| --- | --- | --- |
+| Extract | `ExtractStringsWorkflow` | Reads the corpus once, deduplicates every translatable cell, writes length-sorted chunks |
+| Translate | `TranslateChunkWorkflow` | One instance per chunk, distributed across nodes; calls the Pantogloss server |
+| Join | `JoinIndexWorkflow` | Builds a SQLite table of the translations, then sharded workers rejoin the corpus and post to Solr |
+
+These are Workflow 2 (`PrioritizedQueueBasedWorkflowEngine`) workflows, so the
+run scales with chunks rather than with files.
+[Gloss](https://github.com/chrismattmann/bigtranslate/wiki/Gloss) is the GUI:
+Vue 3 at `/gloss/`, with Translate/Reset from the browser, live run progress,
+and a D3 density-bubble map of postings by location.
+
+## Installing
 
 ```bash
 PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
 bin/oodt restart
 ```
 
-Pantogloss is not in `requirements.txt` because it is not published, so
-`PANTOGLOSS_SOURCE` points the setup script at a checkout, a wheel, or any pip
-specifier. It goes into the same environment as ETLLib rather than one of its
-own: the PGE runs `pantogloss-translatejson` through `#!/usr/bin/env python3`,
-which picks whichever interpreter is first on `PATH`. Omit `PANTOGLOSS_SOURCE`
-if you only want the ETLLib tools; the setup script says which of the four it
-ended up with.
+Pantogloss is not in `requirements.txt` because it is not published;
+`PANTOGLOSS_SOURCE` takes a checkout, a wheel, or any pip specifier, and must
+resolve to 0.19.0 or later. Use Python 3.10–3.12 — TensorFlow 2.18 publishes no
+wheels above 3.12.
 
-Use Python 3.10--3.12. Pantogloss needs TensorFlow 2.18, which publishes no
-wheels above 3.12, so `bigtranslate-setup` prefers `python3.12` and works down
-from there. `PYTHON` overrides the choice.
+Restart the services rather than putting the tools on your own `PATH`: the PGEs
+inherit the workflow manager's environment, and `env.sh` adds
+`$BIGTRANSLATE_HOME/.venv/bin` at startup. `bin/bigtranslate translate` checks
+the tools resolve first, because otherwise every step logs "command not found"
+while the workflow still reports `FINISHED`.
 
-The restart matters. The PGEs that call these tools are run by the workflow
-manager and inherit *its* environment, so putting the tools on your own `PATH`
-is not enough; `env.sh` adds `$BIGTRANSLATE_HOME/.venv/bin` when the services
-start. `bin/bigtranslate translate` checks the tools resolve before it does
-anything, because without them each step logs "command not found" into its own
-file while the workflow still reports `FINISHED` -- a run that looks like it
-worked and translated nothing.
+## The original single-task pipeline
 
-To install into an environment you manage yourself instead, the dependency list
-is `requirements.txt`, shipped in the distribution:
+`BigTranslateWorkflow` is the earlier design: one task per TSV file, running
+[ETLLib](https://github.com/chrismattmann/etllib/)'s `tsvtojson`, `repackage`
+and `poster` around the translation step. It still ships and `requirements.txt`
+still installs ETLLib for it, but it translates every cell and creates one
+instance per file, so it is not the path to use at corpus scale.
 
-```bash
-python3 -m pip install -r requirements.txt
-```
+## More
 
-Translation is Pantogloss; the `etllib[translate]` extra is not needed.
+* [Installation](https://github.com/chrismattmann/bigtranslate/wiki/Installation)
+* [How to run](https://github.com/chrismattmann/bigtranslate/wiki/How-to-Run)
+* [How to re-run](https://github.com/chrismattmann/bigtranslate/wiki/Re-running-BigTranslate)
+* [Interacting with BigTranslate](https://github.com/chrismattmann/bigtranslate/wiki/Interacting-with-BigTranslate)
+* [Gloss](https://github.com/chrismattmann/bigtranslate/wiki/Gloss)
 
-See the wiki for more information on installing and running BigTranslate:  
-* [Installation instructions](https://github.com/chrismattmann/bigtranslate/wiki/Installation)  
-* [How to run](https://github.com/chrismattmann/bigtranslate/wiki/How-to-Run)  
-* [How to re-run](https://github.com/chrismattmann/bigtranslate/wiki/Re-running-BigTranslate)  
-* [How to interact with BigTranslate](https://github.com/chrismattmann/bigtranslate/wiki/Interacting-with-BigTranslate)
-* [Gloss](https://github.com/chrismattmann/bigtranslate/wiki/Gloss) — Vue 3 GUI at `/gloss/` (Translate/Reset from the browser, density-bubble map of postings)  
-
-You can clone the wiki by running  
+Clone the wiki with
 `git clone https://github.com/chrismattmann/bigtranslate.wiki.git`
