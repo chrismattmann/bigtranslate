@@ -618,3 +618,53 @@ def test_the_derived_home_is_the_directory_above_bin(tmp_path):
     got = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
     assert got == str(home), (
         "sourced from /tmp it resolved to %r, wanted %r" % (got, str(home)))
+
+
+def test_a_stale_pid_file_does_not_block_a_start():
+    """A pid file whose process is gone is not a running service.
+
+    It is what a crash or a kill -9 leaves behind. Treating its mere
+    existence as "still running" means every later start refuses, with a
+    message that sends you looking for a process that does not exist. The
+    resource manager sat down for an hour this way.
+    """
+    launchers = [
+        (REPO / "resmgr" / "src" / "main" / "resources" / "bin" / "resmgr"),
+        (REPO / "workflow" / "src" / "main" / "resources" / "bin" / "wmgr"),
+        (REPO / "filemgr" / "src" / "main" / "resources" / "bin" / "filemgr"),
+    ]
+    for path in launchers:
+        source = path.read_text()
+        assert "kill -0" in source, (
+            "%s decides a service is running from a file rather than from "
+            "the process" % path.name)
+        assert "stale pid file" in source.lower(), (
+            "%s does not clear a stale pid file" % path.name)
+
+
+def test_the_stale_pid_guard_actually_works(tmp_path):
+    """Exercised: a pid file naming a dead process must not stop a start."""
+    import subprocess
+    pid_file = tmp_path / "svc.pid"
+    # A pid that has certainly exited: spawn one and wait for it.
+    dead = subprocess.run(["bash", "-c", "echo $$"], capture_output=True,
+                          text=True).stdout.strip()
+    pid_file.write_text(dead)
+    guard = '''
+      RESMGR_PID="%s"
+      if [ ! -z "$RESMGR_PID" ]; then
+        if [ -f "$RESMGR_PID" ]; then
+          _pid=`cat "$RESMGR_PID" 2>/dev/null`
+          if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+            echo BLOCKED; exit 1
+          fi
+          rm -f "$RESMGR_PID"
+        fi
+      fi
+      echo STARTED
+    ''' % pid_file
+    result = subprocess.run(["bash", "-c", guard], capture_output=True,
+                            text=True, timeout=60)
+    assert "STARTED" in result.stdout, (
+        "a dead pid still blocked the start: %s" % result.stdout)
+    assert not pid_file.exists(), "the stale file was not removed"

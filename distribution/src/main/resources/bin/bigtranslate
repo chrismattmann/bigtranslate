@@ -116,8 +116,29 @@ RUN_MARKER="$BIGTRANSLATE_HOME/data/run"
 
 mark_run() {
     mkdir -p "$(dirname "$RUN_MARKER")" 2>/dev/null
-    printf '{"status":"%s","startedBy":"cli","path":"%s","exclude":"%s","startedAt":%s}\n' \
-        "$1" "${2//\"/}" "${3//\"/}" "$(($(date +%s) * 1000))" > "$RUN_MARKER" 2>/dev/null
+    RUN_MARKER_STATUS="$1"
+    RUN_MARKER_PATH="${2//\"/}"
+    RUN_MARKER_EXCLUDE="${3//\"/}"
+    RUN_MARKER_STARTED="$(($(date +%s) * 1000))"
+    beat_run
+}
+
+# The marker carries a heartbeat as well as a start time, refreshed for as
+# long as the run is actually being waited on.
+#
+# Without it the file is only ever evidence that a run once began. A run
+# that died, or whose script was killed, leaves a marker nobody clears, and
+# Gloss reports a translation in progress for as long as the file sits
+# there -- it showed one for a day, naming a corpus path from the previous
+# afternoon, while a different run was genuinely under way.
+#
+# A reader can tell the difference: a heartbeat that stopped is a run that
+# stopped.
+beat_run() {
+    [ -n "${RUN_MARKER_STATUS:-}" ] || return 0
+    printf '{"status":"%s","startedBy":"cli","path":"%s","exclude":"%s","startedAt":%s,"heartbeatAt":%s}\n' \
+        "$RUN_MARKER_STATUS" "$RUN_MARKER_PATH" "$RUN_MARKER_EXCLUDE" \
+        "$RUN_MARKER_STARTED" "$(($(date +%s) * 1000))" > "$RUN_MARKER" 2>/dev/null
 }
 
 unmark_run() {
@@ -244,6 +265,7 @@ wait_for_workflow() {
             quiet=0
         fi
 
+        beat_run
         sleep "$TRANSLATE_POLL"
         waited=$((waited + TRANSLATE_POLL))
     done

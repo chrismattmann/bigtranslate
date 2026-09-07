@@ -35,6 +35,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.oodt.cas.filemgr.structs.Product;
@@ -52,6 +53,13 @@ public class ProcessBtWrapper {
 
   public static final String IDLE = "IDLE";
   public static final String TRANSLATING = "TRANSLATING";
+
+  /**
+   * How long a marker may go unrefreshed before it counts as dead. The
+   * writer beats it every poll, so this is many polls: a slow machine
+   * should not be mistaken for a stopped run.
+   */
+  static final long STALE_AFTER_MILLIS = 10L * 60L * 1000L;
   public static final String RESETTING = "RESETTING";
   public static final String ERROR = "ERROR";
 
@@ -93,6 +101,15 @@ public class ProcessBtWrapper {
     Map<String, Object> snap = new LinkedHashMap<String, Object>();
 
     Map<String, Object> recorded = RunMarker.read();
+    if (isStale(recorded)) {
+      // A marker whose heartbeat stopped is a run that stopped. Left alone
+      // it is reported as in progress for as long as the file exists: one
+      // sat for a day naming the previous afternoon's corpus while a
+      // different run was genuinely under way.
+      LOG.log(Level.INFO, "Clearing a run marker whose heartbeat stopped");
+      RunMarker.clear();
+      recorded = null;
+    }
     if (recorded != null && !TRANSLATING.equals(status)
         && !RESETTING.equals(status)) {
       // Something is running and it was not started here.
@@ -110,6 +127,30 @@ public class ProcessBtWrapper {
     snap.put("message", message);
     snap.put("startedAt", startedAt == 0 ? null : Long.valueOf(startedAt));
     return snap;
+  }
+
+  /**
+   * Whether a recorded run has stopped being refreshed.
+   *
+   * <p>The writer beats the marker on every poll of its wait loop, so a
+   * heartbeat older than many polls means nothing is tending it. A marker
+   * with no heartbeat at all was written by an older version and is
+   * trusted, there being nothing better to go on.</p>
+   */
+  static boolean isStale(Map<String, Object> recorded) {
+    if (recorded == null) {
+      return false;
+    }
+    Object beat = recorded.get("heartbeatAt");
+    if (beat == null) {
+      return false;
+    }
+    try {
+      long last = Long.parseLong(String.valueOf(beat).trim());
+      return System.currentTimeMillis() - last > STALE_AFTER_MILLIS;
+    } catch (NumberFormatException e) {
+      return false;
+    }
   }
 
   private static String asText(Object value, String fallback) {

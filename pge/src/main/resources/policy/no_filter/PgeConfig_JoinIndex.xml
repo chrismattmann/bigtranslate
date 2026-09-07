@@ -9,8 +9,20 @@
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>mkdir -p [JobOutputDir] [JobLogDir]</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard [ShardIndex] --of [JoinShards] --commit [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
-     <cmd>echo "shard [ShardIndex] of [JoinShards] indexed" [GreaterThan] [JobOutputDir]/shard-[ShardIndex].done</cmd>
+     <!-- Every shard, from this one instance. JoinShards said eight and
+          only shard zero ever ran, because nothing created instances for
+          the other seven: a corpus was indexed one eighth of the way and
+          reported success. Running them here keeps the parallelism without
+          needing an instance apiece. -->
+     <!-- How many chunks there are to wait for, counted from the chunk
+          repository rather than guessed. The settled condition stops the
+          join beginning absurdly early; this stops it beginning early at
+          all. -->
+     <cmd>EXPECTED=$(ls -d [StringsDir]/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
+     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>
+     <cmd>echo "[JoinShards] shards indexed" [GreaterThan] [JobOutputDir]/join.done</cmd>
   </exe>
 
   <!-- Nothing to ingest. The documents are in Solr; the shard marker is for
@@ -26,6 +38,7 @@
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
     <metadata key="ShardIndex" val="0"/>
+    <metadata key="StringsDir" val="[BIGTRANSLATE_HOME]/data/strings"/>
     <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/join/[ShardIndex]_[DateMilis]"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>

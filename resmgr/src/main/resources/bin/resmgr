@@ -76,10 +76,20 @@ if $cygwin; then
 fi
 
 if [ "$1" = "start" ]; then
+  # A pid file whose process is gone is not a running service. It is what
+  # a crash or a kill -9 leaves behind, and treating it as "still running"
+  # means the next start refuses for as long as the file sits there, with a
+  # message that sends you looking for a process that does not exist.
   if [ ! -z "$RESMGR_PID" ]; then
     if [ -f "$RESMGR_PID" ]; then
-      echo "PID file ($RESMGR_PID) found. Is Resource Manager still running? Start aborted."
-      exit 1
+      _pid=`cat "$RESMGR_PID" 2>/dev/null`
+      if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+        echo "Resource Manager is already running (pid $_pid). Start aborted."
+        exit 1
+      fi
+      echo "Removing stale pid file ($RESMGR_PID); no process $_pid is running."
+      rm -f "$RESMGR_PID"
+      unset _pid
     fi
   fi
 

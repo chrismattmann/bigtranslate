@@ -78,6 +78,25 @@ def records(path, columns):
                 yield parts
 
 
+def count_chunks(directory):
+    return len(glob.glob(os.path.join(directory, "chunk-*.json")))
+
+
+def wait_for_chunks(directory, expected, timeout, poll=15):
+    """Block until every chunk has a translation, or give up saying so.
+
+    Chunks are written to a temporary name and renamed, so one that exists
+    is one that is finished; counting them is enough.
+    """
+    started = time.time()
+    seen = count_chunks(directory)
+    while seen < expected and time.time() - started < timeout:
+        log("  waiting: %d of %d chunks translated" % (seen, expected))
+        time.sleep(poll)
+        seen = count_chunks(directory)
+    return seen
+
+
 def as_solr_date(value):
     """Solr's pdate wants a full instant; the corpus carries plain dates.
 
@@ -172,10 +191,31 @@ def main(argv=None):
     parser.add_argument("--of", type=int, default=1)
     parser.add_argument("--commit", action="store_true",
                         help="commit at the end of this shard")
+    # One commit for the whole corpus, not one per shard: a commit is
+    # expensive and eight of them in parallel is eight merges competing.
+    parser.add_argument("--commit-only", action="store_true",
+                        help="commit what is already posted and do nothing "
+                             "else")
+    # The join must not start on a partial set. A quiet period is a guess:
+    # chunks are length sorted, so the last ones take the longest, and a
+    # gap between two of them looks exactly like the end of the run. One
+    # join ran on seven chunks of ten and indexed every record, reporting
+    # success, with the longest strings left in Spanish.
+    parser.add_argument("--expect", type=int, default=0,
+                        help="wait until this many translated chunks exist")
+    parser.add_argument("--expect-timeout", type=int, default=14400,
+                        help="give up waiting after this many seconds")
     args = parser.parse_args(argv)
 
     if args.of < 1 or not 0 <= args.shard < args.of:
         parser.error("--shard must be in [0, --of)")
+
+    if args.commit_only:
+        urllib.request.urlopen(
+            args.solr_url.rstrip("/") + "/update?commit=true&wt=json",
+            timeout=args.timeout * 6).read()
+        log("committed")
+        return 0
 
     paths = sorted(glob.glob(os.path.join(args.corpus, "*.tsv")))
     if not paths:
@@ -185,6 +225,17 @@ def main(argv=None):
     columns = read_columns(args.colheaders)
     wanted = set(read_columns(args.translate_cols))
     translate_at = {i for i, name in enumerate(columns) if name in wanted}
+
+    if args.expect:
+        waited = wait_for_chunks(args.translated, args.expect,
+                                 args.expect_timeout)
+        if waited < args.expect:
+            raise SystemExit(
+                "only %d of %d translated chunks after %ds; refusing to "
+                "index a partial translation. The documents would all be "
+                "there and some of them would still be in the source "
+                "language."
+                % (waited, args.expect, args.expect_timeout))
 
     table, chunks = load_translations(args.translated)
     if not table:
