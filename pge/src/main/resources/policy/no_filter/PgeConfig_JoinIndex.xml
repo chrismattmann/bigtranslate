@@ -23,8 +23,8 @@
           what put the machine over during the first full run. -->
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-build-translation-db --translated [TranslatedDir] --glossary [TranslateGlossary] --out [TranslationsDb] [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>EXPECTED=$(ls -d [StringsDir]/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
-     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>
      <cmd>echo "[JoinShards] shards indexed" [GreaterThan] [JobOutputDir]/join.done</cmd>
   </exe>

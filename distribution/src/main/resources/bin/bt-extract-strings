@@ -36,6 +36,9 @@ import os
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bt_encoding  # noqa: E402  (needs the path above)
+
 
 def log(message):
     sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
@@ -104,7 +107,8 @@ def distinct_strings(paths, indices, progress_every=200):
     return seen, cells, rows, nbytes, time.time() - started
 
 
-def write_chunks(strings, out_dir, chunk_size):
+def write_chunks(strings, out_dir, chunk_size,
+                 encodings=bt_encoding.DEFAULT_ENCODINGS):
     """Length-sorted chunks, plus a manifest describing the whole set.
 
     Sorted globally and then cut, so each chunk holds strings of nearly
@@ -118,9 +122,10 @@ def write_chunks(strings, out_dir, chunk_size):
         name = "chunk-%05d.json" % (start // chunk_size)
         path = os.path.join(out_dir, name)
         # Decoded here and only here: this is the one point where every
-        # distinct string is touched, and errors are replaced rather than
-        # raised so that one bad byte cannot lose a chunk.
-        text = [value.decode("utf-8", "replace") for value in piece]
+        # distinct string is touched. The corpus is not all UTF-8, so the
+        # encodings from conf/encoding.txt are tried in order rather than
+        # replacing every byte UTF-8 rejects.
+        text = [bt_encoding.decode(value, encodings) for value in piece]
         tmp = path + ".partial"
         with open(tmp, "w", encoding="utf-8") as handle:
             json.dump(text, handle, ensure_ascii=False)
@@ -151,6 +156,8 @@ def main(argv=None):
     # measured, which is short enough that losing one to a restart costs
     # little and long enough that per-instance overhead disappears.
     parser.add_argument("--chunk-size", type=int, default=5000)
+    parser.add_argument("--encodings", default=None,
+                        help="conf/encoding.txt: encodings to try, in order")
     args = parser.parse_args(argv)
 
     if not os.path.isdir(args.corpus):
@@ -172,7 +179,8 @@ def main(argv=None):
     log("%d lines, %d cells, %d distinct in %.0fs"
         % (rows, cells, len(seen), elapsed))
 
-    chunks = write_chunks(seen, args.out_dir, args.chunk_size)
+    chunks = write_chunks(seen, args.out_dir, args.chunk_size,
+                          bt_encoding.read_encodings(args.encodings))
     manifest = {
         "files": len(paths), "bytes": nbytes, "lines": rows,
         "cells": cells, "distinct": len(seen),
