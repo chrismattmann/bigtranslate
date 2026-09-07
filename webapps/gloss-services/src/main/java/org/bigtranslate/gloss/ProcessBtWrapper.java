@@ -60,6 +60,10 @@ public class ProcessBtWrapper {
    * should not be mistaken for a stopped run.
    */
   static final long STALE_AFTER_MILLIS = 10L * 60L * 1000L;
+
+  /** What the stages record about how far along they are. */
+  private static final String[] PROGRESS_KEYS = {
+      "stage", "chunksTotal", "chunksDone", "translatingSince"};
   public static final String RESETTING = "RESETTING";
   public static final String ERROR = "ERROR";
 
@@ -118,6 +122,14 @@ public class ProcessBtWrapper {
       snap.put("exclude", asText(recorded.get("exclude"), ""));
       snap.put("message", "started from the command line");
       snap.put("startedAt", recorded.get("startedAt"));
+      // What it has actually done. A status of TRANSLATING and a log tail
+      // says almost nothing at hour eleven of a run; how many chunks of
+      // how many, and at what rate, says all of it.
+      for (String key : PROGRESS_KEYS) {
+        if (recorded.get(key) != null) {
+          snap.put(key, recorded.get(key));
+        }
+      }
       return snap;
     }
 

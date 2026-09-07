@@ -47,6 +47,37 @@ def read(path):
         return {}
 
 
+def count(directory):
+    """How many chunks are in a directory, however the versioner left them.
+
+    The ingest nests each product under a directory named after it, so the
+    chunks the join reads are files and the catalogued copies are
+    directories. Both count as one chunk.
+    """
+    try:
+        return len([n for n in os.listdir(directory)
+                    if n.startswith("chunk-")])
+    except OSError:
+        return 0
+
+
+def progress(home):
+    """What the run has done so far, for anything that wants to show it.
+
+    Read from the directories rather than tracked, so it is right even
+    after a restart and cannot drift from what is actually on disk.
+    """
+    made = count(os.path.join(home, "data", "strings"))
+    done = count(os.path.join(home, "data", "translated"))
+    if done >= made > 0:
+        stage = "joining"
+    elif made > 0:
+        stage = "translating"
+    else:
+        stage = "extracting"
+    return {"stage": stage, "chunksTotal": made, "chunksDone": done}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bt-run-marker",
@@ -79,6 +110,8 @@ def main(argv=None):
         # Nothing to refresh. A beat is not a reason to invent a run.
         return 0
 
+    home = os.environ["BIGTRANSLATE_HOME"]
+    seen = progress(home)
     record = {
         "status": existing.get("status", args.status),
         "startedBy": existing.get("startedBy", args.started_by),
@@ -88,6 +121,15 @@ def main(argv=None):
         "startedAt": existing.get("startedAt", now),
         "heartbeatAt": now,
     }
+    record.update(seen)
+    # When the first chunk landed, so a rate can be worked out over the
+    # translating alone. Measuring from the start of the run instead folds
+    # in the extract pass, which on the full corpus is ten minutes of
+    # apparently translating nothing and makes every early estimate wrong.
+    if seen["chunksDone"] > 0:
+        record["translatingSince"] = existing.get("translatingSince", now)
+    elif "translatingSince" in existing:
+        record["translatingSince"] = existing["translatingSince"]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".partial"
     with open(tmp, "w", encoding="utf-8") as handle:
