@@ -3,16 +3,35 @@
     <header>
       <h2>In progress</h2>
       <p>
-        {{ progress.status || 'TRANSLATING' }}
+        {{ stageLabel }}
         <!-- Who started it. A run begun from the command line is the ordinary
              case, and the back end says so; the panel used to drop that on the
              floor, leaving no way to tell it from one started here. -->
         <span v-if="progress.message" class="whose"> ({{ progress.message }})</span>
         <span v-if="progress.path"> · {{ progress.path }}</span>
-        <span v-if="progress.solrDocs != null"> · {{ progress.solrDocs }} in Solr</span>
-        <span v-if="progress.jobDirs != null"> · {{ progress.jobDirs }} job dirs</span>
       </p>
     </header>
+
+    <!--
+      What it has done, rather than only what it is doing. A status of
+      TRANSLATING and a tail of the log says almost nothing at hour eleven
+      of a run: the question is how far along it is and when it will end.
+    -->
+    <div v-if="hasCounts" class="tally">
+      <div class="bar" role="progressbar" :aria-valuenow="percent"
+           aria-valuemin="0" aria-valuemax="100">
+        <span :style="{ width: percent + '%' }"></span>
+      </div>
+      <dl>
+        <div><dt>Chunks</dt><dd>{{ progress.chunksDone }} of {{ progress.chunksTotal }}</dd></div>
+        <div><dt>Done</dt><dd>{{ percent }}%</dd></div>
+        <div v-if="rate"><dt>Rate</dt><dd>{{ rate }}</dd></div>
+        <div v-if="elapsed"><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
+        <div v-if="remaining"><dt>Remaining</dt><dd>{{ remaining }}</dd></div>
+        <div v-if="progress.solrDocs != null"><dt>In Solr</dt><dd>{{ solrDocs }}</dd></div>
+      </dl>
+    </div>
+
     <!--
       A run started from the command line writes to the deployment's own log,
       not to the one Gloss keeps of what it did itself, so this waited for a
@@ -22,7 +41,7 @@
       than implying something is stuck.
     -->
     <pre v-if="log">{{ log }}</pre>
-    <p v-else class="nolog">
+    <p v-else-if="!hasCounts" class="nolog">
       No log output yet. The workflow manager is running this; its progress
       shows above and in OPSUI.
     </p>
@@ -30,66 +49,64 @@
 </template>
 
 <script>
+// The arithmetic lives in progress.js, tested on its own: what a run has
+// done and when it will end is the part worth being sure of, and it is
+// awkward to check through a rendered component.
+import {
+  stageLabel, percent, rateLabel, remainingLabel, elapsedLabel
+} from '../progress.js'
+
 export default {
   name: 'ProgressPane',
   props: {
     log: { type: String, default: '' },
     progress: { type: Object, default: () => ({}) }
+  },
+  data () {
+    // The estimate is a function of the clock as well as the counts, so it
+    // is re-read on a timer; otherwise "about 2h" sits there unchanged
+    // while the two hours pass.
+    return { now: Date.now(), ticker: null }
+  },
+  mounted () {
+    this.ticker = setInterval(() => { this.now = Date.now() }, 30000)
+  },
+  beforeUnmount () {
+    if (this.ticker) clearInterval(this.ticker)
+  },
+  computed: {
+    stageLabel () { return stageLabel(this.progress) },
+    hasCounts () { return Number(this.progress.chunksTotal) > 0 },
+    percent () { return percent(this.progress) },
+    rate () { return rateLabel(this.progress, this.now) },
+    elapsed () { return elapsedLabel(this.progress, this.now) },
+    remaining () { return remainingLabel(this.progress, this.now) },
+    solrDocs () { return Number(this.progress.solrDocs).toLocaleString() }
   }
 }
 </script>
 
 <style scoped>
-.progress {
-  background: #1a1410;
-  color: #fff8e7;
-  border-radius: 4px;
-  margin: 0.5rem 0 1rem;
+.tally { margin: 0.75rem 0; }
+.bar {
+  height: 6px;
+  background: rgba(127, 127, 127, 0.25);
+  border-radius: 3px;
   overflow: hidden;
 }
-
-.whose {
-  opacity: 0.75;
-  font-style: italic;
+.bar span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transition: width 0.4s ease;
 }
-
-.nolog {
-  margin: 0;
-  padding: 0.8rem 1rem 1rem;
-  opacity: 0.7;
-  font-size: 0.85rem;
-}
-
-header {
+dl {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.7rem 1rem 0.4rem;
-  border-bottom: 1px solid #3a3028;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+  margin: 0.6rem 0 0;
 }
-
-h2 {
-  margin: 0;
-  font-size: 0.85rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--gold);
-}
-
-header p {
-  margin: 0;
-  font-size: 0.85rem;
-  font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
-  color: #e6d9c2;
-}
-
-pre {
-  margin: 0;
-  padding: 0.8rem 1rem 1rem;
-  max-height: 16rem;
-  overflow: auto;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
-}
+dl div { display: flex; gap: 0.35rem; align-items: baseline; }
+dt { opacity: 0.65; font-size: 0.85em; }
+dd { margin: 0; font-variant-numeric: tabular-nums; }
 </style>
