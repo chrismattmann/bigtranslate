@@ -694,3 +694,90 @@ def test_waiting_for_chunks_counts_what_is_there(tmp_path):
     # A partial set must time out rather than be accepted.
     got = module.wait_for_chunks(str(d), 5, timeout=1, poll=1)
     assert got == 3, "waiting invented chunks that are not there"
+
+
+def test_the_join_shares_one_translation_table():
+    """Eight shards held eight copies of the same 456MB table.
+
+    Read as JSON into a dict the translations are about 456MB, and every
+    shard held its own. Three and a half gigabytes of identical data,
+    alongside Solr's heap and a Lucene merge over three thousand segments,
+    is what stopped the machine two hours into a join.
+    """
+    source = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+              / "bt-join-index").read_text()
+    assert "class Translations" in source, (
+        "the join still loads the whole table into memory")
+    assert "mode=ro" in source, (
+        "shards open the shared database writable, so they cannot share it")
+    assert "def load_translations" not in source, (
+        "the old whole-table loader is still there")
+
+    builder = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+               / "bt-build-translation-db")
+    assert builder.exists(), "nothing builds the shared database"
+    assert "os.replace" in builder.read_text(), (
+        "the database is not renamed into place, so a half built one can be "
+        "opened by a shard and leave strings untranslated")
+
+
+def test_the_shard_count_matches_the_bottleneck():
+    """The corpus is read off one external drive.
+
+    Eight readers seeking across a single spindle is slower than four, not
+    faster; the shard count was chosen for a parallelism the work does not
+    have.
+    """
+    tasks = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
+             / "tasks.xml").read_text()
+    start = tasks.index('<task id="urn:bigtranslate:Join_Index_Task"')
+    block = tasks[start:tasks.index("</task>", start)]
+    import re
+    shards = int(re.search(r'name="JoinShards" value="(\d+)"', block).group(1))
+    assert 1 <= shards <= 4, (
+        "%d shards read the same external drive at once" % shards)
+
+
+def test_the_translation_lookup_answers_and_stays_small(tmp_path):
+    """Exercised: the point of the change is memory, so measure it."""
+    import importlib.machinery
+    import importlib.util
+    import json
+    import sqlite3
+    import subprocess
+    import sys as _sys
+
+    translated = tmp_path / "translated"
+    translated.mkdir()
+    pairs = {"origen-%d" % i: "source-%d" % i for i in range(5000)}
+    (translated / "chunk-00000.json").write_text(json.dumps(pairs))
+
+    db = tmp_path / "t.sqlite"
+    builder = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+               / "bt-build-translation-db")
+    result = subprocess.run(
+        [_sys.executable, str(builder), "--translated", str(translated),
+         "--out", str(db)], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr[-400:]
+    assert db.exists()
+
+    path = BIN / "bt-join-index"
+    spec = importlib.util.spec_from_loader(
+        "bt_join_index", importlib.machinery.SourceFileLoader(
+            "bt_join_index", str(path)))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    table = module.Translations(str(db), cache_limit=100)
+    assert table.get("origen-42") == "source-42"
+    assert table.get("nothing here") is None
+    assert table.get("nothing here", "kept") == "kept"
+    assert table.count() == 5000
+
+    # The cache is bounded, so a shard's memory does not grow with the
+    # corpus it happens to be reading.
+    for i in range(5000):
+        table.get("origen-%d" % i)
+    assert len(table.cache) <= 100, (
+        "the cache grew past its limit to %d" % len(table.cache))
+    table.close()
