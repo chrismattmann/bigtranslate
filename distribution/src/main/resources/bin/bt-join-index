@@ -31,6 +31,7 @@ import glob
 import json
 import os
 import sys
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -46,19 +47,55 @@ def read_columns(path):
         return [line.strip() for line in handle if line.strip()]
 
 
-def load_translations(directory):
-    """Every translated chunk, merged into one lookup.
+class Translations(object):
+    """The translation table, shared rather than copied.
 
-    Chunks hold distinct strings and the extract stage made them disjoint,
-    so a later chunk cannot contradict an earlier one; merging is a plain
-    update rather than a reconciliation.
+    Read as JSON into a dict it is about 456MB, and every shard holds its
+    own: eight of them is three and a half gigabytes of the same data, and
+    that is what put a machine over during the first full run. Backed by a
+    database instead, the pages are held once by the operating system
+    however many shards are reading.
+
+    A bounded cache sits in front. The corpus repeats itself heavily -- 836
+    million cells are only 2.29 million distinct strings -- so a small cache
+    answers nearly everything and the database sees very little traffic.
     """
-    table = {}
-    paths = sorted(glob.glob(os.path.join(directory, "chunk-*.json")))
-    for path in paths:
-        with open(path, encoding="utf-8") as handle:
-            table.update(json.load(handle))
-    return table, len(paths)
+
+    def __init__(self, path, cache_limit=200000):
+        # Read only, so several shards can share one file without any of
+        # them being able to alter it.
+        self.conn = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+        self.conn.execute("PRAGMA query_only = 1")
+        self.cache = {}
+        self.cache_limit = cache_limit
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, source, default=None):
+        cached = self.cache.get(source)
+        if cached is not None:
+            self.hits += 1
+            return cached
+        self.misses += 1
+        row = self.conn.execute(
+            "SELECT e FROM t WHERE s = ?", (source,)).fetchone()
+        if row is None:
+            return default
+        if len(self.cache) < self.cache_limit:
+            # Not an LRU. Evicting properly costs more than it saves here,
+            # and what fills the cache first is what the corpus repeats
+            # most, which is what a cache is for.
+            self.cache[source] = row[0]
+        return row[0]
+
+    def count(self):
+        return self.conn.execute("SELECT count(*) FROM t").fetchone()[0]
+
+    def close(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass
 
 
 def records(path, columns):
@@ -179,7 +216,10 @@ def main(argv=None):
         description="Apply translations to every row and index the result.")
     parser.add_argument("--corpus", required=True)
     parser.add_argument("--translated", required=True,
-                        help="directory of translated chunk files")
+                        help="directory of translated chunk files, counted "
+                             "to decide whether the translate stage is done")
+    parser.add_argument("--translations-db", required=True,
+                        help="the database bt-build-translation-db wrote")
     parser.add_argument("--solr-url", required=True)
     parser.add_argument("--colheaders", required=True)
     parser.add_argument("--translate-cols", required=True)
@@ -237,12 +277,16 @@ def main(argv=None):
                 "language."
                 % (waited, args.expect, args.expect_timeout))
 
-    table, chunks = load_translations(args.translated)
-    if not table:
-        parser.error("no translations under %s -- did the translate stage "
-                     "finish?" % args.translated)
-    log("shard %d/%d: %d files, %d translations from %d chunks"
-        % (args.shard, args.of, len(mine), len(table), chunks))
+    if not os.path.exists(args.translations_db):
+        parser.error("no translation database at %s; build it with "
+                     "bt-build-translation-db" % args.translations_db)
+    table = Translations(args.translations_db)
+    known = table.count()
+    if known == 0:
+        parser.error("the translation database at %s is empty -- did the "
+                     "translate stage finish?" % args.translations_db)
+    log("shard %d/%d: %d files, %d translations from %s"
+        % (args.shard, args.of, len(mine), known, args.translations_db))
 
     # Read from the schema rather than restated here, so a schema change
     # cannot leave this silently posting documents Solr will reject.
@@ -279,10 +323,15 @@ def main(argv=None):
             timeout=args.timeout * 3).read()
 
     elapsed = time.time() - started
+    lookups = table.hits + table.misses
     log("shard %d/%d: %d records, %d posted, %d skipped for missing "
         "required fields, %.0fs (%.0f docs/s)"
         % (args.shard, args.of, seen, posted, skipped, elapsed,
            posted / elapsed if elapsed else 0))
+    log("shard %d/%d: %d lookups, %.1f%% from cache, %d cached"
+        % (args.shard, args.of, lookups,
+           100.0 * table.hits / lookups if lookups else 0, len(table.cache)))
+    table.close()
     return 0
 
 

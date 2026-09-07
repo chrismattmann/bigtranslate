@@ -18,9 +18,13 @@
           repository rather than guessed. The settled condition stops the
           join beginning absurdly early; this stops it beginning early at
           all. -->
+     <!-- One database for every shard to share. Read as JSON each shard
+          holds its own 456MB copy of the same table, and eight of those is
+          what put the machine over during the first full run. -->
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-build-translation-db --translated [TranslatedDir] --out [TranslationsDb] [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>EXPECTED=$(ls -d [StringsDir]/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
-     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>
      <cmd>echo "[JoinShards] shards indexed" [GreaterThan] [JobOutputDir]/join.done</cmd>
   </exe>
@@ -38,6 +42,7 @@
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
     <metadata key="ShardIndex" val="0"/>
+    <metadata key="TranslationsDb" val="[BIGTRANSLATE_HOME]/data/translations.sqlite"/>
     <metadata key="StringsDir" val="[BIGTRANSLATE_HOME]/data/strings"/>
     <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/join/[ShardIndex]_[DateMilis]"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>

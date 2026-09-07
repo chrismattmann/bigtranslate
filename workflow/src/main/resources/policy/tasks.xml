@@ -207,10 +207,12 @@
           <property name="SolrUrl" value="[SOLR_URL]" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
-          <!-- Solr posts at about 35,000 documents a second and is not the
-               bottleneck, so the shards exist to overlap reading the corpus
-               with posting rather than to push Solr harder. -->
-          <property name="JoinShards" value="8"/>
+          <!-- Four, not eight. The bottleneck is not Solr and not the
+               processor: it is reading 38GB off a single external drive,
+               and eight readers seeking across one spindle is slower than
+               four, not faster. Eight was chosen for a parallelism the
+               work does not have. -->
+          <property name="JoinShards" value="4"/>
           <property name="ProductType" value="EmploymentIndexedShard"/>
         </configuration>
   </task>
