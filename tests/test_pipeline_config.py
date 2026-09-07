@@ -668,3 +668,54 @@ def test_the_stale_pid_guard_actually_works(tmp_path):
     assert "STARTED" in result.stdout, (
         "a dead pid still blocked the start: %s" % result.stdout)
     assert not pid_file.exists(), "the stale file was not removed"
+
+
+def test_a_run_can_be_put_back_to_a_known_start():
+    """A run that begins on top of the last one is worse than a failure.
+
+    Chunk products from a previous run make the translate stage's lookup
+    return several comma joined paths, so the PGE is handed a --chunk
+    argument naming two files. Leftover translations make the join's count
+    reach its target before this run has produced anything, so it indexes
+    the previous run's work and reports success.
+    """
+    reset = (REPO / "distribution" / "src" / "main" / "resources"
+             / "bin" / "bt-reset")
+    assert reset.exists(), "there is no way to define the starting state"
+    source = reset.read_text()
+    for cleared in ("data/strings", "data/translated", "data/jobs",
+                    "filemgr/catalog"):
+        assert cleared in source, "%s survives a reset" % cleared
+    assert "The stack is running" in source, (
+        "a reset while the services are up would clear what they are using")
+    assert "is not touched" in source, (
+        "nothing says the corpus is safe, which is the thing worth saying")
+    # The corpus must never be among what it removes.
+    removals = [line for line in source.splitlines() if "rm -rf" in line]
+    for line in removals:
+        assert "CORPUS" not in line, "a reset can delete the corpus: %s" % line
+
+
+def test_the_instance_database_can_be_rebuilt():
+    """An empty directory is not a schema, and the manager's complaint
+    about it does not mention tables."""
+    initdb = (REPO / "distribution" / "src" / "main" / "resources"
+              / "bin" / "bt-initdb")
+    assert initdb.exists()
+    source = initdb.read_text()
+    assert "workflow-instances.sql" in source
+    assert "hsqldb" in source
+
+
+def test_the_join_waits_longer_than_a_run_takes():
+    """Four hours is less than the corpus takes, so the join would refuse
+    a run that was going perfectly well."""
+    source = (REPO / "distribution" / "src" / "main" / "resources" / "bin"
+              / "bt-join-index").read_text()
+    line = [l for l in source.splitlines()
+            if "--expect-timeout" in l and "default=" in l]
+    assert line, "no default wait"
+    seconds = int(line[0].split("default=")[1].split(",")[0])
+    assert seconds >= 24 * 3600, (
+        "the join gives up after %ds; translation alone is up to 9 hours"
+        % seconds)

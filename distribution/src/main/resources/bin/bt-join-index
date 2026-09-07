@@ -203,7 +203,12 @@ def main(argv=None):
     # success, with the longest strings left in Spanish.
     parser.add_argument("--expect", type=int, default=0,
                         help="wait until this many translated chunks exist")
-    parser.add_argument("--expect-timeout", type=int, default=14400,
+    # Long enough for the whole corpus, not for a test. Translation of the
+    # full employment set is hours: 2.4 across two machines, 9.1 on one.
+    # A four hour ceiling would have the join refuse a run that was still
+    # going perfectly well, which is a correct refusal and still a stopped
+    # run at three in the morning.
+    parser.add_argument("--expect-timeout", type=int, default=86400,
                         help="give up waiting after this many seconds")
     args = parser.parse_args(argv)
 

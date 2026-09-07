@@ -1,0 +1,79 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Create the workflow instance database.
+#
+# The JDBC instance repository needs its two tables to exist; it does not
+# make them. An empty database directory is not a schema, and the workflow
+# manager's failure to start against one says only that it could not create
+# its repository.
+
+set -u
+if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
+  echo "BIGTRANSLATE_HOME is not set. Source bin/setenv.sh first."
+  exit 1
+fi
+
+SCHEMA="$BIGTRANSLATE_HOME/workflow/etc/workflow-instances.sql"
+[ -f "$SCHEMA" ] || { echo "No schema at $SCHEMA"; exit 1; }
+
+URL=$(sed -n 's/^org.apache.oodt.cas.workflow.instanceRep.datasource.jdbc.url=//p' \
+      "$BIGTRANSLATE_HOME/workflow/etc/workflow.properties" 2>/dev/null | tail -1)
+URL=${URL//\[OODT_HOME\]/$BIGTRANSLATE_HOME}
+[ -n "$URL" ] || { echo "No jdbc url in workflow.properties"; exit 1; }
+
+DRIVER_JAR=$(ls "$BIGTRANSLATE_HOME"/workflow/lib/hsqldb*.jar 2>/dev/null | head -1)
+[ -n "$DRIVER_JAR" ] || { echo "No hsqldb driver in workflow/lib"; exit 1; }
+
+mkdir -p "$(dirname "${URL#jdbc:hsqldb:file:}")" 2>/dev/null
+
+# Java's single file launcher wants a file, not a heredoc on stdin.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+cat > "$WORK/InitDb.java" <<'JAVA'
+import java.nio.file.*;
+import java.sql.*;
+
+public class InitDb {
+  public static void main(String[] args) throws Exception {
+    Class.forName("org.hsqldb.jdbc.JDBCDriver");
+    try (Connection c = DriverManager.getConnection(args[0], "sa", "")) {
+      StringBuilder statement = new StringBuilder();
+      for (String line : new String(Files.readAllBytes(Paths.get(args[1]))).split("\n")) {
+        String trimmed = line.trim();
+        if (trimmed.startsWith("--") || trimmed.isEmpty()) {
+          continue;
+        }
+        statement.append(line).append(' ');
+        if (trimmed.endsWith(";")) {
+          String sql = statement.toString().trim();
+          sql = sql.substring(0, sql.length() - 1);
+          try (Statement st = c.createStatement()) {
+            st.execute(sql);
+          }
+          statement.setLength(0);
+        }
+      }
+      try (Statement st = c.createStatement()) {
+        st.execute("SHUTDOWN");
+      }
+    }
+    System.out.println("  workflow instance database created");
+  }
+}
+JAVA
+
+"${JAVA_HOME:-/usr}/bin/java" -cp "$DRIVER_JAR" "$WORK/InitDb.java" "$URL" "$SCHEMA"
