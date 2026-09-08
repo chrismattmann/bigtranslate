@@ -308,6 +308,21 @@ class TranslationCache:
 # glossary
 # --------------------------------------------------------------------------
 
+def is_untranslatable(value):
+    """True for a value with no letter or digit in it.
+
+    These are not language and the model should never see them. Asked to
+    translate "!" it answers "- I'm sorry."; "-----------" comes back the
+    same way, and "###" becomes "# # #". Across the corpus 443 of the 467
+    such strings came back altered, and they reach 4.7 million documents --
+    an apology sitting in a duration column.
+
+    Passing them through unchanged is both more correct and cheaper than
+    asking.
+    """
+    return not any(character.isalnum() for character in value)
+
+
 class Glossary:
     """Authoritative source -> English overrides consulted before the model.
 

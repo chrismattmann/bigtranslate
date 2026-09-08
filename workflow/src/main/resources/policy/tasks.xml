@@ -163,6 +163,7 @@
           <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
           <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated" envReplace="true"/>
           <property name="PantoglossUrl" value="[PANTOGLOSS_URL]" envReplace="true"/>
+          <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
           <!-- 32 suits the CPU service, 128 a CUDA one. A node translating
                with a GPU should override this in its own deployment. -->
           <property name="TranslateBatchSize" value="32"/>
@@ -206,6 +207,7 @@
           <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated" envReplace="true"/>
           <property name="SolrUrl" value="[SOLR_URL]" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
+          <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
           <!-- Four, not eight. The bottleneck is not Solr and not the
                processor: it is reading 38GB off a single external drive,

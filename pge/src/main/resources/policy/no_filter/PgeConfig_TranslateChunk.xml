@@ -8,7 +8,7 @@
   <exe dir="[JobDir]" shell="/bin/bash">
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
      <cmd>mkdir -p [JobOutputDir] [JobLogDir] [TranslatedDir]</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-translate-chunk --chunk [ChunkPath] --out-dir [TranslatedDir] --service-url [PantoglossUrl] --batch-size [TranslateBatchSize] [GreaterThan][GreaterThan] [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-translate-chunk --chunk [ChunkPath] --out-dir [TranslatedDir] --glossary [TranslateGlossary] --service-url [PantoglossUrl] --batch-size [TranslateBatchSize] [GreaterThan][GreaterThan] [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>cp [TranslatedDir]/[ChunkFile] [JobOutputDir]/</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker beat</cmd>
   </exe>

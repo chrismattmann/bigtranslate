@@ -25,11 +25,15 @@ read are held once by the operating system rather than once per process.
 """
 import argparse
 import glob
+import importlib.machinery
+import importlib.util
 import json
 import os
 import sqlite3
 import sys
 import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def log(message):
@@ -37,7 +41,27 @@ def log(message):
     sys.stderr.flush()
 
 
-def build(translated_dir, out_path):
+def load_glossary(path):
+    """The Glossary from pantogloss-translatejson, or an empty one.
+
+    Loaded by path because it is a command and has no .py suffix, the same
+    way bt-translate-chunk reaches its translate logic. One implementation of
+    the lookup rules -- case folding, and comma-separated components -- is
+    the point; a second copy here would drift from the one that writes the
+    chunks.
+    """
+    spec = importlib.util.spec_from_loader(
+        "pantogloss_translatejson",
+        importlib.machinery.SourceFileLoader(
+            "pantogloss_translatejson",
+            os.path.join(HERE, "pantogloss-translatejson")))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    glossary = module.Glossary.load(path) if path else module.Glossary()
+    return glossary, module.is_untranslatable
+
+
+def build(translated_dir, out_path, glossary=None, untranslatable=None):
     chunks = sorted(glob.glob(os.path.join(translated_dir, "chunk-*.json")))
     if not chunks:
         raise SystemExit("no translated chunks under %s" % translated_dir)
@@ -60,9 +84,27 @@ def build(translated_dir, out_path):
         conn.execute("CREATE TABLE t (s TEXT PRIMARY KEY, e TEXT) WITHOUT ROWID")
 
         total = 0
+        overridden = [0]
         for number, path in enumerate(chunks, 1):
             with open(path, encoding="utf-8") as handle:
                 pairs = json.load(handle)
+            # The glossary is authoritative over whatever the model returned.
+            # Applying it here as well as in bt-translate-chunk is what lets a
+            # corrected glossary reach the index without re-translating: the
+            # chunks on disk cost thirteen hours, and the override is a pure
+            # function of the source string.
+            for source in list(pairs):
+                hit = None
+                if glossary is not None and len(glossary):
+                    hit = glossary.lookup(source)
+                if hit is None and untranslatable is not None \
+                        and untranslatable(source):
+                    # Punctuation the model answered anyway: "!" came back
+                    # as "- I'm sorry." The source is the right answer.
+                    hit = source
+                if hit is not None and hit != pairs[source]:
+                    pairs[source] = hit
+                    overridden[0] += 1
             conn.executemany("INSERT OR REPLACE INTO t (s, e) VALUES (?, ?)",
                              pairs.items())
             total += len(pairs)
@@ -73,6 +115,8 @@ def build(translated_dir, out_path):
         conn.close()
 
     os.replace(tmp, out_path)
+    if overridden[0]:
+        log("  corrected %d model translation(s)" % overridden[0])
     return len(chunks), total
 
 
@@ -82,6 +126,9 @@ def main(argv=None):
         description="Gather translated chunks into one database for the join.")
     parser.add_argument("--translated", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--glossary", default=None,
+                        help="conf/glossary.es-en.tsv: authoritative "
+                             "overrides applied over the model's output")
     parser.add_argument("--force", action="store_true",
                         help="rebuild even if the database already exists")
     args = parser.parse_args(argv)
@@ -91,7 +138,8 @@ def main(argv=None):
         return 0
 
     started = time.time()
-    chunks, total = build(args.translated, args.out)
+    glossary, untranslatable = load_glossary(args.glossary)
+    chunks, total = build(args.translated, args.out, glossary, untranslatable)
     size = os.path.getsize(args.out) / 1048576.0
     log("%d translations from %d chunks -> %s (%.0f MB) in %.0fs"
         % (total, chunks, args.out, size, time.time() - started))

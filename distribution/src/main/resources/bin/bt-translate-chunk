@@ -57,6 +57,30 @@ def log(message):
     sys.stderr.flush()
 
 
+def resolve_with_glossary(strings, glossary, untranslatable):
+    """Split a chunk into what the glossary settles and what the model must see.
+
+    The glossary is authoritative, so its entries never reach the model. That
+    is the point of it -- on a sample country-day the model left "Inmediato"
+    untranslated in 151 of 211 records while rendering lowercase "inmediato"
+    correctly -- and it also means the highest-frequency values in the corpus
+    stop costing model calls at all.
+    """
+    resolved = {}
+    remaining = []
+    for value in strings:
+        hit = glossary.lookup(value)
+        if hit is not None:
+            resolved[value] = hit
+        elif untranslatable(value):
+            # Punctuation is not language. Left to the model, "!" comes back
+            # as "- I'm sorry."
+            resolved[value] = value
+        else:
+            remaining.append(value)
+    return resolved, remaining
+
+
 def translate_chunk(translator, strings, service_url, batch_size,
                     beam_size, max_length, timeout):
     """Translate in batches, preserving the chunk's existing order.
@@ -90,6 +114,10 @@ def main(argv=None):
     parser.add_argument("--beam-size", type=int, default=0)
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--service-timeout", type=int, default=1800)
+    parser.add_argument("--glossary", default=None,
+                        help="conf/glossary.es-en.tsv: authoritative "
+                             "source<TAB>English overrides, consulted "
+                             "instead of the model")
     parser.add_argument("--force", action="store_true",
                         help="translate even if the output already exists")
     args = parser.parse_args(argv)
@@ -107,6 +135,15 @@ def main(argv=None):
         parser.error("%s does not hold a list of strings" % args.chunk)
 
     translator = load_translator()
+
+    glossary = (translator.Glossary.load(args.glossary) if args.glossary
+                else translator.Glossary())
+    resolved, strings = resolve_with_glossary(
+        strings, glossary, translator.is_untranslatable)
+    if args.glossary:
+        log("%s: glossary settled %d of %d string(s) from %s"
+            % (name, len(resolved), len(resolved) + len(strings), args.glossary))
+
     # Checked once, before the work: a service that is not there is not
     # something to find out on the last batch.
     health = translator.check_service(args.service_url, 30)
@@ -117,6 +154,8 @@ def main(argv=None):
     out = translate_chunk(translator, strings, args.service_url,
                           args.batch_size, args.beam_size, args.max_length,
                           args.service_timeout)
+    # Glossary last, so it wins: these are overrides, not suggestions.
+    out.update(resolved)
     elapsed = time.time() - started
 
     tmp = out_path + ".partial"
