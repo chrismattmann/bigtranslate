@@ -138,6 +138,7 @@
           <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
           <property name="StringsDir" value="[BIGTRANSLATE_HOME]/data/strings" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
+          <property name="Encodings" value="[BIGTRANSLATE_HOME]/conf/encoding.txt" envReplace="true"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
           <property name="ChunkSize" value="5000"/>
           <property name="ProductType" value="EmploymentStringChunk"/>
@@ -208,6 +209,7 @@
           <property name="SolrUrl" value="[SOLR_URL]" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
           <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
+          <property name="Encodings" value="[BIGTRANSLATE_HOME]/conf/encoding.txt" envReplace="true"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
           <!-- Four, not eight. The bottleneck is not Solr and not the
                processor: it is reading 38GB off a single external drive,

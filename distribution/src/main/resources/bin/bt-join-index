@@ -36,6 +36,9 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bt_encoding  # after the path insert above, which makes it importable
+
 
 def log(message):
     sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
@@ -98,21 +101,25 @@ class Translations(object):
             pass
 
 
-def records(path, columns):
-    """Yield complete records, rejoining rows split by embedded newlines."""
+def records(path, columns, encodings=bt_encoding.DEFAULT_ENCODINGS):
+    """Yield complete records, rejoining rows split by embedded newlines.
+
+    Read as bytes and decoded a line at a time: the corpus is not all UTF-8,
+    and decoding the whole file as UTF-8 with replacement turned every
+    latin-1 accent into U+FFFD on the way to Solr.
+    """
     wanted = len(columns)
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        pending = ""
-        for line in handle:
-            pending = pending + line if pending else line
-            parts = pending.rstrip("\n").split("\t")
-            if len(parts) >= wanted:
-                yield parts
-                pending = ""
-        if pending.strip():
-            parts = pending.rstrip("\n").split("\t")
-            if len(parts) >= wanted:
-                yield parts
+    pending = ""
+    for line in bt_encoding.lines(path, encodings):
+        pending = pending + line if pending else line
+        parts = pending.rstrip("\n").split("\t")
+        if len(parts) >= wanted:
+            yield parts
+            pending = ""
+    if pending.strip():
+        parts = pending.rstrip("\n").split("\t")
+        if len(parts) >= wanted:
+            yield parts
 
 
 def count_chunks(directory):
@@ -222,6 +229,8 @@ def main(argv=None):
                         help="the database bt-build-translation-db wrote")
     parser.add_argument("--solr-url", required=True)
     parser.add_argument("--colheaders", required=True)
+    parser.add_argument("--encodings", default=None,
+                        help="conf/encoding.txt: encodings to try, in order")
     parser.add_argument("--translate-cols", required=True)
     parser.add_argument("--batch-size", type=int, default=5000)
     parser.add_argument("--timeout", type=int, default=600)
@@ -263,6 +272,7 @@ def main(argv=None):
     mine = paths[args.shard::args.of]
 
     columns = read_columns(args.colheaders)
+    encodings = bt_encoding.read_encodings(args.encodings)
     wanted = set(read_columns(args.translate_cols))
     translate_at = {i for i, name in enumerate(columns) if name in wanted}
 
@@ -301,7 +311,8 @@ def main(argv=None):
     started = time.time()
     for path in mine:
         base = os.path.basename(path)
-        for number, parts in enumerate(records(path, columns)):
+        for number, parts in enumerate(
+                records(path, columns, encodings)):
             seen += 1
             document, missing = build_document(
                 parts, columns, translate_at, table, required, dates,
