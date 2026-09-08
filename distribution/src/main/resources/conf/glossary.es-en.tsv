@@ -37,11 +37,25 @@ Teletrabajo	Remote
 # --- duration ------------------------------------------------------------
 Indefinido	Indefinite
 Indefinida	Indefinite
-Indeterminado	Indeterminate
-Indeterminada	Indeterminate
+Indeterminado	Indefinite
+Indeterminada	Indefinite
 Permanente	Permanent
-Fijo	Fixed
-Fija	Fixed
+Planta	Permanent
+De Planta	Permanent
+Planta Laboral	Permanent
+Estable	Permanent
+Contrato Indefinido	Indefinite
+Termino Indefinido	Indefinite
+Término Indefinido	Indefinite
+Termino Fijo	Fixed Term
+Término Fijo	Fixed Term
+Contrato Fijo	Fixed Term
+Obra Labor	Project Based
+Por Obra	Project Based
+Medio Turno	Part Time
+Tiempo Parcial	Part Time
+Fijo	Fixed Term
+Fija	Fixed Term
 Según Desempeño	Based on Performance
 Segun Desempeño	Based on Performance
 Según Desempeno	Based on Performance
@@ -53,6 +67,12 @@ Por Temporada	Seasonal
 Inmediato	Immediate
 Inmediata	Immediate
 De inmediato	Immediate
+De Inmediato	Immediate
+Inmediatamente	Immediate
+Inmediatamnete	Immediate
+Incorporacion inmediata	Immediate
+Incorporación inmediata	Immediate
+Urgente	Immediate
 Lo antes posible	As soon as possible
 Asap	Immediate
 A convenir con el candidato	To be agreed with the candidate

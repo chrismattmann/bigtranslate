@@ -392,10 +392,26 @@ class Glossary:
             return None
         return ", ".join(resolved)
 
+    # Trailing decoration seen on controlled-vocabulary values in this
+    # corpus: "Inmediato.", "Temporal -", "Indefinido*", "***Temporal***".
+    #
+    # No comma. A comma separates components here -- "Medio Tiempo, Desde
+    # Casa" is two terms -- so trimming it would make a truncated list look
+    # like a whole value, and the component rules below exist to keep those
+    # apart.
+    _EDGES = " \t.;:*-_!¡·"
+
     def _lookup_term(self, term):
         if term in self._exact:
             return self._exact[term]
-        return self._folded.get(term.strip().casefold())
+        folded = term.strip().casefold()
+        hit = self._folded.get(folded)
+        if hit is not None:
+            return hit
+        # Same value, punctuated. "Inmediato." missed entirely and was the
+        # start date of half a million documents.
+        trimmed = folded.strip(self._EDGES)
+        return self._folded.get(trimmed) if trimmed else None
 
 
 # --------------------------------------------------------------------------
