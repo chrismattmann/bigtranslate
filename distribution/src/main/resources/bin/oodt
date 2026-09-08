@@ -387,11 +387,45 @@ ensure_working_dirs() {
   done
 }
 
+# Wait until something is listening on a port, or give up.
+#
+# Used to order the managers rather than to check health: a manager that
+# binds its port is far enough along to be talked to.
+wait_for_port() {
+  waited=0
+  while [ "$waited" -lt 90 ]; do
+    port_busy "$1" && return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  return 1
+}
+
 start_oodt() {
   ensure_working_dirs
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
+  nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
+
+  # The Resource Manager before the Workflow Manager, and not merely started
+  # but listening. Under the ResourceRunner the workflow engine opens a client
+  # to the Resource Manager while it is being constructed, so starting the two
+  # together is a race the Workflow Manager loses about as often as it wins:
+  #
+  #   IllegalStateException: Unable to connect to Resource Manager at: ...
+  #   Caused by: java.net.ConnectException: Connection refused
+  #   ... ERROR RpcCommunicationFactory - Error creating server
+  #   Exception in thread "main" IllegalStateException: Unable to create server
+  #
+  # and the Workflow Manager exits. Nothing restarts it, so the run that
+  # follows has a File Manager, a Resource Manager and no engine at all.
+  # Under the local runner the order never mattered, which is why it stood.
+  if ! wait_for_port "$RESMGR_PORT"; then
+    echo "Resource Manager is not listening on $RESMGR_PORT; see $OODT_OUT"
+    echo "Starting the Workflow Manager anyway: it will fail if configured"
+    echo "for the ResourceRunner, and be fine if it is running tasks locally."
+  fi
+
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
-  nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &  
   nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
   # Solr runs as its own application now, with its own Jetty, rather than as a
   # war inside Tomcat. --solr-home points it at the bigtranslate core;
