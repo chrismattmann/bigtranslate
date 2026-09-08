@@ -153,3 +153,65 @@ class TestShippedGlossary:
     def test_every_target_is_non_empty(self, glossary):
         for source, target in glossary.entries.items():
             assert target.strip(), "empty target for %r" % source
+
+
+class TestPunctuatedValues:
+    """Controlled-vocabulary values arrive with decoration on them."""
+
+    def test_a_trailing_period_still_matches(self):
+        # "Inmediato." was the start date of roughly half a million
+        # documents and missed the entry for "Inmediato" entirely.
+        g = Glossary({"Inmediato": "Immediate"})
+        assert g.lookup("Inmediato.") == "Immediate"
+
+    @pytest.mark.parametrize("value", ["Temporal -", "***Temporal***",
+                                       "Temporal*", "¡Temporal!", "Temporal."])
+    def test_surrounding_decoration_is_ignored(self, value):
+        g = Glossary({"Temporal": "Temporary"})
+        assert g.lookup(value) == "Temporary"
+
+    def test_a_comma_is_a_separator_and_is_not_trimmed(self):
+        # "Medio Tiempo, Desde Casa" is two terms. Trimming the comma would
+        # make a truncated list resolve as though it were a whole value.
+        g = Glossary({"Medio Tiempo": "Part Time"})
+        assert g.lookup("Medio Tiempo, ") is None
+
+    def test_an_exact_entry_still_wins_over_the_trimmed_one(self):
+        g = Glossary({"Temporal": "Temporary", "Temporal -": "Seasonal"})
+        assert g.lookup("Temporal -") == "Seasonal"
+
+    def test_punctuation_alone_is_not_a_match(self):
+        g = Glossary({"Temporal": "Temporary"})
+        assert g.lookup("---") is None
+        assert g.lookup("") is None
+
+
+class TestTheExpandedEntries:
+    """Values the corpus is full of that had no entry."""
+
+    def setup_method(self):
+        self.g = Glossary.load(str(CONF / "glossary.es-en.tsv"))
+
+    def test_planta_is_a_permanent_position(self):
+        # "personal de planta" is staff, not a factory.  The model rendered
+        # it "Plant" across 1.4 million documents.
+        assert self.g.lookup("Planta") == "Permanent"
+        assert self.g.lookup("planta") == "Permanent"
+
+    def test_fijo_is_a_fixed_term_not_a_permanent_one(self):
+        # "contrato a término fijo" is the opposite of indefinido, so it
+        # must not collapse onto Permanent.
+        assert self.g.lookup("Fijo") == "Fixed Term"
+        assert self.g.lookup("Permanente") == "Permanent"
+
+    def test_indeterminado_and_indefinido_agree(self):
+        # The same concept. The model spread it over Indefinite,
+        # Indeterminate, undetermined, undefined and indefinite.
+        assert self.g.lookup("Indefinido") == "Indefinite"
+        assert self.g.lookup("Indeterminado") == "Indefinite"
+        assert self.g.lookup("Indeterminada") == "Indefinite"
+
+    def test_the_immediate_family_agrees(self):
+        for value in ["Inmediato", "inmediato", "De inmediato",
+                      "Inmediatamente", "Inmediato.", "Urgente"]:
+            assert self.g.lookup(value) == "Immediate", value
