@@ -141,6 +141,8 @@
           <property name="Encodings" value="[BIGTRANSLATE_HOME]/conf/encoding.txt" envReplace="true"/>
           <property name="TranslateCols" value="[BIGTRANSLATE_HOME]/conf/translate.cols" envReplace="true"/>
           <property name="ChunkSize" value="5000"/>
+          <property name="QueueName" value="managers"/>
+          <property name="TaskLoad" value="1"/>
           <property name="ProductType" value="EmploymentStringChunk"/>
         </configuration>
   </task>
@@ -217,6 +219,8 @@
                four, not faster. Eight was chosen for a parallelism the
                work does not have. -->
           <property name="JoinShards" value="4"/>
+          <property name="QueueName" value="managers"/>
+          <property name="TaskLoad" value="1"/>
           <property name="ProductType" value="EmploymentIndexedShard"/>
         </configuration>
   </task>
