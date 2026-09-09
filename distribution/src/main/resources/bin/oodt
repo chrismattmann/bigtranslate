@@ -471,6 +471,52 @@ start_oodt() {
   wait_for_started
 }
 
+# The pids of science processes this install has running.
+#
+# A PGE job script is started by the batch stub and detaches from it, so it
+# outlives every manager. Stopping OODT left them running: a join from a
+# discarded run was found still going 79 minutes later, four shard workers
+# deep, reading the corpus and on its way to writing the very Solr index the
+# next run was about to rebuild.
+#
+# Matched on this install's own job directory, so a second tree on the same
+# machine is left alone. Commands containing "grep" are dropped because the
+# search itself matches the pattern, which has produced phantom pids here
+# before.
+pge_job_pids() {
+  ps -axo pid=,command= 2>/dev/null \
+    | grep -F "$OODT_BASE/data/jobs/" \
+    | grep -F "sciPgeExeScript_" \
+    | grep -v "grep " \
+    | awk '{print $1}'
+}
+
+stop_pge_jobs() {
+  pids=$(pge_job_pids)
+  [ -n "$pids" ] || return 0
+  echo "Stopping science processes left by running jobs."
+  for pid in $pids; do
+    # Children first and by name, because killing the script alone orphans
+    # the python it forked, which is where the actual work happens.
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      kill "$child" 2>/dev/null
+    done
+    kill "$pid" 2>/dev/null
+  done
+  waited=0
+  while [ "$waited" -lt 20 ]; do
+    [ -z "$(pge_job_pids)" ] && return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  for pid in $(pge_job_pids); do
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      kill -9 "$child" 2>/dev/null
+    done
+    kill -9 "$pid" 2>/dev/null
+  done
+}
+
 stop_oodt() {
   "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" stop "$@" >> "$OODT_OUT" 2>&1  &
   "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
@@ -480,6 +526,10 @@ stop_oodt() {
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
   fi
   stop_pantogloss
+  # After the managers, so nothing hands out new work while these are being
+  # stopped, and before wait_for_stopped so the shutdown is not reported
+  # complete while science processes are still running.
+  stop_pge_jobs
   wait_for_stopped
 }
 
