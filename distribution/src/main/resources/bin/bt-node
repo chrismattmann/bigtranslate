@@ -53,11 +53,51 @@ stub_pid() {
   return 1
 }
 
+# Whoever is actually listening on the node port, pid file or no pid file.
+#
+# The file is a claim; this is the fact. They came apart badly: a stop that
+# did not stop left the old stub holding the port, the next start could not
+# bind, and the pid written down was of a process that had already given up.
+# Every job then went to the old stub -- older jars, older configuration --
+# while every deploy landed on disk and was never loaded.
+port_owner() {
+  lsof -nP -iTCP:"$NODE_PORT" -sTCP:LISTEN 2>/dev/null \
+    | awk 'NR > 1 { print $2 }' | sort -u | head -1
+}
+
+# Wait for a condition, up to $2 seconds. Used both ways: for the port to be
+# released after a stop, and for it to be taken after a start.
+wait_for() {
+  waited=0
+  while [ "$waited" -lt "$2" ]; do
+    if $1; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+port_free() { [ -z "$(port_owner)" ]; }
+port_taken() { [ -n "$(port_owner)" ]; }
+
 case "${1:-}" in
   start)
     if pid=$(stub_pid); then
       echo "Batch stub already running (pid $pid)."
       exit 0
+    fi
+    # The pid file said nothing, but something may still hold the port: a
+    # stub whose file was removed by a stop that did not finish the job.
+    # Starting anyway produces a second JVM that cannot bind, exits, and
+    # leaves its pid written down as though it were serving.
+    holder=$(port_owner)
+    if [ -n "$holder" ]; then
+      echo "Port $NODE_PORT is already held by pid $holder, with no pid file."
+      echo "That is an orphaned stub. Stop it first:"
+      echo "  kill $holder"
+      exit 1
     fi
     mkdir -p "$(dirname "$STUB_PID")" "$(dirname "$STUB_LOG")"
     # The translation service first: a task handed to this node the moment
@@ -71,22 +111,64 @@ case "${1:-}" in
       -Dorg.apache.oodt.cas.pge.task.status.legacyMode="true" \
       org.apache.oodt.cas.resource.system.extern.AvroRpcBatchStub \
       --portNum "$NODE_PORT" >> "$STUB_LOG" 2>&1 &
-    echo $! > "$STUB_PID"
-    echo "Batch stub on $NODE_PORT (pid $(cat "$STUB_PID")); log $STUB_LOG"
+    started=$!
+    # Bound, not merely launched. Reporting a pid that never took the port is
+    # how a whole afternoon's worth of jobs went to the wrong process.
+    if ! wait_for port_taken 30; then
+      echo "Batch stub did not reach $NODE_PORT within 30s; see $STUB_LOG"
+      kill "$started" 2>/dev/null
+      exit 1
+    fi
+    holder=$(port_owner)
+    if [ "$holder" != "$started" ]; then
+      echo "Port $NODE_PORT is held by pid $holder, not the stub just started"
+      echo "($started). Refusing to record a pid that is not serving."
+      kill "$started" 2>/dev/null
+      exit 1
+    fi
+    echo "$started" > "$STUB_PID"
+    echo "Batch stub on $NODE_PORT (pid $started); log $STUB_LOG"
     ;;
   stop)
-    if pid=$(stub_pid); then
+    # Whatever is on the port, not merely whatever the file names. A stop
+    # that removes the file and leaves the process running is worse than no
+    # stop at all: the next start believes the port is free.
+    pid=$(stub_pid) || pid=$(port_owner)
+    if [ -n "$pid" ]; then
       kill "$pid" 2>/dev/null
-      rm -f "$STUB_PID"
-      echo "Batch stub stopped."
+      if ! wait_for port_free 20; then
+        echo "Batch stub $pid did not exit in 20s; sending SIGKILL."
+        kill -9 "$pid" 2>/dev/null
+      fi
+      if wait_for port_free 10; then
+        rm -f "$STUB_PID"
+        echo "Batch stub stopped."
+      else
+        echo "Port $NODE_PORT is still held by pid $(port_owner)."
+        echo "The pid file is left in place; this needs looking at by hand."
+        exit 1
+      fi
     else
       echo "No batch stub running."
     fi
     "$BIGTRANSLATE_HOME"/bin/oodt stop-pantogloss
     ;;
   status)
-    if pid=$(stub_pid); then
-      echo "Batch stub running (pid $pid) on $NODE_PORT."
+    filed=$(stub_pid) || filed=""
+    holder=$(port_owner)
+    if [ -n "$filed" ] && [ "$filed" = "$holder" ]; then
+      echo "Batch stub running (pid $filed) on $NODE_PORT."
+    elif [ -n "$holder" ]; then
+      # Said plainly, because this is the state that misleads: jobs go to
+      # $holder while every restart and deploy is aimed at $filed.
+      echo "Port $NODE_PORT is held by pid $holder, but the pid file says" \
+           "${filed:-nothing}."
+      echo "Jobs are going to $holder, which is not the stub this deployment"
+      echo "thinks it is running."
+      exit 1
+    elif [ -n "$filed" ]; then
+      echo "Pid file names $filed but nothing is listening on $NODE_PORT."
+      exit 1
     else
       echo "Batch stub not running."
     fi
