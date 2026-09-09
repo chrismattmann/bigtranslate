@@ -196,7 +196,22 @@ stage_one() {
     rsync -a --exclude 'setenv.sh' -e "$SSH" \
       "$BIGTRANSLATE_HOME/$d/" "$host:$BIGTRANSLATE_HOME/$d/"
   done
-  staged=$($SSH "$host" "find '$BIGTRANSLATE_HOME/data/strings' -name 'chunk-*.json' -type f 2>/dev/null | wc -l | tr -d ' '")
+  # A manifest of what actually arrived, written here on the manager, because
+  # ChunkStagedCondition runs in the Workflow Manager and cannot stat a remote
+  # disk. Ask the node what it has rather than assuming the rsync copied what
+  # we sent -- a manifest that lists a file the node does not have would
+  # release a job that then fails, which is the whole failure this prevents.
+  mkdir -p "$BIGTRANSLATE_HOME/data/staging"
+  manifest="$BIGTRANSLATE_HOME/data/staging/$id.staged"
+  # Assigned before it is written, so that a failed ssh is a failure. Piping
+  # straight into the file would report the exit status of the local sort,
+  # and an unreachable node would quietly produce an empty manifest.
+  listing=$($SSH "$host" "find '$BIGTRANSLATE_HOME/data/strings' -name 'chunk-*.json' -type f | sed 's|.*/||' | sort") \
+    || die "could not list the staged chunks on $host"
+  printf '%s\n' "$listing" > "$manifest.tmp"
+  # Renamed into place so the condition never reads a half-written list.
+  mv "$manifest.tmp" "$manifest"
+  staged=$(grep -c . "$manifest" | tr -d ' ')
   echo "  $id has $staged chunk file(s)"
 }
 

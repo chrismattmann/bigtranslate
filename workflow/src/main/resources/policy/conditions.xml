@@ -39,4 +39,24 @@
     </configuration>
   </condition>
 
+  <!-- Holds a chunk translation until that chunk exists on every compute
+       node. The chunks are written on the manager and copied outwards by
+       "bt-cluster stage", and until that copy finishes the Resource Manager
+       will schedule a chunk onto a node that has no such file, where the job
+       fails. The alternative, used once by hand, was to keep the second
+       node's batch stub down for the duration, which takes a working node out
+       of the cluster to express a timing constraint and is remembered by
+       nobody.
+
+       A missing nodes.conf means a single machine install with nowhere to
+       stage to, and releases; anything else unreadable holds. -->
+  <condition id="urn:bigtranslate:ChunkStaged" name="Chunk Staged"
+             class="org.bigtranslate.workflow.ChunkStagedCondition">
+    <configuration>
+      <property name="StagingDir" value="[BIGTRANSLATE_HOME]/data/staging" envReplace="true"/>
+      <property name="NodesFile" value="[BIGTRANSLATE_HOME]/conf/nodes.conf" envReplace="true"/>
+      <property name="FilenameKey" value="Filename"/>
+    </configuration>
+  </condition>
+
 </cas:conditions>
