@@ -177,5 +177,26 @@ export BIGTRANSLATE_EXCLUDE=${BIGTRANSLATE_EXCLUDE:-}
 # Bound every Avro client call (Mnemosyne #197). Ten minutes is the code
 # default; 0 waits forever. JDK_JAVA_OPTIONS reaches File Manager, Workflow
 # Manager, Resource Manager, and Tomcat.
-AVRO_CLIENT_TIMEOUT_MS=${AVRO_CLIENT_TIMEOUT_MS:-600000}
+#
+# It has to outlive the longest task, because the Resource Manager dispatches
+# a job by making a blocking call that does not return until the job is done.
+# At the ten minute default a translation that takes forty minutes on CPU
+# produced, every ten minutes, for every running job:
+#
+#   SEVERE: Job execution failed for jobId '...' : No response to executeJob
+#   within 600000ms; abandoning the call.
+#
+# and abandoning the call is not abandoning the work. The job kept running on
+# the node; the batch manager recorded it as failed and, in the same finally
+# block, gave the node's capacity back. The scheduler then started another job
+# on a node it believed was free. Repeating every ten minutes, one machine
+# reached thirty concurrent translations against a capacity of eight, while
+# the GPU node -- which finishes inside ten minutes and so never timed out --
+# sat at exactly eight. Jobs that completed perfectly were recorded as
+# failures, which is why instance state and actual output disagreed.
+#
+# Four hours covers a CPU chunk and a join with room to spare. The timeout is
+# a backstop against a node that has genuinely gone away, not a task deadline,
+# so it should be far longer than any task rather than close to one.
+AVRO_CLIENT_TIMEOUT_MS=${AVRO_CLIENT_TIMEOUT_MS:-14400000}
 export JDK_JAVA_OPTIONS="${JDK_JAVA_OPTIONS:+$JDK_JAVA_OPTIONS }-Dorg.apache.oodt.avro.client.requestTimeoutMillis=${AVRO_CLIENT_TIMEOUT_MS}"
