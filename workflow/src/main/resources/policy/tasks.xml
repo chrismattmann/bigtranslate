@@ -149,7 +149,9 @@
 
   <task id="urn:bigtranslate:Translate_Chunk_Task" name="Translate_Chunk_Task"
     class="org.apache.oodt.cas.pge.StdPGETaskInstance">
-        <conditions/>
+        <conditions>
+          <condition id="urn:bigtranslate:ChunkStaged"/>
+        </conditions>
         <configuration>
           <property name="PGETask_Name" value="Translate_Chunk_Task"/>
           <property name="PGETask_ConfigFilePath" value="[BIGTRANSLATE_HOME]/pge/policy/no_filter/PgeConfig_TranslateChunk.xml" envReplace="true"/>
