@@ -223,7 +223,15 @@
                logged to say why. -->
           <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
           <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
-          <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated" envReplace="true"/>
+          <!-- The File Manager archive, not the flat directory a translate task
+               writes into. That flat directory only ever holds the chunks
+               translated on that machine: on a two node run the manager had 9
+               of 62 and the other 53 were on the compute node, so a join
+               reading it would have indexed a seventh of the corpus and said
+               it was finished. Remote data transfer brings every node's
+               output back to the archive, so the archive is the only copy
+               that is complete. -->
+          <property name="TranslatedDir" value="[BIGTRANSLATE_HOME]/data/translated-catalog" envReplace="true"/>
           <property name="SolrUrl" value="[SOLR_URL]" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
           <property name="TranslateGlossary" value="[BIGTRANSLATE_HOME]/conf/glossary.es-en.tsv" envReplace="true"/>
