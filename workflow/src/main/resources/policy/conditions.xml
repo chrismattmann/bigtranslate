@@ -29,6 +29,20 @@
   <condition id="urn:bigtranslate:TranslationsSettled" name="Translations Settled"
              class="org.apache.oodt.cas.pge.condition.ProductCountSettledCondition">
     <configuration>
+      <!-- A condition is dispatched as a task like any other, and under the
+           ResourceRunner a task with no queue falls back to a default of
+           "high", which this deployment does not define. The Resource Manager
+           cannot schedule it, the condition task fails, and a failed condition
+           task reads as a condition that answered no. Every condition here
+           failed that way, every time, which is the real reason the join has
+           only ever been started by hand.
+
+           Conditions get a queue of their own, on the manager, because a
+           condition reads the manager's filesystem and because it is re-asked
+           until it passes; a few hundred gated tasks would otherwise crowd
+           extract and join out of the managers queue. -->
+      <property name="QueueName" value="conditions"/>
+      <property name="TaskLoad" value="1"/>
       <property name="FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
       <property name="ProductTypeName" value="EmploymentTranslatedChunk"/>
       <!-- At least one, so the join cannot run against nothing at all. -->
@@ -53,6 +67,20 @@
   <condition id="urn:bigtranslate:ChunkStaged" name="Chunk Staged"
              class="org.bigtranslate.workflow.ChunkStagedCondition">
     <configuration>
+      <!-- A condition is dispatched as a task like any other, and under the
+           ResourceRunner a task with no queue falls back to a default of
+           "high", which this deployment does not define. The Resource Manager
+           cannot schedule it, the condition task fails, and a failed condition
+           task reads as a condition that answered no. Every condition here
+           failed that way, every time, which is the real reason the join has
+           only ever been started by hand.
+
+           Conditions get a queue of their own, on the manager, because a
+           condition reads the manager's filesystem and because it is re-asked
+           until it passes; a few hundred gated tasks would otherwise crowd
+           extract and join out of the managers queue. -->
+      <property name="QueueName" value="conditions"/>
+      <property name="TaskLoad" value="1"/>
       <property name="StagingDir" value="[BIGTRANSLATE_HOME]/data/staging" envReplace="true"/>
       <property name="NodesFile" value="[BIGTRANSLATE_HOME]/conf/nodes.conf" envReplace="true"/>
       <property name="FilenameKey" value="Filename"/>

@@ -144,7 +144,15 @@ cmd_policy() {
     echo '     its own output file, so any node may take any chunk. Only the'
     echo '     first serves managers, because extract reads the corpus and'
     echo '     join writes the Solr index, and those disks are attached to'
-    echo '     the machine running the managers. -->'
+    echo '     the machine running the managers.'
+    echo ''
+    echo '     Conditions get a queue of their own, on that same machine. A'
+    echo '     condition reads the manager filesystem, so it can only run'
+    echo '     there; and it is re-asked until it passes, so a few hundred'
+    echo '     gated tasks generate steady scheduling traffic. Sharing the'
+    echo '     managers queue would let that traffic occupy the slots extract'
+    echo '     and join need, and the join is itself gated by a condition,'
+    echo '     so conditions would end up delaying the work they gate. -->'
     echo '<cas:nodeMap xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">'
     first=yes
     node_lines | while read -r id host capacity; do
@@ -152,13 +160,28 @@ cmd_policy() {
       echo "  <node id=\"$id\">"
       echo '    <queues>'
       echo '      <queue name="translate"/>'
-      if [ "$first" = yes ]; then echo '      <queue name="managers"/>'; fi
+      if [ "$first" = yes ]; then
+        echo '      <queue name="managers"/>'
+        echo '      <queue name="conditions"/>'
+      fi
       echo '    </queues>'
       echo '  </node>'
       first=no
     done
     echo '</cas:nodeMap>'
   } > "$map_xml"
+
+  # Parsed before anyone depends on them. A generated file that does not
+  # parse takes the Resource Manager down at startup, which takes the Workflow
+  # Manager with it ("Null engine"), and the message that actually names the
+  # problem is several stack traces deep in a log nobody is tailing. The
+  # specific way this has gone wrong here, repeatedly, is a "--" inside an XML
+  # comment, which is not permitted and which nothing warns about at the point
+  # it is written.
+  for generated in "$nodes_xml" "$map_xml"; do
+    python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$generated" \
+      || die "generated $generated is not valid XML; it has not been left in a usable state"
+  done
 
   echo "wrote $nodes_xml and $map_xml for $(node_lines | wc -l | tr -d ' ') node(s)"
 }
