@@ -1,0 +1,277 @@
+#!/bin/sh
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Run BigTranslate across more than one machine.
+#
+# Every node is described in conf/nodes.conf and nothing here knows a
+# hostname. The first multi-node run was assembled by hand -- a node block
+# appended to one machine's setenv.sh, jars copied into fourteen lib
+# directories, chunks rsynced, an NFS mount that hung twice -- and none of it
+# was written down anywhere a second run could repeat. This is that, made
+# repeatable.
+#
+# Two rules the hand-built version kept breaking, worth stating because they
+# are not obvious:
+#
+#   The same absolute path on every machine. The File Manager catalogues
+#   absolute paths and the Workflow Manager writes them into task metadata,
+#   so a node has to find bin, conf and chunks exactly where the manager
+#   says they are. BIGTRANSLATE_HOME is therefore identical everywhere,
+#   which is why a node's tree is not under its own home directory.
+#
+#   Addresses that resolve from the node, never from here. localhost and a
+#   bare short hostname are both correct on the machine that writes them and
+#   meaningless on the machine that reads them.
+
+set -e
+
+die() { echo "bt-cluster: $*" >&2; exit 1; }
+
+if [ -z "$BIGTRANSLATE_HOME" ]; then
+  _bt_bin=$(cd "$(dirname "$0")" && pwd)
+  BIGTRANSLATE_HOME=$(cd "$_bt_bin/.." && pwd)
+fi
+
+# Options before the command, so nothing depends on what happens to be
+# exported in the calling shell. Sourcing setenv.sh first still works and is
+# the ordinary way; these are for driving it from somewhere that has not.
+COMMAND=""
+ONLY_NODE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --home)       BIGTRANSLATE_HOME="$2"; shift 2 ;;
+    --home=*)     BIGTRANSLATE_HOME="${1#*=}"; shift ;;
+    --pantogloss) PANTOGLOSS_SOURCE="$2"; shift 2 ;;
+    --pantogloss=*) PANTOGLOSS_SOURCE="${1#*=}"; shift ;;
+    --nodes)      NODES_CONF="$2"; shift 2 ;;
+    --nodes=*)    NODES_CONF="${1#*=}"; shift ;;
+    --ssh)        SSH="$2"; shift 2 ;;
+    --ssh=*)      SSH="${1#*=}"; shift ;;
+    --node)       ONLY_NODE="$2"; shift 2 ;;
+    --node=*)     ONLY_NODE="${1#*=}"; shift ;;
+    -h|--help)    COMMAND="help"; shift ;;
+    -*)           die "unknown option: $1" ;;
+    *)            if [ -z "$COMMAND" ]; then COMMAND="$1"; else ONLY_NODE="$1"; fi; shift ;;
+  esac
+done
+
+export BIGTRANSLATE_HOME
+export PANTOGLOSS_SOURCE
+
+NODES_CONF="${NODES_CONF:-${BT_NODES_CONF:-$BIGTRANSLATE_HOME/conf/nodes.conf}}"
+SSH="${SSH:-${BT_SSH:-ssh -o BatchMode=yes}}"
+
+[ -f "$NODES_CONF" ] || die "no node list at $NODES_CONF"
+
+# --node picks one out of the list. Adding a machine to a running cluster
+# should not mean redeploying the ones already working.
+select_node() {
+  if [ -z "$ONLY_NODE" ]; then
+    cat
+  else
+    awk -v want="$ONLY_NODE" '$1 == want'
+  fi
+}
+
+# id host capacity, one per line, comments and blanks dropped.
+node_lines() {
+  grep -vE '^[[:space:]]*(#|$)' "$NODES_CONF"
+}
+
+manager_host() { node_lines | head -1 | awk '{print $2}'; }
+manager_id()   { node_lines | head -1 | awk '{print $1}'; }
+
+# Every node after the first. Those are the ones needing ssh, a deployment
+# and staged inputs; the first is this machine.
+remote_lines() { node_lines | tail -n +2 | select_node; }
+
+for_each_remote() {
+  found=$(remote_lines | wc -l | tr -d ' ')
+  if [ -n "$ONLY_NODE" ] && [ "$found" -eq 0 ] && ! manager_selected; then
+    die "no node called [$ONLY_NODE] in $NODES_CONF (the first line is this machine and is not deployed to)"
+  fi
+  remote_lines | while read -r id host capacity; do
+    [ -n "$id" ] || continue
+    "$@" "$id" "$host" "${capacity:-8}"
+  done
+}
+
+# ---------------------------------------------------------------- policy ---
+
+# nodes.xml and the queue mapping, written from the node list.
+#
+# These were two hand-maintained files naming exactly two nodes, "local" and
+# "gpu", through BIGTRANSLATE_NODE_URL and BIGTRANSLATE_NODE2_URL. A third
+# node meant editing both by hand and inventing a third variable.
+cmd_policy() {
+  nodes_xml="$BIGTRANSLATE_HOME/resmgr/policy/nodes.xml"
+  map_xml="$BIGTRANSLATE_HOME/resmgr/policy/node-to-queue-mapping.xml"
+  port="${BIGTRANSLATE_NODE_PORT:-2001}"
+
+  {
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<!-- Generated by bin/bt-cluster policy from conf/nodes.conf.'
+    echo '     Edit that file, not this one. -->'
+    echo '<cas:nodes xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">'
+    node_lines | while read -r id host capacity; do
+      [ -n "$id" ] || continue
+      echo "  <node nodeId=\"$id\" ip=\"http://$host:$port\" capacity=\"${capacity:-8}\"/>"
+    done
+    echo '</cas:nodes>'
+  } > "$nodes_xml"
+
+  {
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<!-- Generated by bin/bt-cluster policy from conf/nodes.conf.'
+    echo '     Every node serves translate: a chunk carries no state beyond'
+    echo '     its own output file, so any node may take any chunk. Only the'
+    echo '     first serves managers, because extract reads the corpus and'
+    echo '     join writes the Solr index, and those disks are attached to'
+    echo '     the machine running the managers. -->'
+    echo '<cas:nodeMap xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">'
+    first=yes
+    node_lines | while read -r id host capacity; do
+      [ -n "$id" ] || continue
+      echo "  <node id=\"$id\">"
+      echo '    <queues>'
+      echo '      <queue name="translate"/>'
+      if [ "$first" = yes ]; then echo '      <queue name="managers"/>'; fi
+      echo '    </queues>'
+      echo '  </node>'
+      first=no
+    done
+    echo '</cas:nodeMap>'
+  } > "$map_xml"
+
+  echo "wrote $nodes_xml and $map_xml for $(node_lines | wc -l | tr -d ' ') node(s)"
+}
+
+# ---------------------------------------------------------------- deploy ---
+
+deploy_one() {
+  id=$1; host=$2
+  echo "deploying to $id ($host) at $BIGTRANSLATE_HOME"
+  $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME'" \
+    || die "cannot create $BIGTRANSLATE_HOME on $host (needs to be writable by you)"
+  # Everything except what is per-machine or regenerated. The venv is built
+  # on the node: a virtualenv records absolute paths and its binaries are
+  # built for one architecture, so copying one from an arm64 Mac to a Linux
+  # box produces a tree that looks right and cannot run.
+  rsync -a --delete \
+    --exclude '.venv' --exclude 'logs/*' --exclude 'run/*' \
+    --exclude 'data/jobs/*' --exclude 'data/translated/*' \
+    --exclude 'bin/setenv.sh' \
+    -e "$SSH" "$BIGTRANSLATE_HOME/" "$host:$BIGTRANSLATE_HOME/"
+  $SSH "$host" "cd '$BIGTRANSLATE_HOME' && PANTOGLOSS_SOURCE='${PANTOGLOSS_SOURCE:-pantogloss}' bin/bigtranslate-setup" \
+    || die "could not build the python environment on $host"
+  echo "  $id ready"
+}
+
+cmd_deploy() { for_each_remote deploy_one; echo "deploy complete"; }
+
+# ------------------------------------------------------------------ stage ---
+
+stage_one() {
+  id=$1; host=$2
+  echo "staging inputs to $id ($host)"
+  # Read-only inputs only. A node writes its own outputs and they come back
+  # through the File Manager, so nothing is copied in that direction.
+  for d in conf bin pge/policy workflow/policy data/strings; do
+    [ -d "$BIGTRANSLATE_HOME/$d" ] || continue
+    $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME/$d'"
+    rsync -a --exclude 'setenv.sh' -e "$SSH" \
+      "$BIGTRANSLATE_HOME/$d/" "$host:$BIGTRANSLATE_HOME/$d/"
+  done
+  staged=$($SSH "$host" "find '$BIGTRANSLATE_HOME/data/strings' -name 'chunk-*.json' -type f 2>/dev/null | wc -l | tr -d ' '")
+  echo "  $id has $staged chunk file(s)"
+}
+
+cmd_stage() { for_each_remote stage_one; echo "staging complete"; }
+
+# ------------------------------------------------------- start/stop/status ---
+
+start_one() { echo "starting $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node start" || true; }
+stop_one()  { echo "stopping $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node stop" || true; }
+status_one(){ printf '%-10s %-22s ' "$1" "$2"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node status" 2>&1 | tail -1; }
+
+# --node applies to this machine too. Asking about one node and being told
+# about all of them is the sort of small dishonesty that makes a script
+# untrustworthy for scripting against.
+manager_selected() {
+  [ -z "$ONLY_NODE" ] || [ "$ONLY_NODE" = "$(manager_id)" ]
+}
+
+cmd_start() {
+  manager_selected && "$BIGTRANSLATE_HOME"/bin/bt-node start
+  for_each_remote start_one
+}
+
+cmd_stop() {
+  for_each_remote stop_one
+  manager_selected && "$BIGTRANSLATE_HOME"/bin/bt-node stop
+}
+
+cmd_status() {
+  if manager_selected; then
+    printf '%-10s %-22s ' "$(manager_id)" "$(manager_host)"
+    "$BIGTRANSLATE_HOME"/bin/bt-node status 2>&1 | tail -1
+  fi
+  for_each_remote status_one
+}
+
+case "${COMMAND:-}" in
+  policy) cmd_policy ;;
+  deploy) cmd_deploy ;;
+  stage)  cmd_stage ;;
+  start)  cmd_start ;;
+  stop)   cmd_stop ;;
+  status) cmd_status ;;
+  nodes)  node_lines ;;
+  help|*)
+    echo "usage: bt-cluster [options] {policy|deploy|stage|start|stop|status|nodes} [node]"
+    echo
+    echo "options:"
+    echo "  --home PATH        deployment root; the same absolute path on"
+    echo "                     every machine. Defaults to this script's parent."
+    echo "  --pantogloss SPEC  checkout, wheel or pip specifier for the"
+    echo "                     translator, passed to bigtranslate-setup"
+    echo "  --nodes FILE       node list (default conf/nodes.conf)"
+    echo "  --ssh CMD          ssh command (default: ssh -o BatchMode=yes)"
+    echo "  --node ID          act on one node instead of all of them; also"
+    echo "                     accepted as a trailing argument"
+    echo
+    echo
+    echo "  policy   write nodes.xml and the queue mapping from conf/nodes.conf"
+    echo "  deploy   install BigTranslate and its python environment on each"
+    echo "           remote node, at the same absolute path as here"
+    echo "  stage    copy conf, scripts, policy and the string chunks to each"
+    echo "  start    batch stub and translation service, here and on each node"
+    echo "  stop     the same, in reverse"
+    echo "  status   what is actually listening, per node"
+    echo "  nodes    the parsed node list"
+    echo
+    echo "Adding a machine is a line in the node list followed by:"
+    echo "  bt-cluster policy"
+    echo "  bt-cluster deploy --node <id> --pantogloss ~/git/pantogloss"
+    echo "  bt-cluster stage  --node <id>"
+    echo "  bt-cluster start  --node <id>"
+    echo "and restarting the managers so the Resource Manager reads the new"
+    echo "policy. Nothing here knows a hostname; everything comes from the"
+    echo "node list."
+    exit 1
+    ;;
+esac
