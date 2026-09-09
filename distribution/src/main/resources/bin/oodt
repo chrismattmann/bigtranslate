@@ -401,6 +401,35 @@ wait_for_port() {
   return 1
 }
 
+# The workflow instance repository is a database, and nothing in BigTranslate
+# creates it. That is invisible right up until someone clears data/ between
+# runs, which is a normal thing to do: HSQLDB then makes a fresh empty database
+# on the next connection and the Workflow Manager starts perfectly cleanly. It
+# binds its port, loads its policy, lists its workflows and registers its
+# events, so every health check there is to run passes, and every workflow
+# start fails against the missing table. The manager logs exactly that, but
+# nothing creates the table it is asking for.
+#
+# Done here rather than only in bigtranslate-setup because setup is exactly
+# what is not re-run in that situation. It creates nothing when the tables are
+# already there.
+ensure_workflow_instance_schema() {
+  schema_sql="$OODT_BASE/workflow/etc/workflow-instances.sql"
+  schema_props="$OODT_BASE/workflow/etc/workflow.properties"
+  [ -f "$schema_sql" ] && [ -f "$schema_props" ] || return 0
+  if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    schema_java="$JAVA_HOME/bin/java"
+  else
+    schema_java=java
+  fi
+  # Before the Workflow Manager starts: HSQLDB in file mode is single process,
+  # so this cannot be done once it holds the lock.
+  "$schema_java" -cp "$OODT_BASE/workflow/lib/*" \
+    org.bigtranslate.workflow.WorkflowInstanceSchema \
+    "$schema_props" "$schema_sql" \
+    || echo "Could not verify the workflow instance database; starting anyway."
+}
+
 start_oodt() {
   ensure_working_dirs
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
@@ -424,6 +453,8 @@ start_oodt() {
     echo "Starting the Workflow Manager anyway: it will fail if configured"
     echo "for the ResourceRunner, and be fine if it is running tasks locally."
   fi
+
+  ensure_workflow_instance_schema
 
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
