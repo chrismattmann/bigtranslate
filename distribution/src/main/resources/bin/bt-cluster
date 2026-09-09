@@ -51,6 +51,7 @@ fi
 # the ordinary way; these are for driving it from somewhere that has not.
 COMMAND=""
 ONLY_NODE=""
+CHUNK_SRC=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --home)       BIGTRANSLATE_HOME="$2"; shift 2 ;;
@@ -61,6 +62,8 @@ while [ $# -gt 0 ]; do
     --nodes=*)    NODES_CONF="${1#*=}"; shift ;;
     --ssh)        SSH="$2"; shift 2 ;;
     --ssh=*)      SSH="${1#*=}"; shift ;;
+    --chunks)     CHUNK_SRC="$2"; shift 2 ;;
+    --chunks=*)   CHUNK_SRC="${1#*=}"; shift ;;
     --node)       ONLY_NODE="$2"; shift 2 ;;
     --node=*)     ONLY_NODE="${1#*=}"; shift ;;
     -h|--help)    COMMAND="help"; shift ;;
@@ -203,6 +206,13 @@ stage_one() {
   # release a job that then fails, which is the whole failure this prevents.
   mkdir -p "$BIGTRANSLATE_HOME/data/staging"
   manifest="$BIGTRANSLATE_HOME/data/staging/$id.staged"
+  record_staged "$id" "$host"
+}
+
+record_staged() {
+  id=$1; host=$2
+  mkdir -p "$BIGTRANSLATE_HOME/data/staging"
+  manifest="$BIGTRANSLATE_HOME/data/staging/$id.staged"
   # Assigned before it is written, so that a failed ssh is a failure. Piping
   # straight into the file would report the exit status of the local sort,
   # and an unreachable node would quietly produce an empty manifest.
@@ -213,6 +223,39 @@ stage_one() {
   mv "$manifest.tmp" "$manifest"
   staged=$(grep -c . "$manifest" | tr -d ' ')
   echo "  $id has $staged chunk file(s)"
+}
+
+# ----------------------------------------------------------- stage-chunks ---
+
+# Just the chunk files, from wherever they have this moment been written.
+#
+# Called by the extract task, before its output is ingested. That is the only
+# point at which every node can be given the chunks before anything can be
+# asked to translate one: ingest is what fires the chunk event, the event is
+# what creates the translate task, and a task's precondition is evaluated when
+# the task appears. Staging afterwards is a race; staging here removes it.
+stage_chunks_one() {
+  id=$1; host=$2
+  echo "staging chunks to $id ($host)"
+  $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME/data/strings'" \
+    || die "could not create data/strings on $host"
+  rsync -a --include 'chunk-*.json' --exclude '*' -e "$SSH" \
+    "$CHUNK_SRC/" "$host:$BIGTRANSLATE_HOME/data/strings/" \
+    || die "could not copy chunks to $host"
+  record_staged "$id" "$host"
+}
+
+cmd_stage_chunks() {
+  [ -n "$CHUNK_SRC" ] || CHUNK_SRC="$BIGTRANSLATE_HOME/data/strings"
+  [ -d "$CHUNK_SRC" ] || die "no such directory: $CHUNK_SRC"
+  if [ "$(remote_lines | wc -l | tr -d ' ')" -eq 0 ]; then
+    # One machine, which wrote the chunks itself. Nothing to copy and nothing
+    # to wait for, and saying so is not a failure.
+    echo "no compute nodes beyond the manager; nothing to stage"
+    return 0
+  fi
+  for_each_remote stage_chunks_one
+  echo "chunk staging complete"
 }
 
 cmd_stage() { for_each_remote stage_one; echo "staging complete"; }
@@ -252,12 +295,13 @@ case "${COMMAND:-}" in
   policy) cmd_policy ;;
   deploy) cmd_deploy ;;
   stage)  cmd_stage ;;
+  stage-chunks) cmd_stage_chunks ;;
   start)  cmd_start ;;
   stop)   cmd_stop ;;
   status) cmd_status ;;
   nodes)  node_lines ;;
   help|*)
-    echo "usage: bt-cluster [options] {policy|deploy|stage|start|stop|status|nodes} [node]"
+    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|start|stop|status|nodes} [node]"
     echo
     echo "options:"
     echo "  --home PATH        deployment root; the same absolute path on"
@@ -273,6 +317,11 @@ case "${COMMAND:-}" in
     echo "  policy   write nodes.xml and the queue mapping from conf/nodes.conf"
     echo "  deploy   install BigTranslate and its python environment on each"
     echo "           remote node, at the same absolute path as here"
+    echo "  stage-chunks  copy just the chunk files from --chunks <dir> to"
+    echo "           each node's data/strings, then record what each node has."
+    echo "           Run by the extract task before its output is ingested, so"
+    echo "           that no translate task exists before every node can serve"
+    echo "           it. Defaults to data/strings for a re-stage by hand."
     echo "  stage    copy conf, scripts, policy and the string chunks to each"
     echo "  start    batch stub and translation service, here and on each node"
     echo "  stop     the same, in reverse"
