@@ -32,7 +32,22 @@
     <metadata key="Ampersand" val="&#38;"/>
     <metadata key="ProductionDateTime" val="[DATE.UTC]"/>
     <metadata key="DateMilis" val="[DATE_TO_MILLIS([ProductionDateTime],UTC_FORMAT,1970-01-01)]"/>
-    <metadata key="PCS_ActionsIds" val="TriggerPostIngestWorkflow" split="true"/>
+    <!-- No post-ingest action. TriggerPostIngestWorkflow fires
+         [ProductType]Ingest, which for this stage is
+         EmploymentTranslatedChunkIngest, and no workflow answers to that name:
+         sendEvent returned false and every successful translation ended with
+
+           WARNING: Failed to perform crawler action ...
+           java.lang.Exception: Action (id = TriggerPostIngestWorkflow ...) returned false
+           WARNING: Product was not ingested [file=...]
+
+         reported as a failure after the work was done and catalogued.
+
+         There is nothing for a translated chunk to start. The join is
+         triggered once by EmploymentTranslationsComplete and waits for every
+         chunk itself, which is what the expect flag is for. Extract keeps its
+         trigger, because EmploymentStringChunkIngest is what gives each chunk
+         a translate workflow in the first place. -->
     <metadata key="ChunkFile" val="[Filename]"/>
     <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/translate/[ChunkFile]_[DateMilis]"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>

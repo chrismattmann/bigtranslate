@@ -85,3 +85,36 @@ class TestOnlyTranslateLeavesTheMachine:
         queues = self._map().get("gpu")
         assert queues is not None, "the gpu node is not mapped"
         assert "managers" not in queues
+
+
+class TestTheTranslateStageStartsNothing:
+    """A stage with nothing downstream must not claim to trigger one.
+
+    TriggerPostIngestWorkflow fires [ProductType]Ingest. For the translate
+    stage that is EmploymentTranslatedChunkIngest, which no workflow answers
+    to, so sendEvent returned false and every successful translation ended
+    with "Action ... returned false" and "Product was not ingested" -- after
+    the work was done and catalogued.
+    """
+
+    def _pge(self, name):
+        return (WORKFLOW_POLICY.parent.parent.parent.parent.parent / "pge" /
+                "src" / "main" / "resources" / "policy" / "no_filter" /
+                name).read_text()
+
+    def test_translate_has_no_post_ingest_action(self):
+        assert "PCS_ActionsIds" not in self._pge("PgeConfig_TranslateChunk.xml")
+
+    def test_extract_keeps_its_post_ingest_action(self):
+        # EmploymentStringChunkIngest is what gives each chunk a translate
+        # workflow; removing it would stop the pipeline entirely.
+        assert "PCS_ActionsIds" in self._pge("PgeConfig_ExtractStrings.xml")
+
+    def test_every_triggered_event_is_declared(self):
+        # The rule the missing event broke: a stage that fires
+        # [ProductType]Ingest needs that event in events.xml.
+        events = (WORKFLOW_POLICY / "events.xml").read_text()
+        for pge, product in [("PgeConfig_ExtractStrings.xml",
+                              "EmploymentStringChunk")]:
+            if "PCS_ActionsIds" in self._pge(pge):
+                assert '"%sIngest"' % product in events, product
