@@ -157,7 +157,21 @@
           <property name="PCS_WorkflowManagerUrl" value="[WORKFLOW_URL]" envReplace="true"/>
           <property name="PCS_FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
           <property name="PCS_MetFileExtension" value="met"/>
-          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.LocalDataTransferFactory"/>
+          <!-- Remote, not Local, because this is the one task that runs on
+               another machine. LocalDataTransferFactory copies the file on
+               whichever machine ran the task, so a node ingested its output
+               into its own repository directory and reported success: the
+               File Manager catalogued the absolute path, every machine uses
+               the same absolute path, and the record was indistinguishable
+               from one whose file was here. Ten of twenty chunks were on the
+               wrong disk and nothing said so.
+
+               RemoteDataTransferFactory has the File Manager pull the file,
+               so it lands where the catalogue says. On the manager that is
+               RPC to itself rather than a copy, which for a 284KB chunk is
+               not worth a second setting. Extract and join keep Local: they
+               only ever run here. -->
+          <property name="PCS_ClientTransferServiceFactory" value="org.apache.oodt.cas.filemgr.datatransfer.RemoteDataTransferFactory"/>
           <!-- Where the crawler actions live. Without it PCS_ActionsIds
                names beans that cannot be resolved, so the post ingest
                trigger never runs: products are catalogued and the stage
