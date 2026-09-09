@@ -237,11 +237,38 @@ record_staged() {
 stage_chunks_one() {
   id=$1; host=$2
   echo "staging chunks to $id ($host)"
-  $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME/data/strings'" \
+  incoming="$BIGTRANSLATE_HOME/data/strings/.incoming"
+  $SSH "$host" "rm -rf '$incoming' && mkdir -p '$incoming'" \
     || die "could not create data/strings on $host"
-  rsync -a --include 'chunk-*.json' --exclude '*' -e "$SSH" \
-    "$CHUNK_SRC/" "$host:$BIGTRANSLATE_HOME/data/strings/" \
+  rsync -a --include 'chunk-*.json' --include 'chunk-*.json/***' --exclude '*' \
+    -e "$SSH" "$CHUNK_SRC/" "$host:$incoming/" \
     || die "could not copy chunks to $host"
+
+  # Put each chunk where the task will look for it, which is not where it was
+  # copied from. A translate task resolves its input from the catalogue --
+  # FileLocation joined to Filename -- and that names the File Manager's
+  # archive, which BasicVersioner lays out as <name>/<name>. Chunks handed to
+  # us straight from the extract job are flat, so staging them as they came
+  # puts every one of them a directory level away from the only path the task
+  # will ever try. That failed every job on the staged node instantly, and
+  # looked like a node that would not saturate.
+  #
+  # Both shapes are accepted, because the source is the extract output on a
+  # first run and the manager's own archive on a re-stage.
+  $SSH "$host" "cd '$incoming' || exit 1
+    for f in chunk-*.json; do
+      [ -e \"\$f\" ] || continue
+      mkdir -p \"../\$f\" || exit 1
+      if [ -d \"\$f\" ]; then
+        mv -f \"\$f\"/* \"../\$f\"/ || exit 1
+        rmdir \"\$f\" || exit 1
+      else
+        mv -f \"\$f\" \"../\$f/\$f\" || exit 1
+      fi
+    done
+    cd .. && rmdir .incoming 2>/dev/null || true" \
+    || die "could not place the chunks into the archive layout on $host"
+
   record_staged "$id" "$host"
 }
 
