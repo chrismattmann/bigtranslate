@@ -430,6 +430,35 @@ ensure_workflow_instance_schema() {
     || echo "Could not verify the workflow instance database; starting anyway."
 }
 
+# Wait until the translation service will actually answer a translation.
+#
+# It binds its port as soon as uvicorn starts and only reports ready once the
+# model is loaded, which is seconds on a warm cache and minutes on a cold one.
+# A translate job that arrives in between dies with
+#
+#   ServiceUnavailable: the translation service at http://127.0.0.1:8766
+#   stopped answering partway through ([Errno 61] Connection refused)
+#
+# and that is a real, permanent failure for the chunk: nothing retries it.
+# Cheap to prevent and expensive to discover, since until the PGE learned to
+# fail on a failing command these losses were recorded as successes.
+wait_for_pantogloss() {
+  [ -x "$OODT_BASE/.venv/bin/pantogloss" ] || return 0
+  waited=0
+  while [ "$waited" -lt 600 ]; do
+    if curl -s -m 5 "http://127.0.0.1:$PANTOGLOSS_PORT/health" 2>/dev/null \
+        | grep -q '"ready"[[:space:]]*:[[:space:]]*true'; then
+      [ "$waited" -gt 0 ] && echo "Translation service ready after ${waited}s."
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "Translation service on $PANTOGLOSS_PORT is not reporting ready after"
+  echo "${waited}s; starting anyway. Translate jobs will fail until it is."
+  return 1
+}
+
 start_oodt() {
   ensure_working_dirs
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
@@ -456,6 +485,12 @@ start_oodt() {
 
   ensure_workflow_instance_schema
 
+  # Before the Workflow Manager, and ready before it, because the Workflow
+  # Manager is what hands out translate work. Started here rather than at the
+  # end so the load overlaps the managers coming up instead of following them.
+  start_pantogloss
+  wait_for_pantogloss
+
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
   # Solr runs as its own application now, with its own Jetty, rather than as a
@@ -467,7 +502,6 @@ start_oodt() {
     nohup "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" start -p "$SOLR_PORT" \
       --solr-home "$OODT_BASE"/solr --user-managed >> "$OODT_OUT" 2>&1 &
   fi
-  start_pantogloss
   wait_for_started
 }
 
@@ -540,8 +574,15 @@ elif [ "$1" = "stop" ]; then
 elif [ "$1" = "start-pantogloss" ]; then
   # For a compute node, which wants the translation service and none of the
   # managers. bin/bt-node uses these two.
+  #
+  # Returns when the service will answer a translation, not when its process
+  # exists. bt-node starts this before the batch stub precisely so that a task
+  # handed to the node has something to translate against, and returning early
+  # defeats that: the stub binds, the manager sees a node that is up, and the
+  # jobs it sends land on a service still loading its model.
   ensure_working_dirs
   start_pantogloss
+  wait_for_pantogloss
 elif [ "$1" = "stop-pantogloss" ]; then
   stop_pantogloss
 elif [ "$1" = "restart" ]; then
