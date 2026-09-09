@@ -73,13 +73,22 @@ class TestPolicyIsGeneratedFromTheNodeList:
         assert done.returncode == 0, done.stderr
         root = ET.parse(home / "resmgr" / "policy" / "nodes.xml").getroot()
         ids = [n.get("nodeId") for n in root.iter("node")]
-        assert ids == ["manager", "gpu", "spare"]
+        # The manager appears twice: once for translate and managers, once as
+        # the conditions pool. Two ids on one host is what keeps long running
+        # translations from exhausting the slots conditions need, because the
+        # Resource Manager tracks load per node id rather than per queue.
+        assert ids == ["manager", "manager-conditions", "gpu", "spare"]
 
     def test_capacity_carries_through(self, tmp_path):
         done, home = run(tmp_path, "policy", nodes=self.THREE)
         root = ET.parse(home / "resmgr" / "policy" / "nodes.xml").getroot()
         caps = {n.get("nodeId"): n.get("capacity") for n in root.iter("node")}
-        assert caps == {"manager": "8", "gpu": "8", "spare": "4"}
+        assert caps == {
+            "manager": "8",
+            "manager-conditions": "20",
+            "gpu": "8",
+            "spare": "4"
+        }
 
     def test_addresses_are_not_loopback(self, tmp_path):
         # localhost is correct on the machine that writes it and meaningless
