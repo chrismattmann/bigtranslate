@@ -101,11 +101,41 @@ class TestPolicyIsGeneratedFromTheNodeList:
         # Extract reads the corpus and join writes the Solr index; those
         # disks are attached to the machine running the managers.
         serving = self._serving(tmp_path)
-        assert serving["manager"] == {"translate", "managers", "conditions"}
+        assert serving["manager"] == {"translate", "managers"}
         assert serving["gpu"] == {"translate"}
         assert serving["spare"] == {"translate"}
 
-    def test_conditions_have_a_queue_of_their_own_on_the_manager(self, tmp_path):
+    def test_conditions_get_a_pool_translations_cannot_exhaust(self, tmp_path):
+        # The Resource Manager tracks load per node id, not per queue, so one
+        # id is one pool shared by every queue that node serves. A queue alone
+        # partitions nothing: a few long running translations hold every slot
+        # and the conditions gating the rest of the run cannot get one, so the
+        # gates never open. A second id on the same host is what separates
+        # them.
+        done, home = run(tmp_path, "policy", nodes=self.THREE)
+        root = ET.parse(home / "resmgr" / "policy" / "nodes.xml").getroot()
+        nodes = {n.get("nodeId"): n for n in root.iter("node")}
+
+        assert "manager-conditions" in nodes
+        assert nodes["manager-conditions"].get("ip") == nodes["manager"].get("ip"), (
+            "the conditions pool is the same machine, reached the same way")
+        assert nodes["manager-conditions"].get("capacity") == "20"
+
+        serving = self._serving(tmp_path)
+        assert serving["manager-conditions"] == {"conditions"}
+        assert "conditions" not in serving["manager"], (
+            "sharing the manager's pool is the thing this exists to stop")
+
+    def test_the_conditions_pool_is_sizeable_from_nodes_conf(self, tmp_path):
+        done, home = run(
+            tmp_path, "policy",
+            nodes="manager 10.0.0.1 8 40\ngpu 10.0.0.2 8\n")
+        root = ET.parse(home / "resmgr" / "policy" / "nodes.xml").getroot()
+        nodes = {n.get("nodeId"): n.get("capacity") for n in root.iter("node")}
+        assert nodes["manager"] == "8"
+        assert nodes["manager-conditions"] == "40"
+
+    def test_only_the_manager_gets_a_conditions_pool(self, tmp_path):
         # A condition is dispatched as a task, and a task with no queue lands
         # on ResourceRunner's default of "high", which nothing here serves.
         # The Resource Manager cannot schedule it, the condition task fails,
@@ -117,11 +147,12 @@ class TestPolicyIsGeneratedFromTheNodeList:
         # until it passes, and a few hundred gated tasks would otherwise crowd
         # extract and join out of the queue they need.
         serving = self._serving(tmp_path)
-        assert "conditions" in serving["manager"]
         for node in ("gpu", "spare"):
             assert "conditions" not in serving[node], (
                 "a condition reads the manager's own files, so a compute node "
                 "must not be offered one")
+            assert node + "-conditions" not in serving, (
+                "only the manager needs a second pool")
 
     def test_generated_files_say_they_are_generated(self, tmp_path):
         done, home = run(tmp_path, "policy", nodes=self.THREE)
