@@ -33,6 +33,7 @@ import argparse
 import glob
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -139,6 +140,48 @@ def write_chunks(strings, out_dir, chunk_size,
     return written
 
 
+def stage_chunks(out_dir, mode):
+    """Push the chunks to the compute nodes, before anything ingests them.
+
+    A translate task reads its chunk from a node-local path, and until the
+    chunk is there any job scheduled to that node fails. Doing this here
+    rather than by hand afterwards is not merely convenience: ingest is what
+    fires the chunk event, the event is what creates the translate task, and
+    a task's precondition is evaluated when the task appears. Staging after
+    that is a race. Staging before it means there is no window at all.
+
+    bt-cluster decides whether there is anywhere to stage to. On a single
+    machine it reports that there is nothing to do and succeeds, so there is
+    no "distributed mode" flag to get wrong: nodes.conf listing more than this
+    machine is what distributed means.
+    """
+    if mode == "never":
+        return
+    home = os.environ.get("BIGTRANSLATE_HOME")
+    if not home:
+        log("BIGTRANSLATE_HOME is not set; not staging chunks")
+        return
+    cluster = os.path.join(home, "bin", "bt-cluster")
+    if not os.path.isfile(cluster):
+        log("no %s; not staging chunks" % cluster)
+        return
+
+    log("staging chunks to the compute nodes")
+    result = subprocess.run(
+        [cluster, "--home", home, "stage-chunks", "--chunks", out_dir],
+        capture_output=True, text=True)
+    for line in (result.stdout or "").splitlines():
+        log("  %s" % line)
+    if result.returncode != 0:
+        for line in (result.stderr or "").splitlines():
+            log("  %s" % line)
+        # Fatal, and loud. A half-staged cluster is worse than an unstaged
+        # one: the condition reads the manifest of whatever did arrive and
+        # releases exactly the chunks that node can serve, so the failures
+        # arrive later, one job at a time, looking like something else.
+        raise SystemExit("staging chunks to the compute nodes failed")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bt-extract-strings",
@@ -156,6 +199,9 @@ def main(argv=None):
     # measured, which is short enough that losing one to a restart costs
     # little and long enough that per-instance overhead disappears.
     parser.add_argument("--chunk-size", type=int, default=5000)
+    parser.add_argument("--stage", choices=("auto", "never"), default="auto",
+                        help="copy the chunks to the compute nodes when the "
+                             "run is distributed (default: auto)")
     parser.add_argument("--encodings", default=None,
                         help="conf/encoding.txt: encodings to try, in order")
     args = parser.parse_args(argv)
@@ -193,6 +239,8 @@ def main(argv=None):
     log("wrote %d chunks and %s" % (len(chunks), path))
     log("dedup factor %.1fx -- %d strings to translate, not %d cells"
         % (manifest["dedup_factor"], len(seen), cells))
+
+    stage_chunks(args.out_dir, args.stage)
     return 0
 
 
