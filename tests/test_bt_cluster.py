@@ -88,18 +88,40 @@ class TestPolicyIsGeneratedFromTheNodeList:
         text = (home / "resmgr" / "policy" / "nodes.xml").read_text()
         assert "localhost" not in text
 
-    def test_only_the_manager_serves_the_managers_queue(self, tmp_path):
-        # Extract reads the corpus and join writes the Solr index; those
-        # disks are attached to the machine running the managers.
+    def _serving(self, tmp_path):
         done, home = run(tmp_path, "policy", nodes=self.THREE)
         root = ET.parse(
             home / "resmgr" / "policy" / "node-to-queue-mapping.xml").getroot()
-        serving = {}
-        for node in root.iter("node"):
-            serving[node.get("id")] = {q.get("name") for q in node.iter("queue")}
-        assert serving["manager"] == {"translate", "managers"}
+        return {
+            node.get("id"): {q.get("name") for q in node.iter("queue")}
+            for node in root.iter("node")
+        }
+
+    def test_only_the_manager_serves_the_managers_queue(self, tmp_path):
+        # Extract reads the corpus and join writes the Solr index; those
+        # disks are attached to the machine running the managers.
+        serving = self._serving(tmp_path)
+        assert serving["manager"] == {"translate", "managers", "conditions"}
         assert serving["gpu"] == {"translate"}
         assert serving["spare"] == {"translate"}
+
+    def test_conditions_have_a_queue_of_their_own_on_the_manager(self, tmp_path):
+        # A condition is dispatched as a task, and a task with no queue lands
+        # on ResourceRunner's default of "high", which nothing here serves.
+        # The Resource Manager cannot schedule it, the condition task fails,
+        # and a failed condition task is read as a condition that said no --
+        # so before this queue existed, no condition in this cluster had ever
+        # run.
+        #
+        # Its own queue rather than sharing managers: a condition is re-asked
+        # until it passes, and a few hundred gated tasks would otherwise crowd
+        # extract and join out of the queue they need.
+        serving = self._serving(tmp_path)
+        assert "conditions" in serving["manager"]
+        for node in ("gpu", "spare"):
+            assert "conditions" not in serving[node], (
+                "a condition reads the manager's own files, so a compute node "
+                "must not be offered one")
 
     def test_generated_files_say_they_are_generated(self, tmp_path):
         done, home = run(tmp_path, "policy", nodes=self.THREE)
