@@ -65,6 +65,25 @@
       <groupId>ai.mattmann.mnemosyne</groupId>
       <artifactId>cas-filemgr</artifactId>
       <version>${oodt.version}</version>
+      <exclusions>
+        <!-- HSQLDB 1.8 under its pre-move coordinates, which cas-filemgr and
+             cas-workflow both still declare. Maven cannot mediate it against
+             org.hsqldb:hsqldb because the groupId differs, so both jars land
+             on the test classpath and 1.8's org.hsqldb.DatabaseURL shadows
+             2.7.4's. The 2.7.4 JDBCDriver then calls a parseURL overload the
+             shadowing class does not have:
+
+               NoSuchMethodError: org.hsqldb.persist.HsqlProperties
+               org.hsqldb.DatabaseURL.parseURL(String, boolean, boolean)
+
+             Invisible locally, where a locally built Mnemosyne does not drag
+             the old coordinates in. It appears only against the published
+             poms, which is what CI resolves. -->
+        <exclusion>
+          <groupId>hsqldb</groupId>
+          <artifactId>hsqldb</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>ai.mattmann.mnemosyne</groupId>
@@ -75,6 +94,25 @@
       <groupId>ai.mattmann.mnemosyne</groupId>
       <artifactId>cas-workflow</artifactId>
       <version>${oodt.version}</version>
+      <exclusions>
+        <!-- HSQLDB 1.8 under its pre-move coordinates, which cas-filemgr and
+             cas-workflow both still declare. Maven cannot mediate it against
+             org.hsqldb:hsqldb because the groupId differs, so both jars land
+             on the test classpath and 1.8's org.hsqldb.DatabaseURL shadows
+             2.7.4's. The 2.7.4 JDBCDriver then calls a parseURL overload the
+             shadowing class does not have:
+
+               NoSuchMethodError: org.hsqldb.persist.HsqlProperties
+               org.hsqldb.DatabaseURL.parseURL(String, boolean, boolean)
+
+             Invisible locally, where a locally built Mnemosyne does not drag
+             the old coordinates in. It appears only against the published
+             poms, which is what CI resolves. -->
+        <exclusion>
+          <groupId>hsqldb</groupId>
+          <artifactId>hsqldb</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.hsqldb</groupId>
