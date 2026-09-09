@@ -23,8 +23,22 @@
 #
 # which reads like a broken install rather than an unset variable.
 if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
-  # ${BASH_SOURCE[0]} when sourced, $0 when run; either way this file.
-  _bt_setenv="${BASH_SOURCE[0]:-$0}"
+  # ${BASH_SOURCE[0]} when sourced under bash, $0 otherwise. Written without
+  # the subscript because that is array syntax, and a POSIX shell does not
+  # parse it: dash rejects ${BASH_SOURCE[0]} outright with
+  #
+  #   ./bin/oodt: 27: bin/setenv.sh: Bad substitution
+  #
+  # which killed every /bin/sh script that sourced this file. Invisible on
+  # macOS, where /bin/sh is bash, and fatal on Linux, where it is dash -- so
+  # bin/oodt worked on the manager and failed on the compute nodes. Bare
+  # $BASH_SOURCE is element zero under bash and an ordinary unset variable
+  # anywhere else, which is exactly the fallback wanted.
+  if [ -n "${BASH_SOURCE:-}" ]; then
+    _bt_setenv="$BASH_SOURCE"
+  else
+    _bt_setenv="$0"
+  fi
   _bt_bin=$(cd "$(dirname "$_bt_setenv")" 2>/dev/null && pwd)
   if [ -n "$_bt_bin" ]; then
     BIGTRANSLATE_HOME=$(cd "$_bt_bin/.." 2>/dev/null && pwd)
