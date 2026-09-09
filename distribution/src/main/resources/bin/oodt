@@ -401,6 +401,64 @@ wait_for_port() {
   return 1
 }
 
+# The workflow instance repository is a database, and nothing in BigTranslate
+# creates it. That is invisible right up until someone clears data/ between
+# runs, which is a normal thing to do: HSQLDB then makes a fresh empty database
+# on the next connection and the Workflow Manager starts perfectly cleanly. It
+# binds its port, loads its policy, lists its workflows and registers its
+# events, so every health check there is to run passes, and every workflow
+# start fails against the missing table. The manager logs exactly that, but
+# nothing creates the table it is asking for.
+#
+# Done here rather than only in bigtranslate-setup because setup is exactly
+# what is not re-run in that situation. It creates nothing when the tables are
+# already there.
+ensure_workflow_instance_schema() {
+  schema_sql="$OODT_BASE/workflow/etc/workflow-instances.sql"
+  schema_props="$OODT_BASE/workflow/etc/workflow.properties"
+  [ -f "$schema_sql" ] && [ -f "$schema_props" ] || return 0
+  if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    schema_java="$JAVA_HOME/bin/java"
+  else
+    schema_java=java
+  fi
+  # Before the Workflow Manager starts: HSQLDB in file mode is single process,
+  # so this cannot be done once it holds the lock.
+  "$schema_java" -cp "$OODT_BASE/workflow/lib/*" \
+    org.bigtranslate.workflow.WorkflowInstanceSchema \
+    "$schema_props" "$schema_sql" \
+    || echo "Could not verify the workflow instance database; starting anyway."
+}
+
+# Wait until the translation service will actually answer a translation.
+#
+# It binds its port as soon as uvicorn starts and only reports ready once the
+# model is loaded, which is seconds on a warm cache and minutes on a cold one.
+# A translate job that arrives in between dies with
+#
+#   ServiceUnavailable: the translation service at http://127.0.0.1:8766
+#   stopped answering partway through ([Errno 61] Connection refused)
+#
+# and that is a real, permanent failure for the chunk: nothing retries it.
+# Cheap to prevent and expensive to discover, since until the PGE learned to
+# fail on a failing command these losses were recorded as successes.
+wait_for_pantogloss() {
+  [ -x "$OODT_BASE/.venv/bin/pantogloss" ] || return 0
+  waited=0
+  while [ "$waited" -lt 600 ]; do
+    if curl -s -m 5 "http://127.0.0.1:$PANTOGLOSS_PORT/health" 2>/dev/null \
+        | grep -q '"ready"[[:space:]]*:[[:space:]]*true'; then
+      [ "$waited" -gt 0 ] && echo "Translation service ready after ${waited}s."
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "Translation service on $PANTOGLOSS_PORT is not reporting ready after"
+  echo "${waited}s; starting anyway. Translate jobs will fail until it is."
+  return 1
+}
+
 start_oodt() {
   ensure_working_dirs
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
@@ -425,6 +483,14 @@ start_oodt() {
     echo "for the ResourceRunner, and be fine if it is running tasks locally."
   fi
 
+  ensure_workflow_instance_schema
+
+  # Before the Workflow Manager, and ready before it, because the Workflow
+  # Manager is what hands out translate work. Started here rather than at the
+  # end so the load overlaps the managers coming up instead of following them.
+  start_pantogloss
+  wait_for_pantogloss
+
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
   # Solr runs as its own application now, with its own Jetty, rather than as a
@@ -436,8 +502,53 @@ start_oodt() {
     nohup "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" start -p "$SOLR_PORT" \
       --solr-home "$OODT_BASE"/solr --user-managed >> "$OODT_OUT" 2>&1 &
   fi
-  start_pantogloss
   wait_for_started
+}
+
+# The pids of science processes this install has running.
+#
+# A PGE job script is started by the batch stub and detaches from it, so it
+# outlives every manager. Stopping OODT left them running: a join from a
+# discarded run was found still going 79 minutes later, four shard workers
+# deep, reading the corpus and on its way to writing the very Solr index the
+# next run was about to rebuild.
+#
+# Matched on this install's own job directory, so a second tree on the same
+# machine is left alone. Commands containing "grep" are dropped because the
+# search itself matches the pattern, which has produced phantom pids here
+# before.
+pge_job_pids() {
+  ps -axo pid=,command= 2>/dev/null \
+    | grep -F "$OODT_BASE/data/jobs/" \
+    | grep -F "sciPgeExeScript_" \
+    | grep -v "grep " \
+    | awk '{print $1}'
+}
+
+stop_pge_jobs() {
+  pids=$(pge_job_pids)
+  [ -n "$pids" ] || return 0
+  echo "Stopping science processes left by running jobs."
+  for pid in $pids; do
+    # Children first and by name, because killing the script alone orphans
+    # the python it forked, which is where the actual work happens.
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      kill "$child" 2>/dev/null
+    done
+    kill "$pid" 2>/dev/null
+  done
+  waited=0
+  while [ "$waited" -lt 20 ]; do
+    [ -z "$(pge_job_pids)" ] && return 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  for pid in $(pge_job_pids); do
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      kill -9 "$child" 2>/dev/null
+    done
+    kill -9 "$pid" 2>/dev/null
+  done
 }
 
 stop_oodt() {
@@ -449,6 +560,10 @@ stop_oodt() {
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
   fi
   stop_pantogloss
+  # After the managers, so nothing hands out new work while these are being
+  # stopped, and before wait_for_stopped so the shutdown is not reported
+  # complete while science processes are still running.
+  stop_pge_jobs
   wait_for_stopped
 }
 
@@ -459,8 +574,15 @@ elif [ "$1" = "stop" ]; then
 elif [ "$1" = "start-pantogloss" ]; then
   # For a compute node, which wants the translation service and none of the
   # managers. bin/bt-node uses these two.
+  #
+  # Returns when the service will answer a translation, not when its process
+  # exists. bt-node starts this before the batch stub precisely so that a task
+  # handed to the node has something to translate against, and returning early
+  # defeats that: the stub binds, the manager sees a node that is up, and the
+  # jobs it sends land on a service still loading its model.
   ensure_working_dirs
   start_pantogloss
+  wait_for_pantogloss
 elif [ "$1" = "stop-pantogloss" ]; then
   stop_pantogloss
 elif [ "$1" = "restart" ]; then

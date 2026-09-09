@@ -51,6 +51,7 @@ fi
 # the ordinary way; these are for driving it from somewhere that has not.
 COMMAND=""
 ONLY_NODE=""
+CHUNK_SRC=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --home)       BIGTRANSLATE_HOME="$2"; shift 2 ;;
@@ -61,6 +62,8 @@ while [ $# -gt 0 ]; do
     --nodes=*)    NODES_CONF="${1#*=}"; shift ;;
     --ssh)        SSH="$2"; shift 2 ;;
     --ssh=*)      SSH="${1#*=}"; shift ;;
+    --chunks)     CHUNK_SRC="$2"; shift 2 ;;
+    --chunks=*)   CHUNK_SRC="${1#*=}"; shift ;;
     --node)       ONLY_NODE="$2"; shift 2 ;;
     --node=*)     ONLY_NODE="${1#*=}"; shift ;;
     -h|--help)    COMMAND="help"; shift ;;
@@ -141,7 +144,15 @@ cmd_policy() {
     echo '     its own output file, so any node may take any chunk. Only the'
     echo '     first serves managers, because extract reads the corpus and'
     echo '     join writes the Solr index, and those disks are attached to'
-    echo '     the machine running the managers. -->'
+    echo '     the machine running the managers.'
+    echo ''
+    echo '     Conditions get a queue of their own, on that same machine. A'
+    echo '     condition reads the manager filesystem, so it can only run'
+    echo '     there; and it is re-asked until it passes, so a few hundred'
+    echo '     gated tasks generate steady scheduling traffic. Sharing the'
+    echo '     managers queue would let that traffic occupy the slots extract'
+    echo '     and join need, and the join is itself gated by a condition,'
+    echo '     so conditions would end up delaying the work they gate. -->'
     echo '<cas:nodeMap xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">'
     first=yes
     node_lines | while read -r id host capacity; do
@@ -149,13 +160,28 @@ cmd_policy() {
       echo "  <node id=\"$id\">"
       echo '    <queues>'
       echo '      <queue name="translate"/>'
-      if [ "$first" = yes ]; then echo '      <queue name="managers"/>'; fi
+      if [ "$first" = yes ]; then
+        echo '      <queue name="managers"/>'
+        echo '      <queue name="conditions"/>'
+      fi
       echo '    </queues>'
       echo '  </node>'
       first=no
     done
     echo '</cas:nodeMap>'
   } > "$map_xml"
+
+  # Parsed before anyone depends on them. A generated file that does not
+  # parse takes the Resource Manager down at startup, which takes the Workflow
+  # Manager with it ("Null engine"), and the message that actually names the
+  # problem is several stack traces deep in a log nobody is tailing. The
+  # specific way this has gone wrong here, repeatedly, is a "--" inside an XML
+  # comment, which is not permitted and which nothing warns about at the point
+  # it is written.
+  for generated in "$nodes_xml" "$map_xml"; do
+    python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$generated" \
+      || die "generated $generated is not valid XML; it has not been left in a usable state"
+  done
 
   echo "wrote $nodes_xml and $map_xml for $(node_lines | wc -l | tr -d ' ') node(s)"
 }
@@ -203,6 +229,13 @@ stage_one() {
   # release a job that then fails, which is the whole failure this prevents.
   mkdir -p "$BIGTRANSLATE_HOME/data/staging"
   manifest="$BIGTRANSLATE_HOME/data/staging/$id.staged"
+  record_staged "$id" "$host"
+}
+
+record_staged() {
+  id=$1; host=$2
+  mkdir -p "$BIGTRANSLATE_HOME/data/staging"
+  manifest="$BIGTRANSLATE_HOME/data/staging/$id.staged"
   # Assigned before it is written, so that a failed ssh is a failure. Piping
   # straight into the file would report the exit status of the local sort,
   # and an unreachable node would quietly produce an empty manifest.
@@ -213,6 +246,66 @@ stage_one() {
   mv "$manifest.tmp" "$manifest"
   staged=$(grep -c . "$manifest" | tr -d ' ')
   echo "  $id has $staged chunk file(s)"
+}
+
+# ----------------------------------------------------------- stage-chunks ---
+
+# Just the chunk files, from wherever they have this moment been written.
+#
+# Called by the extract task, before its output is ingested. That is the only
+# point at which every node can be given the chunks before anything can be
+# asked to translate one: ingest is what fires the chunk event, the event is
+# what creates the translate task, and a task's precondition is evaluated when
+# the task appears. Staging afterwards is a race; staging here removes it.
+stage_chunks_one() {
+  id=$1; host=$2
+  echo "staging chunks to $id ($host)"
+  incoming="$BIGTRANSLATE_HOME/data/strings/.incoming"
+  $SSH "$host" "rm -rf '$incoming' && mkdir -p '$incoming'" \
+    || die "could not create data/strings on $host"
+  rsync -a --include 'chunk-*.json' --include 'chunk-*.json/***' --exclude '*' \
+    -e "$SSH" "$CHUNK_SRC/" "$host:$incoming/" \
+    || die "could not copy chunks to $host"
+
+  # Put each chunk where the task will look for it, which is not where it was
+  # copied from. A translate task resolves its input from the catalogue --
+  # FileLocation joined to Filename -- and that names the File Manager's
+  # archive, which BasicVersioner lays out as <name>/<name>. Chunks handed to
+  # us straight from the extract job are flat, so staging them as they came
+  # puts every one of them a directory level away from the only path the task
+  # will ever try. That failed every job on the staged node instantly, and
+  # looked like a node that would not saturate.
+  #
+  # Both shapes are accepted, because the source is the extract output on a
+  # first run and the manager's own archive on a re-stage.
+  $SSH "$host" "cd '$incoming' || exit 1
+    for f in chunk-*.json; do
+      [ -e \"\$f\" ] || continue
+      mkdir -p \"../\$f\" || exit 1
+      if [ -d \"\$f\" ]; then
+        mv -f \"\$f\"/* \"../\$f\"/ || exit 1
+        rmdir \"\$f\" || exit 1
+      else
+        mv -f \"\$f\" \"../\$f/\$f\" || exit 1
+      fi
+    done
+    cd .. && rmdir .incoming 2>/dev/null || true" \
+    || die "could not place the chunks into the archive layout on $host"
+
+  record_staged "$id" "$host"
+}
+
+cmd_stage_chunks() {
+  [ -n "$CHUNK_SRC" ] || CHUNK_SRC="$BIGTRANSLATE_HOME/data/strings"
+  [ -d "$CHUNK_SRC" ] || die "no such directory: $CHUNK_SRC"
+  if [ "$(remote_lines | wc -l | tr -d ' ')" -eq 0 ]; then
+    # One machine, which wrote the chunks itself. Nothing to copy and nothing
+    # to wait for, and saying so is not a failure.
+    echo "no compute nodes beyond the manager; nothing to stage"
+    return 0
+  fi
+  for_each_remote stage_chunks_one
+  echo "chunk staging complete"
 }
 
 cmd_stage() { for_each_remote stage_one; echo "staging complete"; }
@@ -252,12 +345,13 @@ case "${COMMAND:-}" in
   policy) cmd_policy ;;
   deploy) cmd_deploy ;;
   stage)  cmd_stage ;;
+  stage-chunks) cmd_stage_chunks ;;
   start)  cmd_start ;;
   stop)   cmd_stop ;;
   status) cmd_status ;;
   nodes)  node_lines ;;
   help|*)
-    echo "usage: bt-cluster [options] {policy|deploy|stage|start|stop|status|nodes} [node]"
+    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|start|stop|status|nodes} [node]"
     echo
     echo "options:"
     echo "  --home PATH        deployment root; the same absolute path on"
@@ -273,6 +367,11 @@ case "${COMMAND:-}" in
     echo "  policy   write nodes.xml and the queue mapping from conf/nodes.conf"
     echo "  deploy   install BigTranslate and its python environment on each"
     echo "           remote node, at the same absolute path as here"
+    echo "  stage-chunks  copy just the chunk files from --chunks <dir> to"
+    echo "           each node's data/strings, then record what each node has."
+    echo "           Run by the extract task before its output is ingested, so"
+    echo "           that no translate task exists before every node can serve"
+    echo "           it. Defaults to data/strings for a re-stage by hand."
     echo "  stage    copy conf, scripts, policy and the string chunks to each"
     echo "  start    batch stub and translation service, here and on each node"
     echo "  stop     the same, in reverse"
