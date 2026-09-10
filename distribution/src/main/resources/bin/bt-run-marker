@@ -61,6 +61,27 @@ def count(directory):
         return 0
 
 
+def earliest(directory):
+    """When the first chunk in a directory appeared, in epoch millis.
+
+    Used only when a marker has to be rebuilt and its original start time is
+    gone. Guessing "now" instead would date a run that is hours old to this
+    second, and a rate worked out from it -- a hundred chunks in no time at
+    all -- would be nonsense in the direction that looks like good news.
+    """
+    try:
+        names = [n for n in os.listdir(directory) if n.startswith("chunk-")]
+    except OSError:
+        return None
+    stamps = []
+    for name in names:
+        try:
+            stamps.append(os.path.getmtime(os.path.join(directory, name)))
+        except OSError:
+            continue
+    return int(min(stamps) * 1000) if stamps else None
+
+
 def progress(home):
     """What the run has done so far, for anything that wants to show it.
 
@@ -106,12 +127,19 @@ def main(argv=None):
 
     now = int(time.time() * 1000)
     existing = read(path) if args.action == "beat" else {}
-    if args.action == "beat" and not existing:
-        # Nothing to refresh. A beat is not a reason to invent a run.
-        return 0
 
     home = os.environ["BIGTRANSLATE_HOME"]
     seen = progress(home)
+
+    # A beat used to be refused when no marker was there to refresh, on the
+    # grounds that a beat is not a reason to invent a run. It is exactly
+    # that: only a stage of a run calls this, so a beat is a stage saying it
+    # is working. Refusing left a run that lost its marker unable to get one
+    # back, and the marker is lost routinely -- Gloss deletes it whenever
+    # the heartbeat goes quiet, which the extract pass guarantees on any
+    # corpus big enough to take longer than the stale bound to read.
+    rebuilt = args.action == "beat" and not existing
+
     record = {
         "status": existing.get("status", args.status),
         "startedBy": existing.get("startedBy", args.started_by),
@@ -121,13 +149,21 @@ def main(argv=None):
         "startedAt": existing.get("startedAt", now),
         "heartbeatAt": now,
     }
+    if rebuilt:
+        # Date it from the work on disk, not from this moment.
+        record["startedAt"] = (earliest(os.path.join(home, "data", "strings"))
+                               or now)
+        record["rebuiltAt"] = now
     record.update(seen)
     # When the first chunk landed, so a rate can be worked out over the
     # translating alone. Measuring from the start of the run instead folds
     # in the extract pass, which on the full corpus is ten minutes of
     # apparently translating nothing and makes every early estimate wrong.
     if seen["chunksDone"] > 0:
-        record["translatingSince"] = existing.get("translatingSince", now)
+        # On a rebuild there is no remembered value, and taking "now" would
+        # divide every chunk already translated by no elapsed time at all.
+        fallback = earliest(os.path.join(home, "data", "translated")) or now
+        record["translatingSince"] = existing.get("translatingSince", fallback)
     elif "translatingSince" in existing:
         record["translatingSince"] = existing["translatingSince"]
     os.makedirs(os.path.dirname(path), exist_ok=True)
