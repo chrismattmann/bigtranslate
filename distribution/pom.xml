@@ -211,9 +211,28 @@
             <goals><goal>run</goal></goals>
             <configuration>
               <target>
+                <!--
+                  The mirror first, the archive second. archive.apache.org
+                  holds every release ever made and is correspondingly slow;
+                  dlcdn is the CDN that current releases are served from. A
+                  build hung for twenty-five minutes on the archive with no
+                  way to tell whether it was slow or dead, because the original
+                  had no bound on it at all.
+
+                  maxtime and retries turn that into a bounded failure. Both
+                  gets are skipexisting, so the second is skipped outright when
+                  the first worked, and ignoreerrors on the first means a
+                  version the CDN no longer carries simply falls through to the
+                  archive rather than failing the build.
+                -->
+                <get src="https://dlcdn.apache.org/solr/solr/${solr.version}/solr-${solr.version}.tgz"
+                     dest="${project.build.directory}/solr-${solr.version}.tgz"
+                     skipexisting="true" verbose="false"
+                     ignoreerrors="true" maxtime="600" retries="2"/>
                 <get src="https://archive.apache.org/dist/solr/solr/${solr.version}/solr-${solr.version}.tgz"
                      dest="${project.build.directory}/solr-${solr.version}.tgz"
-                     skipexisting="true" verbose="false"/>
+                     skipexisting="true" verbose="false"
+                     maxtime="900" retries="3"/>
                 <untar src="${project.build.directory}/solr-${solr.version}.tgz"
                        dest="${project.build.directory}" compression="gzip"/>
                 <chmod dir="${project.build.directory}/solr-${solr.version}/bin" perm="755" includes="*"/>

@@ -48,6 +48,16 @@ jobs:
       # Javadoc is attached to the package phase for releases. Nothing in CI
       # reads it, and generating it for every module on every pull request was
       # a large share of this job.
+      # 343MB from an Apache mirror, on every run, for an artifact that only
+      # changes when solr.version does. Restored into the directory the build
+      # downloads to, where skipexisting then finds it and skips the fetch.
+      - name: Cache the Solr distribution
+        uses: actions/cache@v4
+        with:
+          path: distribution/target/solr-*.tgz
+          key: solr-${{ hashFiles('pom.xml') }}
+          restore-keys: solr-
+
       - name: Package BigTranslate
         run: mvn -B package -Dmaven.javadoc.skip=true
 
