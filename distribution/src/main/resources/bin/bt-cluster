@@ -453,7 +453,10 @@ bt_jars_from_one_build() {
   bt_oldest=""; bt_newest=""; bt_seen=""
   for jar in $(bt_oodt_jars "$bt_home"); do
     stamp=$(bt_file_epoch "$jar")
-    [ -n "$stamp" ] || continue
+    # Anything but digits, and it is not a timestamp. GNU stat once put a
+    # whole filesystem report here, and comparing that with -lt aborts the
+    # script under set -e, taking every other preflight check with it.
+    case "$stamp" in "" | *[!0-9]*) continue ;; esac
     base=$(basename "$jar")
     case " $bt_seen " in *" $base "*) continue ;; esac
     bt_seen="$bt_seen $base"
@@ -482,15 +485,27 @@ bt_oodt_jars() {
     | grep -vE 'sources|javadoc' | sort -u
 }
 
-# Modification time as epoch seconds. BSD and GNU stat disagree on flags,
-# and this runs on the macOS manager and the Linux nodes both.
+# Modification time, via python3 rather than stat.
+#
+# BSD and GNU stat disagree on more than flag spelling: GNU -f is
+# --file-system, so the BSD form "stat -f %m file" does not simply fail
+# there. It fails on the operand %m and *succeeds* on the real file,
+# printing filesystem information to stdout before the shell falls through
+# to the GNU form -- so the caller reads two lines and does arithmetic on
+# the wrong one. Silent on the macOS manager, wrong on a Linux node, which
+# is the same shape as the ${BASH_SOURCE[0]} bug this file already carries
+# a comment about.
+#
+# preflight already requires python3 to parse the policy XML, so this adds
+# no dependency and has one behaviour everywhere.
 bt_file_epoch() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null
+  python3 -c 'import os,sys; print(int(os.path.getmtime(sys.argv[1])))' \
+    "$1" 2>/dev/null
 }
 
 bt_file_day() {
-  stat -f "%Sm" -t "%Y-%m-%d" "$1" 2>/dev/null \
-    || stat -c "%y" "$1" 2>/dev/null | cut -d" " -f1
+  python3 -c 'import os,sys,datetime; print(datetime.date.fromtimestamp(os.path.getmtime(sys.argv[1])).isoformat())' \
+    "$1" 2>/dev/null
 }
 
 # Is anything accepting connections on this port, on any address?

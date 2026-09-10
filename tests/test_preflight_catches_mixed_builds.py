@@ -157,3 +157,49 @@ class TestItLooksAtTheRightFiles:
         rc, out = check(home)
         assert rc == 0, (
             "copies of one jar are check 1's job, not this one:\n" + out)
+
+
+class TestATimestampThatIsNotOne:
+    """CI caught what macOS could not.
+
+    GNU stat's -f is --file-system, so the BSD form "stat -f %m file" does not
+    simply fail there: it fails on the operand %m and succeeds on the real
+    file, printing a filesystem report to stdout before the shell falls
+    through to the GNU form. The caller then compares a multi-line blob with
+    -lt, which aborts the script under set -e and takes every other preflight
+    check down with it:
+
+        bt-cluster: 461: [: Illegal number:   File: "...cas-filemgr.jar"
+            ID: 3bf6563c9a3eb2b Namelen: 255  Type: ext2/ext3
+            ...
+            1789080274
+
+    The helper uses python3 now, which preflight already needs for the policy
+    XML. The guard below is for the next helper.
+    """
+
+    def test_a_non_numeric_timestamp_is_skipped_not_compared(self):
+        text = CLUSTER.read_text(encoding="utf-8")
+        assert '*[!0-9]*' in text, (
+            "without the guard a malformed timestamp aborts every check")
+
+    def test_the_helpers_do_not_shell_out_to_stat(self):
+        text = CLUSTER.read_text(encoding="utf-8")
+        for name in ("bt_file_epoch", "bt_file_day"):
+            m = re.search(r"^%s\(\) \{.*?^\}" % name, text, re.S | re.M)
+            assert "stat " not in m.group(0), (
+                "%s uses stat, whose flags mean different things on the "
+                "macOS manager and the Linux nodes" % name)
+
+    def test_the_epoch_helper_returns_exactly_one_line(self):
+        home = tree_with({"cas-pge-1.11.0.jar": 0})
+        jar = home / "pge" / "lib" / "cas-pge-1.11.0.jar"
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
+                                         encoding="utf-8") as h:
+            h.write(harness() + '\nbt_file_epoch "$1"\n')
+            script = h.name
+        out = subprocess.run(["bash", script, str(jar)],
+                             capture_output=True, text=True)
+        lines = [l for l in out.stdout.splitlines() if l.strip()]
+        assert len(lines) == 1, "got %r" % out.stdout
+        assert lines[0].isdigit()
