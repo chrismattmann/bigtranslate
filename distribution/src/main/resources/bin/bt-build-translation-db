@@ -61,8 +61,30 @@ def load_glossary(path):
     return glossary, module.is_untranslatable
 
 
+def chunk_files(directory):
+    """Every translated chunk under directory, however it is laid out.
+
+    The join reads the File Manager's archive rather than the flat directory a
+    translate task writes into, because the flat directory only ever holds the
+    chunks translated on that particular machine. On a two node run the
+    manager had 9 of 62 and the other 53 sat on the compute node, so a join
+    reading the flat directory would have indexed a seventh of the corpus and
+    reported success.
+
+    The archive is complete, because remote data transfer brings every node's
+    output back to it, but BasicVersioner lays it out as <name>/<name>. Both
+    shapes are accepted so that a single machine deployment, where the flat
+    directory is complete, keeps working unchanged.
+    """
+    flat = [path for path in glob.glob(os.path.join(directory, "chunk-*.json"))
+            if os.path.isfile(path)]
+    archived = glob.glob(
+        os.path.join(directory, "chunk-*.json", "chunk-*.json"))
+    return sorted(set(flat) | set(archived))
+
+
 def build(translated_dir, out_path, glossary=None, untranslatable=None):
-    chunks = sorted(glob.glob(os.path.join(translated_dir, "chunk-*.json")))
+    chunks = chunk_files(translated_dir)
     if not chunks:
         raise SystemExit("no translated chunks under %s" % translated_dir)
 
