@@ -196,6 +196,17 @@
                capacity is already set to that service's inference slots. -->
           <property name="QueueName" value="translate"/>
           <property name="TaskLoad" value="1"/>
+          <!-- A chunk that failed once is usually a chunk that was asked at a
+               bad moment: its node restarted, or the translation service was
+               still loading. Losing it costs the whole run, because the join
+               refuses a partial translation and only finds out hours later.
+
+               Two, not more: the engine cannot tell a transient failure from
+               a permanent one, so this bound is what stops a chunk that will
+               never work from occupying a node repeatedly. bt-translate-chunk
+               separately waits out the one failure it can identify, a service
+               that is not ready, without giving the task back at all. -->
+          <property name="MaxRetries" value="2"/>
           <property name="ProductType" value="EmploymentTranslatedChunk"/>
           <requiredMetFields>
             <metfield name="Filename"/>

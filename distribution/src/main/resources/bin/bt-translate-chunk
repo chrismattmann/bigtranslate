@@ -81,8 +81,44 @@ def resolve_with_glossary(strings, glossary, untranslatable):
     return resolved, remaining
 
 
+def translate_batch_waiting_out_the_service(translator, service_url, batch,
+                                            beam_size, max_length, timeout,
+                                            retries, base_wait, name):
+    """Send one batch, waiting out a service that is not ready yet.
+
+    ServiceUnavailable is the one failure here that is recoverable by
+    definition: the service is loading its model, or was restarted under us,
+    and the same request will work shortly. Nothing else is retried, because
+    nothing else is known to be transient -- a malformed chunk fails the same
+    way every time, and retrying it would burn a node instead of a chunk.
+
+    Retried per batch rather than per chunk. A chunk is a hundred and fifty
+    batches, and losing the hundred already translated because the hundred and
+    first arrived during a restart is most of the cost of the failure.
+
+    The workflow retries the whole task as a backstop; this is the cheaper
+    recovery for the case the task can identify.
+    """
+    attempt = 0
+    while True:
+        try:
+            return translator.translate_batch(service_url, batch, beam_size,
+                                              max_length, timeout)
+        except translator.ServiceUnavailable as unavailable:
+            attempt += 1
+            if attempt > retries:
+                log("%s: translation service still unavailable after %d "
+                    "attempts; giving up on this chunk" % (name, retries))
+                raise
+            wait = base_wait * (2 ** (attempt - 1))
+            log("%s: translation service unavailable (%s); waiting %ds before "
+                "attempt %d of %d" % (name, unavailable, wait, attempt, retries))
+            time.sleep(wait)
+
+
 def translate_chunk(translator, strings, service_url, batch_size,
-                    beam_size, max_length, timeout):
+                    beam_size, max_length, timeout, retries=3, base_wait=5,
+                    name="chunk"):
     """Translate in batches, preserving the chunk's existing order.
 
     The chunk arrives already sorted by length from the extract stage, so
@@ -92,8 +128,9 @@ def translate_chunk(translator, strings, service_url, batch_size,
     out = {}
     for start in range(0, len(strings), batch_size):
         batch = strings[start:start + batch_size]
-        got = translator.translate_batch(service_url, batch, beam_size,
-                                         max_length, timeout)
+        got = translate_batch_waiting_out_the_service(
+            translator, service_url, batch, beam_size, max_length, timeout,
+            retries, base_wait, name)
         if len(got) != len(batch):
             raise RuntimeError(
                 "service returned %d translations for %d inputs"
@@ -109,6 +146,13 @@ def main(argv=None):
     parser.add_argument("--chunk", required=True, help="a chunk JSON file")
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--service-url", required=True)
+    parser.add_argument("--service-retries", type=int, default=3,
+                        help="how many times to wait out a translation "
+                             "service that is not ready before giving up on "
+                             "the chunk (default: 3)")
+    parser.add_argument("--service-retry-wait", type=int, default=5,
+                        help="seconds before the first retry, doubling each "
+                             "time (default: 5)")
     parser.add_argument("--batch-size", type=int, default=32,
                         help="32 suits a CPU service, 128 a CUDA one")
     parser.add_argument("--beam-size", type=int, default=0)
@@ -153,7 +197,8 @@ def main(argv=None):
     started = time.time()
     out = translate_chunk(translator, strings, args.service_url,
                           args.batch_size, args.beam_size, args.max_length,
-                          args.service_timeout)
+                          args.service_timeout, args.service_retries,
+                          args.service_retry_wait, name)
     # Glossary last, so it wins: these are overrides, not suggestions.
     out.update(resolved)
     elapsed = time.time() - started
