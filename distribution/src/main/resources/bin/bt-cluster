@@ -446,6 +446,53 @@ preflight_sum() {
     -exec shasum {} + 2>/dev/null | awk '{print $1}')"
 }
 
+# Do every OODT jar under this tree come from one build? Prints the offending
+# spread and returns non-zero when they do not.
+bt_jars_from_one_build() {
+  bt_home=$1
+  bt_oldest=""; bt_newest=""; bt_seen=""
+  for jar in $(bt_oodt_jars "$bt_home"); do
+    stamp=$(bt_file_epoch "$jar")
+    [ -n "$stamp" ] || continue
+    base=$(basename "$jar")
+    case " $bt_seen " in *" $base "*) continue ;; esac
+    bt_seen="$bt_seen $base"
+    if [ -z "$bt_oldest" ]; then bt_oldest=$stamp; bt_newest=$stamp; fi
+    [ "$stamp" -lt "$bt_oldest" ] && bt_oldest=$stamp
+    [ "$stamp" -gt "$bt_newest" ] && bt_newest=$stamp
+  done
+  [ -n "$bt_oldest" ] || return 0
+  span=$(( (bt_newest - bt_oldest) / 86400 ))
+  [ "$span" -lt 1 ] && return 0
+  echo "  manager: OODT jars span ${span} day(s) of builds; this tree was"
+  echo "           assembled from more than one build, so a policy naming"
+  echo "           a newly added class may be deployed against a jar that"
+  echo "           predates it. Rebuild and redeploy together."
+  for jar in $(bt_oodt_jars "$bt_home"); do
+    [ -n "$(bt_file_epoch "$jar")" ] || continue
+    echo "             $(bt_file_day "$jar")  $(basename "$jar")"
+  done | sort -u
+  return 1
+}
+
+# The OODT jars, without the sources and javadoc ones. A javadoc jar holds no
+# classes at all, so treating it as the artifact reads as "class missing".
+bt_oodt_jars() {
+  find "$1" \( -name 'cas-*.jar' -o -name 'oodt-*.jar' \) 2>/dev/null \
+    | grep -vE 'sources|javadoc' | sort -u
+}
+
+# Modification time as epoch seconds. BSD and GNU stat disagree on flags,
+# and this runs on the macOS manager and the Linux nodes both.
+bt_file_epoch() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null
+}
+
+bt_file_day() {
+  stat -f "%Sm" -t "%Y-%m-%d" "$1" 2>/dev/null \
+    || stat -c "%y" "$1" 2>/dev/null | cut -d" " -f1
+}
+
 # Is anything accepting connections on this port, on any address?
 bt_port_listening() {
   python3 - "$1" <<'EOF' 2>/dev/null
@@ -573,7 +620,29 @@ cmd_preflight() {
     fi
   done
 
-  # 5. And the nodes must match the manager.
+  # 5. Every OODT jar should come from the same build.
+  #
+  #    Check 1 asks whether each named jar is identical across the nine lib
+  #    directories, which it is even when the tree is assembled by partial
+  #    rebuilds. It says nothing about cas-pge being six days older than
+  #    cas-resource, and that is the drift that hurts: a policy file naming
+  #    a class added last week, deployed against a jar built the week
+  #    before, leaves the condition unable to instantiate and the stage it
+  #    gates never released. Measured on this deployment mid-run:
+  #
+  #      Sep 10  cas-resource, cas-workflow, oodt-commons
+  #      Sep  4  cas-pge, cas-filemgr, cas-metadata, cas-crawler, cas-cli
+  #
+  #    Modification time is a weak signal and the only one a jar carries:
+  #    Maven stamps no build id into the manifest. rsync -t preserves it to
+  #    the nodes, so it stays comparable there. A day's tolerance, because
+  #    one build takes minutes and the drift worth catching is measured in
+  #    days.
+  if ! bt_jars_from_one_build "$BIGTRANSLATE_HOME"; then
+    rc=1
+  fi
+
+  # 6. And the nodes must match the manager.
   #
   # Tolerated explicitly: this script runs under set -e, and preflight_one
   # returning non-zero for a node that is behind would abort before the
