@@ -45,38 +45,63 @@ jobs:
           cache: npm
           cache-dependency-path: webapps/gloss/src/main/webapp/resources/package-lock.json
 
+      # Javadoc is attached to the package phase for releases. Nothing in CI
+      # reads it, and generating it for every module on every pull request was
+      # a large share of this job.
+      # 343MB from an Apache mirror, on every run, for an artifact that only
+      # changes when solr.version does. Restored into the directory the build
+      # downloads to, where skipexisting then finds it and skips the fetch.
+      - name: Cache the Solr distribution
+        uses: actions/cache@v4
+        with:
+          path: distribution/target/solr-*.tgz
+          key: solr-${{ hashFiles('pom.xml') }}
+          restore-keys: solr-
+
       - name: Package BigTranslate
-        run: mvn -B package
+        run: mvn -B package -Dmaven.javadoc.skip=true
 
       - name: Check the distribution contents
         run: |
           set -e
-          TARBALL=distribution/target/bigtranslate-distribution-*-bin.tar.gz
-          test -f $TARBALL
+          TARBALL=$(ls distribution/target/bigtranslate-distribution-*-bin.tar.gz)
+          test -f "$TARBALL"
+
+          # Unpacked once. Every check below used to re-inflate the whole
+          # archive -- Tomcat, Solr and every jar -- and there were nine of
+          # them, which was most of the time this step took. The checks are
+          # the same; they are just no longer paid for one at a time.
+          DIR=$(mktemp -d)
+          trap 'rm -rf "$DIR"' EXIT
+          tar xzf "$TARBALL" -C "$DIR"
 
           # The translation step and its glossary have to ship, and the shim
-          # has to arrive executable or the PGE cannot invoke it.
-          tar tvzf $TARBALL | grep -E 'bin/pantogloss-translatejson' | grep -q '^-rwx'
-          tar tzf  $TARBALL | grep -q 'conf/glossary.es-en.tsv'
+          # has to arrive executable or the PGE cannot invoke it. Asking the
+          # unpacked file is a more direct question than reading a mode out of
+          # a listing, and it is the mode that will actually be on disk.
+          test -x "$DIR/bin/pantogloss-translatejson"
+          test -f "$DIR/conf/glossary.es-en.tsv"
 
           # Tomcat 9 ships bin/*.sh non-executable through the fileSet unless
           # they are re-added with an explicit mode.
-          tar tvzf $TARBALL | grep -E 'tomcat/bin/catalina.sh' | grep -q '^-rwx'
+          test -x "$DIR/tomcat/bin/catalina.sh"
 
           # Gloss is the GUI; Tomcat's ROOT sends people there.
-          # The assembly has no base directory, so these paths are not
-          # prefixed: */tomcat/... does not match tomcat/...
-          tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss/index.html'
-          tar tzf $TARBALL | grep -q 'tomcat/webapps/gloss-services/WEB-INF/web.xml'
-          tar tzf $TARBALL | grep -q 'tomcat/webapps/ROOT/index.jsp'
-          tar xzOf $TARBALL tomcat/webapps/ROOT/index.jsp | grep -q '/gloss/'
+          test -f "$DIR/tomcat/webapps/gloss/index.html"
+          test -f "$DIR/tomcat/webapps/gloss-services/WEB-INF/web.xml"
+          test -f "$DIR/tomcat/webapps/ROOT/index.jsp"
+          grep -q '/gloss/' "$DIR/tomcat/webapps/ROOT/index.jsp"
 
           # Java 9 removed the extension mechanism; every launcher that still
           # references it fails at startup. Assert the scan is non-vacuous
-          # first, so a wildcard that matches nothing cannot pass silently.
-          LAUNCHERS=$(tar tzf $TARBALL | grep -cE '^[^/]+/bin/[^/]+$')
+          # first, so a pattern that matches nothing cannot pass silently.
+          LAUNCHERS=$(find "$DIR" -mindepth 3 -maxdepth 3 -path '*/bin/*' -type f | wc -l)
           echo "scanning $LAUNCHERS launcher scripts"
           test "$LAUNCHERS" -gt 30
-          ! tar xzOf $TARBALL --wildcards '*/bin/*' 2>/dev/null | grep -q 'java.ext.dirs'
+          if find "$DIR" -mindepth 3 -maxdepth 3 -path '*/bin/*' -type f \
+               -exec grep -l 'java.ext.dirs' {} + | grep -q .; then
+            echo "a launcher still references java.ext.dirs, removed in Java 9"
+            exit 1
+          fi
 
           echo "distribution contents OK"
