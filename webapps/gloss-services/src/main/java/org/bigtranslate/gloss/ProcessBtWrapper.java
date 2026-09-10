@@ -180,6 +180,30 @@ public class ProcessBtWrapper {
     return status;
   }
 
+  /**
+   * What is happening, from wherever it is written down.
+   *
+   * <p>
+   * {@link #getStatus} is this process's own memory of a run it started
+   * itself, which is empty for a run started from the command line -- so a
+   * caller using it reported IDLE throughout a run that /progress, reading
+   * the same object, was correctly reporting as TRANSLATING. Two answers to
+   * one question, and the wrong one on the page people look at.
+   * </p>
+   */
+  public String resolvedStatus() {
+    try {
+      return asText(snapshot().get("status"), IDLE);
+    } catch (RuntimeException e) {
+      // Reading the marker needs BIGTRANSLATE_HOME, and getStatus never
+      // needed anything. A summary that cannot find the marker should say
+      // what it does know, not fail the whole page.
+      LOG.log(Level.FINE, "Could not read the run marker: "
+          + e.getLocalizedMessage());
+      return getStatus();
+    }
+  }
+
   public synchronized String getPath() {
     return path;
   }

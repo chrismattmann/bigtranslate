@@ -116,7 +116,7 @@ public class ServicesRestResource {
       summary.put("entries", Long.valueOf(0));
       summary.put("glossaryEntries", Integer.valueOf(0));
     }
-    summary.put("status", ProcessBtWrapper.getInstance().getStatus());
+    summary.put("status", ProcessBtWrapper.getInstance().resolvedStatus());
     return summary;
   }
 
