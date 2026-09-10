@@ -46,6 +46,28 @@ if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
   unset _bt_setenv _bt_bin
 fi
 export BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-/usr/local/bigtranslate}
+
+# What differs between one install and the next.
+#
+# Ports, and the address other machines reach the managers at, are
+# properties of a deployment and have no business being edited into a file
+# the distribution ships. Editing this one is how the deployment on the
+# manager came to differ from the repository by thirty six lines: it had
+# gained a block setting the ports and rewriting the service urls, and lost
+# the POSIX $BASH_SOURCE fix above -- invisible on macOS, fatal on a Linux
+# compute node. Nothing reported the difference, because a hand edited copy
+# of a tracked file is not something any check was looking for.
+#
+# Read before the defaults below, every one of which is ${VAR:-...}, so a
+# value set here wins without the file having to repeat anything. Setting
+# the ports and BIGTRANSLATE_HOST is enough: the urls are worked out from
+# them once, here, rather than in two places that can disagree. They did
+# disagree, and the copy that was not this one pointed SOLR_URL somewhere
+# Solr does not listen.
+if [ -f "$BIGTRANSLATE_HOME/conf/site.sh" ]; then
+  . "$BIGTRANSLATE_HOME/conf/site.sh"
+fi
+
 # Ports first, urls derived from them. The launchers bind FILEMGR_PORT and its
 # siblings while everything else looks up the urls, so setting only the urls
 # left each service listening on the default and every client looking
@@ -61,13 +83,34 @@ export RESMGR_PORT=${RESMGR_PORT:-9002}
 export SOLR_PORT=${SOLR_PORT:-8983}
 export TOMCAT_PORT=${TOMCAT_PORT:-8080}
 
-export FILEMGR_URL=http://localhost:$FILEMGR_PORT
-export WORKFLOW_URL=http://localhost:$WORKFLOW_PORT
-export RESMGR_URL=http://localhost:$RESMGR_PORT
+# The address the managers are reached at. Loopback is right for a single
+# machine install and wrong the moment a task runs anywhere else: the
+# Workflow Manager substitutes these urls into task metadata, and on a
+# compute node "localhost" is that node's own machine --
+#
+#   ConnectionException: Exception connecting to filemgr: [http://localhost:9200]
+#
+# on a task that ran perfectly on the manager. The managers bind *:port, so
+# the manager's own LAN address works locally too, which is why one value
+# serves both machines.
+export BIGTRANSLATE_HOST=${BIGTRANSLATE_HOST:-localhost}
+
+export FILEMGR_URL=http://$BIGTRANSLATE_HOST:$FILEMGR_PORT
+export WORKFLOW_URL=http://$BIGTRANSLATE_HOST:$WORKFLOW_PORT
+export RESMGR_URL=http://$BIGTRANSLATE_HOST:$RESMGR_PORT
 
 # The core url rather than the base. Gloss reads SOLR_URL as the collection it
 # queries and derives the base from it, so a base url here sends every Gloss
 # query to /solr/select and it reports no documents while Solr fills up.
+#
+# Localhost even when the managers are on a LAN address, which is the one
+# exception and needs saying because the obvious edit is to make it match
+# its neighbours. Solr binds loopback unless told otherwise, and nothing
+# off this machine reads it: the join runs on the managers queue, which
+# only the manager's own node serves, and Gloss runs in the manager's
+# Tomcat. Pointed at the LAN address it left Solr up, its core healthy and
+# every page green, with the join three hours away from failing on
+# connection refused.
 export SOLR_URL=http://localhost:$SOLR_PORT/solr/bigtranslate
 
 # The translation service. One resident model for the whole deployment

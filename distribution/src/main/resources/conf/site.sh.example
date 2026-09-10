@@ -1,0 +1,39 @@
+# Settings for this deployment. Copy to site.sh to use.
+#
+#   cp conf/site.sh.example conf/site.sh
+#
+# bin/setenv.sh reads conf/site.sh before its own defaults, so anything set
+# here wins. It is the only file that should differ between one install and
+# the next: everything else the distribution ships is the same everywhere,
+# and a difference in it is a bug rather than a setting.
+#
+# Set the ports and BIGTRANSLATE_HOST. Do not set FILEMGR_URL and its
+# siblings -- setenv.sh works those out from these, once, and a second
+# derivation here is how one of them came to point somewhere the service
+# was not listening.
+
+# Ports. The defaults are 9000-9002, 8983 and 8080, which are also what
+# DRAT and a stock RADiX deployment use. Two stacks on one port do not fail
+# loudly: the second one's clients talk to the first one's services. So a
+# machine running more than one stack needs these to differ.
+#
+# export FILEMGR_PORT=9200
+# export WORKFLOW_PORT=9201
+# export RESMGR_PORT=9202
+# export SOLR_PORT=8985
+# export TOMCAT_PORT=8280
+
+# The address the managers are reached at, for a deployment whose work runs
+# on more than one machine. The Workflow Manager substitutes it into task
+# metadata, and a compute node reads that: on the node, "localhost" is the
+# node. Leave it unset for a single machine install.
+#
+# The same value belongs on the compute nodes, because it names the
+# manager, not the machine reading it.
+#
+# export BIGTRANSLATE_HOST=10.168.168.6
+
+# Where Solr keeps its index, if not under the deployment.
+#
+# export SOLR_DATA_DIR=/Volumes/BTSOLR
+# export SOLR_HEAP=4g
