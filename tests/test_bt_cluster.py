@@ -73,11 +73,12 @@ class TestPolicyIsGeneratedFromTheNodeList:
         assert done.returncode == 0, done.stderr
         root = ET.parse(home / "resmgr" / "policy" / "nodes.xml").getroot()
         ids = [n.get("nodeId") for n in root.iter("node")]
-        # The manager appears twice: once for translate and managers, once as
-        # the conditions pool. Two ids on one host is what keeps long running
-        # translations from exhausting the slots conditions need, because the
-        # Resource Manager tracks load per node id rather than per queue.
-        assert ids == ["manager", "manager-conditions", "gpu", "spare"]
+        # The manager appears three times: translate, managers, conditions.
+        # The Resource Manager tracks load per node id rather than per queue,
+        # so an id is a pool -- three ids on one host is what keeps long
+        # running translations from exhausting the slots the other two need.
+        assert ids == ["manager", "manager-managers", "manager-conditions",
+                       "gpu", "spare"]
 
     def test_capacity_carries_through(self, tmp_path):
         done, home = run(tmp_path, "policy", nodes=self.THREE)
@@ -85,6 +86,7 @@ class TestPolicyIsGeneratedFromTheNodeList:
         caps = {n.get("nodeId"): n.get("capacity") for n in root.iter("node")}
         assert caps == {
             "manager": "8",
+            "manager-managers": "4",
             "manager-conditions": "20",
             "gpu": "8",
             "spare": "4"
@@ -110,9 +112,16 @@ class TestPolicyIsGeneratedFromTheNodeList:
         # Extract reads the corpus and join writes the Solr index; those
         # disks are attached to the machine running the managers.
         serving = self._serving(tmp_path)
-        assert serving["manager"] == {"translate", "managers"}
+        # On the manager machine, but under an id of its own: sharing the
+        # translate id would share its capacity, and the join once sat queued
+        # behind 131 translate jobs on a full node with every translation it
+        # was waiting for already done.
+        assert serving["manager-managers"] == {"managers"}
+        assert serving["manager"] == {"translate"}
         assert serving["gpu"] == {"translate"}
         assert serving["spare"] == {"translate"}
+        assert "gpu-managers" not in serving
+        assert "spare-managers" not in serving
 
     def test_conditions_get_a_pool_translations_cannot_exhaust(self, tmp_path):
         # The Resource Manager tracks load per node id, not per queue, so one
