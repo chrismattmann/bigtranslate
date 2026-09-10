@@ -49,6 +49,16 @@ fi
 # Options before the command, so nothing depends on what happens to be
 # exported in the calling shell. Sourcing setenv.sh first still works and is
 # the ordinary way; these are for driving it from somewhere that has not.
+# The jars whose version actually decides behaviour across machines. Checked
+# rather than every jar, because a full comparison is slow and noisy and these
+# are the ones that have gone stale and cost a run.
+#
+# tomcat/webapps is excluded throughout. A war carries its own copy of what it
+# needs and is built and deployed on its own schedule, so holding it to the
+# component libraries reports a difference that is not a fault -- and a check
+# that reports faults nobody will act on is a check nobody reads.
+PREFLIGHT_JARS="cas-workflow-*.jar cas-resource-*.jar cas-filemgr-*.jar bigtranslate-extensions-*.jar"
+
 COMMAND=""
 ONLY_NODE=""
 CHUNK_SRC=""
@@ -354,6 +364,141 @@ cmd_stop() {
   manager_selected && "$BIGTRANSLATE_HOME"/bin/bt-node stop
 }
 
+# --------------------------------------------------------------- preflight ---
+
+# Is what is deployed what we think is deployed?
+#
+# Twice in one day a run was lost to a fix that existed in git and not on
+# disk: a jar rebuilt and copied into one lib directory out of nine, and a
+# script committed but never deployed. Both looked identical from the outside
+# and neither was visible until hours of compute had been spent. This is the
+# five second check that would have caught them.
+#
+# It reports and does not repair, because what is right depends on what you
+# were doing: a stale jar on a node wants a deploy, and a jar newer than the
+# manager's usually means a hot swap that wants finishing.
+preflight_one() {
+  id=$1; host=$2
+  fail=0
+  reachable=$($SSH "$host" "echo ok" 2>/dev/null)
+  if [ "$reachable" != "ok" ]; then
+    echo "  $id ($host): UNREACHABLE"
+    return 1
+  fi
+  if ! $SSH "$host" "[ -d '$BIGTRANSLATE_HOME' ]" 2>/dev/null; then
+    echo "  $id ($host): no $BIGTRANSLATE_HOME (every machine uses the same path)"
+    return 1
+  fi
+  for jar in $PREFLIGHT_JARS; do
+    # Both sides through the same normaliser. Comparing a trailing space
+    # against no trailing space reports every jar as differing, which is
+    # noise that teaches you to ignore the check.
+    mine=$(preflight_sum "$BIGTRANSLATE_HOME" "$jar")
+    theirs=$($SSH "$host" "cd '$BIGTRANSLATE_HOME' 2>/dev/null && find . -name '$jar' -not -path '*/target/*' -not -path '*/tomcat/webapps/*' -exec shasum {} + 2>/dev/null | awk '{print \$1}' | sort -u")
+    theirs=$(preflight_normalise "$theirs")
+    if [ -z "$theirs" ]; then
+      echo "  $id: $jar MISSING"; fail=1
+    elif [ "$theirs" != "$mine" ]; then
+      echo "  $id: $jar DIFFERS from the manager"
+      echo "      manager: $mine"
+      echo "      $id: $theirs"
+      fail=1
+    fi
+  done
+  if [ "$fail" = 0 ]; then
+    echo "  $id ($host): ok"
+  else
+    # for_each_remote runs this in a subshell, so a return value cannot reach
+    # the caller. A marker file can.
+    [ -n "$PREFLIGHT_FAILED" ] && : > "$PREFLIGHT_FAILED"
+  fi
+  return $fail
+}
+
+# One sorted, space separated list of sums with no leading or trailing space,
+# whichever side it came from.
+preflight_normalise() {
+  echo $(echo "$1" | sort -u | tr '\n' ' ')
+}
+
+# Every copy of a jar in this tree, as one sorted list of sums. More than one
+# sum means the tree disagrees with itself, which is the hot swap case.
+preflight_sum() {
+  home=$1; jar=$2
+  preflight_normalise "$(cd "$home" 2>/dev/null && find . -name "$jar" \
+    -not -path '*/target/*' -not -path '*/tomcat/webapps/*' \
+    -exec shasum {} + 2>/dev/null | awk '{print $1}')"
+}
+
+cmd_preflight() {
+  rc=0
+  PREFLIGHT_FAILED="$BIGTRANSLATE_HOME/.preflight-failed.$$"
+  rm -f "$PREFLIGHT_FAILED"
+  echo "checking $BIGTRANSLATE_HOME"
+
+  # 1. The manager's own tree must agree with itself. A jar copied into one
+  #    lib directory and not the other eight is the exact shape of the bug
+  #    that let a stale batch manager run against a fixed workflow manager.
+  for jar in $PREFLIGHT_JARS; do
+    sums=$(preflight_sum "$BIGTRANSLATE_HOME" "$jar")
+    count=$(echo $sums | wc -w | tr -d ' ')
+    if [ "$count" -eq 0 ]; then
+      echo "  manager: $jar MISSING"; rc=1
+    elif [ "$count" -gt 1 ]; then
+      echo "  manager: $jar has $count different versions in this tree"; rc=1
+    fi
+  done
+
+  # 2. Generated policy has to parse. An unparseable queue map takes the
+  #    Resource Manager down at startup and the Workflow Manager with it.
+  for generated in "$BIGTRANSLATE_HOME/resmgr/policy/nodes.xml" \
+                   "$BIGTRANSLATE_HOME/resmgr/policy/node-to-queue-mapping.xml" \
+                   "$BIGTRANSLATE_HOME/workflow/policy/conditions.xml" \
+                   "$BIGTRANSLATE_HOME/workflow/policy/tasks.xml"; do
+    if [ ! -f "$generated" ]; then
+      echo "  manager: $(basename "$generated") MISSING"; rc=1
+    elif ! python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$generated" 2>/dev/null; then
+      echo "  manager: $(basename "$generated") DOES NOT PARSE"; rc=1
+    fi
+  done
+
+  # 3. Every queue a task asks for has to be served by some node, or its jobs
+  #    are unschedulable and the tasks fail as though their work had failed.
+  if [ -f "$BIGTRANSLATE_HOME/workflow/policy/tasks.xml" ] \
+     && [ -f "$BIGTRANSLATE_HOME/resmgr/policy/node-to-queue-mapping.xml" ]; then
+    wanted=$(grep -oE 'name="QueueName" value="[^"]*"' \
+      "$BIGTRANSLATE_HOME/workflow/policy/tasks.xml" \
+      "$BIGTRANSLATE_HOME/workflow/policy/conditions.xml" 2>/dev/null \
+      | sed 's/.*value="//;s/"//' | sort -u)
+    served=$(grep -oE '<queue name="[^"]*"' \
+      "$BIGTRANSLATE_HOME/resmgr/policy/node-to-queue-mapping.xml" \
+      | sed 's/.*name="//;s/"//' | sort -u)
+    for q in $wanted; do
+      if ! echo "$served" | grep -qx "$q"; then
+        echo "  manager: queue [$q] is asked for but no node serves it"; rc=1
+      fi
+    done
+  fi
+
+  # 4. And the nodes must match the manager.
+  #
+  # Tolerated explicitly: this script runs under set -e, and preflight_one
+  # returning non-zero for a node that is behind would abort before the
+  # summary, so a failing check would print its findings and then no verdict.
+  for_each_remote preflight_one || true
+  if [ -f "$PREFLIGHT_FAILED" ]; then
+    rc=1
+    rm -f "$PREFLIGHT_FAILED"
+  fi
+
+  if [ "$rc" = 0 ]; then
+    echo "preflight ok"
+  else
+    echo "preflight FAILED"
+  fi
+  return $rc
+}
+
 cmd_status() {
   if manager_selected; then
     printf '%-10s %-22s ' "$(manager_id)" "$(manager_host)"
@@ -370,9 +515,10 @@ case "${COMMAND:-}" in
   start)  cmd_start ;;
   stop)   cmd_stop ;;
   status) cmd_status ;;
+  preflight) cmd_preflight ;;
   nodes)  node_lines ;;
   help|*)
-    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|start|stop|status|nodes} [node]"
+    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|preflight|start|stop|status|nodes} [node]"
     echo
     echo "options:"
     echo "  --home PATH        deployment root; the same absolute path on"
