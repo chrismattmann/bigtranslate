@@ -571,10 +571,14 @@ def test_the_join_starts_itself():
     """
     conditions = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
                   / "conditions.xml").read_text()
-    assert "ProductCountSettledCondition" in conditions, (
+    assert "ProductCountMatchesCondition" in conditions, (
         "nothing waits for the translations to finish")
     assert "EmploymentTranslatedChunk" in conditions, (
         "the condition counts the wrong thing")
+    # It used to be ProductCountSettledCondition, which passed after two
+    # minutes with no new translation. See
+    # test_join_waits_for_every_chunk.py for why a pause is not the end of
+    # the work.
 
     tasks = (REPO / "workflow" / "src" / "main" / "resources" / "policy"
              / "tasks.xml").read_text()

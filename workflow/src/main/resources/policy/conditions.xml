@@ -27,7 +27,7 @@
        Without this the join has to be started by hand, which over a run of
        several hours means somebody watching for the moment to do it. -->
   <condition id="urn:bigtranslate:TranslationsSettled" name="Translations Settled"
-             class="org.apache.oodt.cas.pge.condition.ProductCountSettledCondition">
+             class="org.apache.oodt.cas.pge.condition.ProductCountMatchesCondition">
     <configuration>
       <!-- A condition is dispatched as a task like any other, and under the
            ResourceRunner a task with no queue falls back to a default of
@@ -44,12 +44,28 @@
       <property name="QueueName" value="conditions"/>
       <property name="TaskLoad" value="1"/>
       <property name="FileManagerUrl" value="[FILEMGR_URL]" envReplace="true"/>
+      <!-- Every chunk that was extracted must have a translation. Extract
+           catalogues one EmploymentStringChunk per chunk before any
+           translation starts, so the number to reach is known rather than
+           guessed at.
+
+           It used to wait for two minutes of quiet instead, on the reasoning
+           that a chunk takes minutes so a gap that long must be the end. It
+           is not. Sixteen chunks translate at once across two nodes and they
+           do not finish evenly: on a 458 chunk run there were seventeen gaps
+           of two minutes or more, the longest 264 seconds, the first at
+           11:59 with 155 chunks still to do. The condition passed then, and
+           the join was queued from that moment with a third of the corpus
+           untranslated.
+
+           Nothing came of it because the join waits four hours for its
+           chunks and could not get a slot before they arrived. Neither is a
+           reason to keep asking the wrong question. -->
       <property name="ProductTypeName" value="EmploymentTranslatedChunk"/>
-      <!-- At least one, so the join cannot run against nothing at all. -->
+      <property name="MatchesProductTypeName" value="EmploymentStringChunk"/>
+      <!-- At least one, so the join cannot run against nothing at all.
+           Before extract has catalogued anything, nought matches nought. -->
       <property name="MinCount" value="1"/>
-      <!-- A chunk takes minutes, so a couple of minutes of quiet is a real
-           pause rather than the gap between two of them. -->
-      <property name="QuietSeconds" value="120"/>
     </configuration>
   </condition>
 
