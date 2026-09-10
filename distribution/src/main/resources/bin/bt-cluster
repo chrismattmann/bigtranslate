@@ -430,6 +430,51 @@ preflight_sum() {
     -exec shasum {} + 2>/dev/null | awk '{print $1}')"
 }
 
+# Is anything accepting connections on this port, on any address?
+bt_port_listening() {
+  python3 - "$1" <<'EOF' 2>/dev/null
+import socket, sys
+port = int(sys.argv[1])
+for host in ("127.0.0.1", "0.0.0.0"):
+    s = socket.socket()
+    s.settimeout(1.5)
+    try:
+        s.connect(("127.0.0.1", port))
+        sys.exit(0)
+    except OSError:
+        pass
+    finally:
+        s.close()
+sys.exit(1)
+EOF
+}
+
+# Does this url's own host and port accept a connection? The question is
+# whether the address a task will be handed reaches the service, so it is
+# the address that is dialled, not the port on loopback.
+bt_url_reachable() {
+  python3 - "$1" <<'EOF' 2>/dev/null
+import socket, sys
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    sys.exit(0)
+parsed = urlparse(sys.argv[1])
+if not parsed.hostname:
+    sys.exit(0)
+port = parsed.port or (443 if parsed.scheme == "https" else 80)
+s = socket.socket()
+s.settimeout(3.0)
+try:
+    s.connect((parsed.hostname, port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+sys.exit(0)
+EOF
+}
+
 cmd_preflight() {
   rc=0
   PREFLIGHT_FAILED="$BIGTRANSLATE_HOME/.preflight-failed.$$"
@@ -480,7 +525,39 @@ cmd_preflight() {
     done
   fi
 
-  # 4. And the nodes must match the manager.
+  # 4. A service that is running has to be reachable at the address the
+  #    tasks are given. These are different things: the Workflow Manager
+  #    substitutes the environment's URL into task metadata, and a task
+  #    then connects to it. If the service is bound somewhere that address
+  #    does not reach, everything looks healthy until the task runs.
+  #
+  #    That is not hypothetical. Solr binds loopback unless told otherwise,
+  #    while SOLR_URL had been pointed at the LAN address so the compute
+  #    nodes could be given reachable URLs for the OODT managers -- which do
+  #    bind *:port. Solr was up, its core healthy, every page green, and the
+  #    join would have failed on connection refused three hours into the run
+  #    with every translation already done.
+  #
+  #    Only checked when something is listening: preflight is also run with
+  #    the stack down, and "not running" is not a configuration error.
+  for pair in "FILEMGR_URL:$FILEMGR_PORT" "WORKFLOW_URL:$WORKFLOW_PORT" \
+              "RESMGR_URL:$RESMGR_PORT" "SOLR_URL:$SOLR_PORT"; do
+    name=${pair%:*}
+    port=${pair##*:}
+    eval "url=\${$name:-}"
+    [ -n "$url" ] || continue
+    if ! bt_port_listening "$port"; then
+      continue
+    fi
+    if ! bt_url_reachable "$url"; then
+      echo "  manager: $name is $url, but nothing answers there while a"
+      echo "           service is listening on port $port -- a task given"
+      echo "           this address will fail to connect"
+      rc=1
+    fi
+  done
+
+  # 5. And the nodes must match the manager.
   #
   # Tolerated explicitly: this script runs under set -e, and preflight_one
   # returning non-zero for a node that is behind would abort before the
