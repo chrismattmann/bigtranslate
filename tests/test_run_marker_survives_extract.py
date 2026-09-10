@@ -54,8 +54,13 @@ def load(name):
     return module
 
 
-def home_with(tmp_path, made=0, done=0, age_seconds=0):
-    """A BIGTRANSLATE_HOME with chunks extracted and translated."""
+def home_with(tmp_path, made=0, done=0, age_seconds=0, catalogued=None):
+    """A BIGTRANSLATE_HOME with chunks extracted and translated.
+
+    `done` is what this machine translated into its own flat directory.
+    `catalogued` is what the archive holds, which on a distributed run is
+    every node's output and so a superset.
+    """
     strings = tmp_path / "data" / "strings"
     translated = tmp_path / "data" / "translated"
     strings.mkdir(parents=True, exist_ok=True)
@@ -69,6 +74,17 @@ def home_with(tmp_path, made=0, done=0, age_seconds=0):
         f = translated / ("chunk-%05d.json" % n)
         f.write_text("{}", encoding="utf-8")
         os.utime(f, (when, when))
+    if catalogued:
+        catalog = tmp_path / "data" / "translated-catalog"
+        catalog.mkdir(parents=True, exist_ok=True)
+        for n in range(catalogued):
+            # The versioner nests each product under a directory of its own
+            # name, so a catalogued chunk is a directory.
+            holder = catalog / ("chunk-%05d.json" % n)
+            holder.mkdir(exist_ok=True)
+            (holder / ("chunk-%05d.json" % n)).write_text(
+                "{}", encoding="utf-8")
+            os.utime(holder, (when, when))
     return tmp_path
 
 
@@ -201,3 +217,50 @@ class TestTheGapThatWasLeftOpen:
         assert "progress_every=200" in source
         assert "beat()" in source, (
             "the beat has to be on the progress tick, not once at the start")
+
+
+class TestProgressCountsEveryNodesWork:
+    """The manager's flat directory is its own share, not the run's total.
+
+    Each node writes a translated chunk into its own flat directory and the
+    File Manager brings it back to the archive, so the archive is the only
+    complete copy. Counting the flat directory alone reported 43 of 458 on a
+    two node run that had done 121 -- the same mistake #79 fixed for the
+    join, left standing here.
+    """
+
+    def test_the_archive_is_counted(self, tmp_path, monkeypatch):
+        home = home_with(tmp_path, made=458, done=43, catalogued=121)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+
+        seen = run_marker.progress(home.as_posix())
+        assert seen["chunksDone"] == 121, (
+            "43 of 458 understates the rate by nearly threefold and makes "
+            "the estimate of when the run ends useless")
+        assert seen["stage"] == "translating"
+
+    def test_a_single_machine_run_still_counts(self, tmp_path, monkeypatch):
+        # No archive at all, which is every single machine install.
+        home = home_with(tmp_path, made=10, done=4)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        assert run_marker.progress(home.as_posix())["chunksDone"] == 4
+
+    def test_a_chunk_in_both_places_is_one_chunk(self, tmp_path, monkeypatch):
+        # The manager translates as well as coordinates, so its own chunks
+        # are in the flat directory and, once ingested, the archive too.
+        home = home_with(tmp_path, made=10, done=4, catalogued=4)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        assert run_marker.progress(home.as_posix())["chunksDone"] == 4, (
+            "adding the two would report more chunks done than exist")
+
+    def test_the_stage_turns_over_when_every_chunk_is_done(
+            self, tmp_path, monkeypatch):
+        # Counting the flat directory alone, done never reached made on a
+        # distributed run, so the stage never left translating.
+        home = home_with(tmp_path, made=458, done=43, catalogued=458)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        assert run_marker.progress(home.as_posix())["stage"] == "joining"

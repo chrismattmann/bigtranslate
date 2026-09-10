@@ -47,18 +47,21 @@ def read(path):
         return {}
 
 
-def count(directory):
-    """How many chunks are in a directory, however the versioner left them.
+def names(directory):
+    """The chunks in a directory, however the versioner left them.
 
     The ingest nests each product under a directory named after it, so the
     chunks the join reads are files and the catalogued copies are
     directories. Both count as one chunk.
     """
     try:
-        return len([n for n in os.listdir(directory)
-                    if n.startswith("chunk-")])
+        return {n for n in os.listdir(directory) if n.startswith("chunk-")}
     except OSError:
-        return 0
+        return set()
+
+
+def count(directory):
+    return len(names(directory))
 
 
 def earliest(directory):
@@ -89,7 +92,19 @@ def progress(home):
     after a restart and cannot drift from what is actually on disk.
     """
     made = count(os.path.join(home, "data", "strings"))
-    done = count(os.path.join(home, "data", "translated"))
+    # Every node that translates a chunk writes it into its own flat
+    # directory and the File Manager brings it back to the archive, so on a
+    # distributed run the archive is the only complete copy -- the manager's
+    # flat directory holds just the share it translated itself. Counting
+    # that alone reported 43 of 458 while 121 were done, which understates
+    # the rate by the same factor and makes the estimate of when the run
+    # ends useless. It also meant done never reached made, so the stage
+    # never turned over to joining.
+    #
+    # The union rather than either one: a chunk that exists anywhere has an
+    # answer, and a single machine install has no archive at all.
+    done = len(names(os.path.join(home, "data", "translated"))
+               | names(os.path.join(home, "data", "translated-catalog")))
     if done >= made > 0:
         stage = "joining"
     elif made > 0:
