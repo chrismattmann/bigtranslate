@@ -32,8 +32,13 @@ import static org.junit.Assert.assertTrue;
  * memory of a run it started itself and is empty for one it did not, while
  * /progress asked {@code snapshot()}, which reads the marker on disk.</p>
  *
- * <p>The map page reads /summary, so the page people actually look at was
- * the one giving the wrong answer.</p>
+ * <p>Nothing in the UI shows this field: the status badge reads /bt/status,
+ * which already asked snapshot, and SummaryBar never looks at
+ * summary.status. I claimed in #83 that the map page read it and so was the
+ * page giving the wrong answer, and that was wrong -- the badge said IDLE
+ * because the marker had been deleted, which is a different bug in the same
+ * report. What is fixed here is an endpoint answering wrongly, not a page
+ * displaying wrongly.</p>
  */
 public class TestOneAnswerAboutWhatIsRunning {
 
