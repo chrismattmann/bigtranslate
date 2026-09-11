@@ -32,6 +32,7 @@ import json
 import os
 import sys
 import sqlite3
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -239,6 +240,29 @@ def post(url, batch, timeout):
         response.read()
 
 
+def run_marker_beat():
+    """Tell anything watching that this stage is still working.
+
+    Indexing is the longest single stretch of a run after the corpus read,
+    and it writes nothing a watcher can see until the very end: Solr holds
+    the documents uncommitted, so the index reads as empty the whole way
+    through. Gloss treats a marker whose heartbeat has gone quiet as a run
+    that died and deletes it, so ten minutes into a join it reported IDLE
+    while four shards were busy building the index.
+
+    Extract beats for the same reason. The join was left out, four lines
+    away in the same file.
+    """
+    marker = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "bt-run-marker")
+    try:
+        subprocess.run([sys.executable, marker, "beat"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=False, timeout=30)
+    except Exception as e:
+        log("  could not run the run marker: %s" % e)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bt-join-index",
@@ -331,6 +355,7 @@ def main(argv=None):
     batch = []
     posted = skipped = seen = 0
     started = time.time()
+    beat = run_marker_beat
     for path in mine:
         base = os.path.basename(path)
         for number, parts in enumerate(
@@ -347,6 +372,13 @@ def main(argv=None):
                 post(args.solr_url, batch, args.timeout)
                 posted += len(batch)
                 batch = []
+                # A batch is the only regular event in an hour of indexing,
+                # so it is where the run says it is still alive. Saying so
+                # is never worth losing the batch for.
+                try:
+                    beat()
+                except Exception as e:
+                    log("  could not refresh the run marker: %s" % e)
     if batch:
         post(args.solr_url, batch, args.timeout)
         posted += len(batch)
