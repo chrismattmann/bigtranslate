@@ -387,6 +387,43 @@ ensure_working_dirs() {
   done
 }
 
+# Tomcat listens where the deployment says, not where the tarball says.
+#
+# server.xml ships with Tomcat's defaults -- 8080, 8005 for shutdown, 8009 for
+# AJP -- and nothing wrote TOMCAT_PORT into it. The port was hand edited into
+# the deployed copy instead, so the next unpack quietly put it back. On
+# 2026-09-11 that happened: Tomcat came up on 8080 and took 8005 and 8009 with
+# it, which are the ImageCat stack's ports on this machine, and the File
+# Manager failed alongside it. The whole reason this deployment moves its
+# ports is that two stacks on one port do not fail loudly.
+#
+# Derived from TOMCAT_PORT with Tomcat's own default offsets (8080/8005/8009),
+# so one setting moves all three and they keep their usual relationship.
+# Override either explicitly if something else already has the address.
+ensure_tomcat_ports() {
+  xml="$OODT_BASE/tomcat/conf/server.xml"
+  [ -f "$xml" ] || return 0
+  shutdown_port=${TOMCAT_SHUTDOWN_PORT:-$((TOMCAT_PORT - 75))}
+  ajp_port=${TOMCAT_AJP_PORT:-$((TOMCAT_PORT - 71))}
+  python3 - "$xml" "$TOMCAT_PORT" "$shutdown_port" "$ajp_port" <<'EOF'
+import re, sys
+path, http, shutdown, ajp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(path, encoding="utf-8") as handle:
+    text = handle.read()
+before = text
+# Rewrite whatever is there rather than matching the default, so running this
+# twice is the same as running it once and a half configured file converges.
+text = re.sub(r'(<Server\s+port=")\d+(")', r'\g<1>%s\g<2>' % shutdown, text, count=1)
+text = re.sub(r'(<Connector\s+port=")\d+("\s+protocol="HTTP/1\.1")',
+              r'\g<1>%s\g<2>' % http, text, count=1)
+text = re.sub(r'(<Connector\s+port=")\d+("\s+protocol="AJP/1\.3")',
+              r'\g<1>%s\g<2>' % ajp, text, count=1)
+if text != before:
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+EOF
+}
+
 # Wait until something is listening on a port, or give up.
 #
 # Used to order the managers rather than to check health: a manager that
@@ -492,6 +529,7 @@ start_oodt() {
   wait_for_pantogloss
 
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
+  ensure_tomcat_ports
   nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
   # Solr runs as its own application now, with its own Jetty, rather than as a
   # war inside Tomcat. --solr-home points it at the bigtranslate core;
@@ -555,6 +593,7 @@ stop_oodt() {
   "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" stop "$@" >> "$OODT_OUT" 2>&1  &
   "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
   "$RESMGR_HOME"/bin/"$RESMGR_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
+  ensure_tomcat_ports
   "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" stop "$@" >> "$OODT_OUT" 2>&1 &
   if [ -x "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" ]; then
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
