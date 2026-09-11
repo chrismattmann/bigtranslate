@@ -18,11 +18,20 @@
           repository rather than guessed. The settled condition stops the
           join beginning absurdly early; this stops it beginning early at
           all. -->
+     <!-- EXPECTED first, then the database, then the join.
+          
+          The database used to be built before the count was even taken, so
+          it was built from whatever had arrived and the join's own expect
+          wait came afterwards. On a 458 chunk run that meant a database
+          built at 16:16 from 442 chunks and a join starting at 16:36 with
+          all 458 present: every document indexed, and 155,000 strings left
+          in Spanish, reported as success. The wait belongs on the step that
+          decides what can be translated. -->
      <!-- One database for every shard to share. Read as JSON each shard
           holds its own 456MB copy of the same table, and eight of those is
           what put the machine over during the first full run. -->
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-build-translation-db --translated [TranslatedDir] --glossary [TranslateGlossary] --out [TranslationsDb] [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>EXPECTED=$(ls -d [StringsDir]/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
+     <cmd>[BIGTRANSLATE_HOME]/bin/bt-build-translation-db --translated [TranslatedDir] --glossary [TranslateGlossary] --out [TranslationsDb] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
      <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>

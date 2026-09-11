@@ -83,6 +83,40 @@ def chunk_files(directory):
     return sorted(set(flat) | set(archived))
 
 
+def wait_for_chunks(directory, expected, timeout, poll=15):
+    """Block until every chunk has a translation, or give up saying so.
+
+    Chunks are written to a temporary name and renamed, so one that exists is
+    one that is finished; counting them is enough. The same wait the join
+    does -- it has to happen here too, because this is the step that decides
+    what the join will be able to translate.
+    """
+    started = time.time()
+    seen = len(chunk_files(directory))
+    while seen < expected and time.time() - started < timeout:
+        log("  waiting: %d of %d chunks translated" % (seen, expected))
+        time.sleep(poll)
+        seen = len(chunk_files(directory))
+    return seen
+
+
+def chunks_behind(db_path):
+    """How many chunks an existing database was built from, or None.
+
+    None for a database written before this was recorded, which is treated
+    as unknown and therefore rebuilt.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute("SELECT chunks FROM built").fetchone()
+            return int(row[0]) if row else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def build(translated_dir, out_path, glossary=None, untranslatable=None):
     chunks = chunk_files(translated_dir)
     if not chunks:
@@ -104,6 +138,12 @@ def build(translated_dir, out_path, glossary=None, untranslatable=None):
         conn.execute("PRAGMA journal_mode = OFF")
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("CREATE TABLE t (s TEXT PRIMARY KEY, e TEXT) WITHOUT ROWID")
+        # How many chunks went in, so a later run can tell a complete
+        # database from one built before the last chunks arrived. Existence
+        # alone cannot tell them apart, and that is what let a stale one be
+        # reused.
+        conn.execute("CREATE TABLE built (chunks INTEGER)")
+        conn.execute("INSERT INTO built (chunks) VALUES (?)", (len(chunks),))
 
         total = 0
         overridden = [0]
@@ -153,11 +193,41 @@ def main(argv=None):
                              "overrides applied over the model's output")
     parser.add_argument("--force", action="store_true",
                         help="rebuild even if the database already exists")
+    parser.add_argument("--expect", type=int, default=0,
+                        help="wait for this many translated chunks before "
+                             "building, so the database is not built from a "
+                             "corpus that is still arriving")
+    parser.add_argument("--expect-timeout", type=int, default=14400)
     args = parser.parse_args(argv)
 
+    if args.expect:
+        waited = wait_for_chunks(args.translated, args.expect,
+                                 args.expect_timeout)
+        if waited < args.expect:
+            raise SystemExit(
+                "only %d of %d translated chunks after %ds; refusing to "
+                "build a database the join would treat as complete. The "
+                "documents would all be indexed and the strings from the "
+                "missing chunks would still be in the source language."
+                % (waited, args.expect, args.expect_timeout))
+
     if os.path.exists(args.out) and not args.force:
-        log("%s already exists; leaving it alone" % args.out)
-        return 0
+        built_from = chunks_behind(args.out)
+        have = len(chunk_files(args.translated))
+        if built_from is not None and built_from >= have:
+            log("%s already holds %d chunks; leaving it alone"
+                % (args.out, built_from))
+            return 0
+        # Existence is not completeness. A database built before the last
+        # chunks were translated is reused silently otherwise, and the join
+        # indexes every document with a fraction of the translations. On a
+        # 458 chunk run the database was built at 16:16 from 442 chunks and
+        # the join began at 16:36 with all 458 present: 155,000 strings
+        # would have gone into the index in Spanish, and the join would have
+        # reported success.
+        log("%s was built from %s chunks and %d are now translated; rebuilding"
+            % (args.out, "an unknown number of" if built_from is None
+               else built_from, have))
 
     started = time.time()
     glossary, untranslatable = load_glossary(args.glossary)
