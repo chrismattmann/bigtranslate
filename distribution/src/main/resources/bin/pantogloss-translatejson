@@ -309,7 +309,7 @@ class TranslationCache:
 # --------------------------------------------------------------------------
 
 def is_untranslatable(value):
-    """True for a value with no letter or digit in it.
+    """True for a value with no letter in it.
 
     These are not language and the model should never see them. Asked to
     translate "!" it answers "- I'm sorry."; "-----------" comes back the
@@ -317,10 +317,29 @@ def is_untranslatable(value):
     such strings came back altered, and they reach 4.7 million documents --
     an apology sitting in a duration column.
 
+    Digits are not language either, and letting them through was the larger
+    half of the problem. The rule used to ask for no letter *or digit*, so
+    every salary in the corpus went to the model:
+
+        "$ 12000 - $ 13000"   -> "Table 1"
+        "$ 1500000-2000000"   -> "Table 1"
+        "!.500.000"           -> "500,000!"
+        "!000"                -> "- $1,000."
+
+    Two thousand eight hundred and five distinct salary ranges collapsed
+    onto "Table 1" alone, and the last of those examples invented a value
+    that was never in the source. Measured over 2,286,371 translations:
+    45,115 strings contain no letter, and the model altered 31,196 of them.
+    The old rule caught 467.
+
+    A string that mixes numbers with words still has letters and is still
+    translated, which is what keeps
+    "$800.000 - 1.100.000 (Segun estudios y experiencia)" useful.
+
     Passing them through unchanged is both more correct and cheaper than
     asking.
     """
-    return not any(character.isalnum() for character in value)
+    return not any(character.isalpha() for character in value)
 
 
 class Glossary:

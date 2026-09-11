@@ -45,15 +45,36 @@ def _load(name):
 
 
 class TestUntranslatable:
-    """Punctuation is not language and the model should not see it."""
+    """A string with no letter in it is not language.
+
+    The rule used to ask for no letter *or digit*, which let every numeric
+    string in the corpus through to the model. Salaries are the field where
+    that showed.
+    """
 
     @pytest.mark.parametrize("value", ["!", "!!!", "-", "-----------", "###",
                                        ",.", "   ", "***"])
     def test_punctuation_is_untranslatable(self, value):
         assert shim.is_untranslatable(value)
 
-    @pytest.mark.parametrize("value", ["Inmediato", "6 months", "24/7", "A1"])
-    def test_anything_with_a_letter_or_digit_is_not(self, value):
+    @pytest.mark.parametrize("value", ["$ 12000 - $ 13000", "$ 1500000-2000000",
+                                       "!.500.000", "!000", "24/7", "1.100.000",
+                                       "2013-05-07"])
+    def test_numbers_are_untranslatable_too(self, value):
+        # These went to the model and came back wrong. 2,805 distinct salary
+        # ranges collapsed onto "Table 1"; "!.500.000" became "500,000!" and
+        # "!000" became "- $1,000.", a value that was never in the source.
+        # Measured over 2,286,371 translations: 45,115 strings contain no
+        # letter and the model altered 31,196 of them. The old rule caught
+        # 467.
+        assert shim.is_untranslatable(value)
+
+    @pytest.mark.parametrize("value", ["Inmediato", "6 months", "A1", "40 hs",
+                                       "$800.000 - 1.100.000 (Segun estudios)",
+                                       "Administrativa (oeste)"])
+    def test_anything_with_a_letter_is_still_translated(self, value):
+        # A salary that carries words is worth translating, and this is what
+        # keeps that working rather than throwing the field away wholesale.
         assert not shim.is_untranslatable(value)
 
     def test_this_is_the_shape_that_produced_an_apology(self):
