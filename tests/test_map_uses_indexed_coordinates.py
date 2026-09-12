@@ -66,3 +66,63 @@ def test_the_geocoder_is_still_there_for_what_the_index_lacks():
     text = SOLR_SUPPORT.read_text()
     assert "geocoder.geocode(location)" in text, (
         "locations with no indexed coordinate would simply vanish")
+
+
+class TestCoordinatesAreAlsoNumbers:
+    """latitude and longitude are strings, so a range over them is text.
+
+    Asking for latitude between -56 and 14, which is South America, returns
+    nothing at all. They have to stay strings: they are required and the
+    corpus leaves them blank in about 1% of records, which is not a number.
+    So the numbers go alongside them.
+    """
+
+    SCHEMA = ROOT / "solr/src/main/resources/bigtranslate/conf/schema.xml"
+    JOIN = ROOT / "distribution/src/main/resources/bin/bt-join-index"
+
+    def _schema(self):
+        import xml.etree.ElementTree as ET
+        return ET.parse(self.SCHEMA).getroot()
+
+    def test_the_numeric_field_type_is_declared(self):
+        types = {t.get("name"): t for t in self._schema().iter("fieldType")}
+        assert "pdouble" in types, "no numeric type to declare them as"
+        assert types["pdouble"].get("docValues") == "true", (
+            "without docValues a coordinate can be matched but not averaged "
+            "or bucketed, which is the point of having it")
+
+    def test_both_coordinates_have_a_numeric_twin(self):
+        fields = {f.get("name"): f for f in self._schema().iter("field")}
+        for name in ("latitude_d", "longitude_d"):
+            assert name in fields, "%s is not declared" % name
+            assert fields[name].get("type") == "pdouble"
+
+    def test_the_numeric_twin_is_not_required(self):
+        # A blank cell has no number in it, and a required field would drop
+        # the record for want of one.
+        fields = {f.get("name"): f for f in self._schema().iter("field")}
+        for name in ("latitude_d", "longitude_d"):
+            assert fields[name].get("required") != "true", name
+
+    def test_nothing_copies_into_it(self):
+        # copyField hands the raw value over, and "" does not parse as a
+        # double: it would fail the whole document.
+        copies = {(c.get("source"), c.get("dest"))
+                  for c in self._schema().iter("copyField")}
+        for pair in (("latitude", "latitude_d"), ("longitude", "longitude_d")):
+            assert pair not in copies, (
+                "%s is copied, and a blank cell would fail the document" % str(pair))
+
+    def test_the_join_writes_them(self):
+        assert "add_numeric_coordinates" in self.JOIN.read_text()
+
+    def test_the_origin_leaves_them_absent(self):
+        # Zero is not a missing value, it is a place in the Gulf of Guinea,
+        # and a third of this corpus was never geo-fixed. Indexed as zero,
+        # every average over latitude is dragged toward it by forty million
+        # records.
+        body = self.JOIN.read_text()
+        fn = body[body.index("def add_numeric_coordinates"):]
+        fn = fn[:fn.index("\ndef ", 1)]
+        assert 'pop("latitude_d"' in fn and 'pop("longitude_d"' in fn, (
+            "a never-geo-fixed record would be plotted off west Africa")

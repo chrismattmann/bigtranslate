@@ -235,8 +235,45 @@ def build_document(parts, columns, translate_at, table, required, dates,
     for name in required:
         if name not in document and name not in dates:
             document[name] = ""
+    add_numeric_coordinates(document)
     missing = [name for name in required if name not in document]
     return document, missing
+
+
+def add_numeric_coordinates(document):
+    """Coordinates Solr can do arithmetic on.
+
+    latitude and longitude are string fields and have to stay that way: they
+    are required, the corpus leaves them blank in about 1% of records, and a
+    blank is not a number. So a range query over them compares text -- asking
+    for latitude between -56 and 14 returns nothing at all, and asking for
+    the northern hemisphere returns half of Argentina.
+
+    These carry the same values as numbers, and are simply absent when there
+    is no number to carry:
+
+      blank    the cell was empty; 1,244,002 records
+      0, 0     the geo-fixing service was never run on it, or failed; a
+               third of the corpus. Indexed as zero it is a real place off
+               west Africa, and every average over latitude is dragged
+               toward the Gulf of Guinea by forty million records sitting
+               there.
+
+    Absent rather than zero means latitude_d:[* TO *] is exactly "has a
+    position", which is the filter every geographic question starts with.
+    """
+    for name in ("latitude", "longitude"):
+        raw = document.get(name)
+        if raw is None or str(raw).strip() == "":
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        document[name + "_d"] = value
+    if document.get("latitude_d") == 0.0 and document.get("longitude_d") == 0.0:
+        document.pop("latitude_d", None)
+        document.pop("longitude_d", None)
 
 
 def post(url, batch, timeout):

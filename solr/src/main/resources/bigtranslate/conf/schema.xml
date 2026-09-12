@@ -32,6 +32,9 @@
   <fieldType name="string" class="solr.StrField" sortMissingLast="true" docValues="true"/>
   <fieldType name="plong" class="solr.LongPointField" docValues="true"/>
   <fieldType name="pdate" class="solr.DatePointField" docValues="true"/>
+  <!-- docValues so a coordinate can be averaged and bucketed, not only
+       matched: min, max and range facets all read them. -->
+  <fieldType name="pdouble" class="solr.DoublePointField" docValues="true"/>
 
   <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
     <analyzer type="index">
@@ -80,6 +83,24 @@
   <field name="location" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
   <field name="latitude" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="longitude" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
+
+  <!-- The same coordinates as numbers, so Solr can do arithmetic on them.
+
+       The two above are strings and have to stay that way: they are
+       required, and the corpus leaves them blank in about 1% of records,
+       which is not a number. A range over them therefore compares text.
+       Asking for latitude between -56 and 14, which is South America,
+       returns nothing at all.
+
+       Not required and not copied: bt-join-index writes these only when
+       there is a number to write, so a blank cell and a pair of zeroes both
+       leave them absent. Zero is not a missing value, it is a place in the
+       Gulf of Guinea, and a third of this corpus was never geo-fixed.
+       latitude_d:[* TO *] is then exactly "has a position". -->
+  <field name="latitude_d" type="pdouble" indexed="true" stored="true"
+         required="false" multiValued="false"/>
+  <field name="longitude_d" type="pdouble" indexed="true" stored="true"
+         required="false" multiValued="false"/>
   <field name="firstSeenDate" type="pdate" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="url" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="lastSeenDate" type="pdate" indexed="true" stored="true" required="true" multiValued="false"/>
