@@ -36,6 +36,13 @@ def run_validation(argument):
         ["sed", "-n", "/^validate_corpus_path() {/,/^}/p", str(DRIVER)],
         capture_output=True, text=True, check=True).stdout
     assert body.strip(), "validate_corpus_path is not in the driver script"
+    # It counts through corpus_files(), which is what keeps the number it
+    # reports and the files the crawler ingests the same set.
+    helpers = subprocess.run(
+        ["sed", "-n", "/^corpus_files() {/,/^}/p", str(DRIVER)],
+        capture_output=True, text=True, check=True).stdout
+    assert helpers.strip(), "corpus_files is not in the driver script"
+    body = helpers + "\n" + body
     script = body + '\nvalidate_corpus_path "$1"\necho "RESOLVED=$CORPUS_PATH"\n'
     return subprocess.run(["bash", "-c", script, "bash", argument],
                           capture_output=True, text=True)

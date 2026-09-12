@@ -59,7 +59,8 @@ def run_shape_check(tmp_path, home, corpus):
         %s
         validate_corpus_shape "%s"
         echo ACCEPTED
-        """) % (home, _function("validate_corpus_shape"), corpus))
+        """) % (home, _function("corpus_files") + "\n"
+                + _function("validate_corpus_shape"), corpus))
     return subprocess.run(["bash", str(script)], capture_output=True,
                           text=True, timeout=60)
 
@@ -132,12 +133,110 @@ def test_the_shipped_header_list_is_what_the_check_reads(tmp_path):
 
 
 class TestTheCountIsTheCrawlersCount:
-    """The only number an operator is given about the size of their run."""
+    """The only number an operator is given about the size of their run.
+
+    It has been wrong in both directions. Counted with -maxdepth 1 it said
+    2,806 for a crawl that ingested 5,616 products. Counted recursively with
+    no filter it said 5,612, of which 2,806 were AppleDouble forks. Both the
+    count and the crawl now go through the same definition of what a corpus
+    file is, so the two cannot disagree again.
+    """
 
     def test_the_file_count_recurses(self):
-        body = _function("validate_corpus_path")
-        assert "-maxdepth 1 -type f -name '*.tsv'" not in body, (
+        body = _function("corpus_files")
+        assert "-maxdepth 1" not in body, (
             "the count stops at the top level while the crawler recurses; on "
             "the employment corpus that reported 2806 files for a run that "
             "ingested 5616 products")
-        assert "find \"$CORPUS_PATH\" -type f -name '*.tsv'" in body
+        assert "-type f -name '*.tsv'" in body
+
+    def test_the_count_goes_through_corpus_files(self):
+        body = _function("validate_corpus_path")
+        assert "corpus_files" in body, (
+            "the count has its own find again; it and the crawl will drift")
+        assert "find \"$CORPUS_PATH\" -type f -name '*.tsv'" not in body
+
+    def test_corpus_files_skips_dot_directories(self):
+        assert "/\\." in _function("corpus_files")
+
+    def test_the_crawl_excludes_what_the_count_excludes(self):
+        driver = DRIVER.read_text()
+        assert "corpus_exclude_pattern" in driver
+        # Set whether or not the operator passed --exclude. An operator who
+        # has never heard of AppleDouble cannot be expected to ask for it.
+        start = driver.index("function translate {")
+        body = driver[start:driver.index("\n}", start)]
+        assert "corpus_exclude_pattern" in body
+        # Both branches of the argument parsing -- with --exclude and
+        # without -- set it, and neither sets it empty. It is cleared once
+        # afterwards, deliberately, so the crawl's exclude does not leak
+        # into the stages that follow; that one is not in this slice.
+        decided = body[:body.index("say \"Crawling")]
+        settings = [line.strip() for line in decided.splitlines()
+                    if "BIGTRANSLATE_EXCLUDE=" in line]
+        assert len(settings) == 2, settings
+        assert not any(line.endswith('BIGTRANSLATE_EXCLUDE=""')
+                       for line in settings), (
+            "an empty exclude lets the crawler back into .AppleDouble")
+
+
+# --------------------------------------------------------------------------
+# AppleDouble sidecars
+#
+# The corpus volume has been served over AFP, so beside every file there is a
+# 741 byte resource fork under .AppleDouble/ carrying the same name -- it ends
+# in .tsv and matches -name '*.tsv' exactly as the real file does. 2,806 real
+# files, 2,806 sidecars.
+#
+# Two things went wrong because nothing excluded them. The crawler ingested
+# all 5,616 as products. And the shape check sampled one, found no tabs in a
+# binary fork, and refused the run naming "computrabajo-ar-20121106.tsv" --
+# the basename of the sidecar, which is also the basename of a real file that
+# was perfectly fine. Whether it sampled the sidecar or the real file came
+# down to the order find happened to return them in, which is not stable.
+
+def _sidecars(corpus):
+    """An AppleDouble fork for every file, as the real volume has."""
+    hidden = corpus / ".AppleDouble"
+    hidden.mkdir(parents=True, exist_ok=True)
+    for real in sorted(corpus.glob("*.tsv")):
+        (hidden / real.name).write_bytes(b"\x00\x05\x16\x07\x00\x02" + b"\x00" * 80)
+    return hidden
+
+
+def test_appledouble_sidecars_do_not_fail_a_good_corpus(tmp_path, home):
+    corpus = _corpus(tmp_path / "corpus", 20)
+    _sidecars(corpus)
+    result = run_shape_check(tmp_path, home, corpus)
+    assert "ACCEPTED" in result.stdout, result.stdout + result.stderr
+
+
+def test_a_dot_directory_is_not_corpus(tmp_path, home):
+    corpus = _corpus(tmp_path / "corpus", 20)
+    _corpus(corpus / ".lacie", 3)
+    result = run_shape_check(tmp_path, home, corpus)
+    assert "ACCEPTED" in result.stdout, result.stdout + result.stderr
+
+
+def test_the_refusal_names_a_path_not_a_basename(tmp_path, home):
+    # Two files with the same name, one good and one not. The message has to
+    # say which one it read.
+    corpus = _corpus(tmp_path / "corpus", 20)
+    nested = corpus / "sub"
+    nested.mkdir()
+    (nested / "part-0.tsv").write_text("only\tthree\tcolumns\n")
+    result = run_shape_check(tmp_path, home, corpus)
+    assert result.returncode != 0
+    assert "sub/part-0.tsv" in result.stdout, result.stdout
+
+
+def test_the_refusal_does_not_dump_the_comments_in_translate_cols(tmp_path, home):
+    # translate.cols is mostly a long comment explaining why department is
+    # absent. Pasted in whole it filled the screen and buried the columns.
+    (home / "conf" / "translate.cols").write_text(
+        "# a comment that must not appear\n#\n# nor this one\nsalary\ntitle\n")
+    corpus = _corpus(tmp_path / "other", 7)
+    result = run_shape_check(tmp_path, home, corpus)
+    assert result.returncode != 0
+    assert "a comment that must not appear" not in result.stdout, result.stdout
+    assert "salary title" in result.stdout, result.stdout
