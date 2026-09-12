@@ -264,3 +264,107 @@ class TestProgressCountsEveryNodesWork:
         monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
         run_marker = load("bt-run-marker")
         assert run_marker.progress(home.as_posix())["stage"] == "joining"
+
+
+# --------------------------------------------------------------------------
+# One writer
+#
+# There were two. bin/bigtranslate wrote the whole marker from a printf on
+# every poll of its wait loop -- status, path, exclude, two timestamps -- and
+# the stages wrote it through bt-run-marker with the chunk counts in it. Each
+# overwrote the fields the other owned, and the CLI polls more often, so the
+# counts usually lasted less than one poll.
+#
+# What that looked like: /service/progress carried no chunksTotal, the Gloss
+# progress pane's hasCounts stayed false for the length of the run, and it
+# showed a tail of the log instead of the bar. Which is the thing the counts
+# were added to replace.
+#
+# The printf also escaped nothing. The crawl's default exclude is
+# .*/\.[^/]*(/.*)? -- it has a backslash in it, "\." is not a valid JSON
+# escape, and the marker stopped parsing the moment that default arrived.
+# Every beat then found no marker, rebuilt one from nothing, and lost the
+# corpus path and the true start time with it.
+
+BACKSLASH_EXCLUDE = r".*/\.[^/]*(/.*)?"
+
+
+class TestOnlyBtRunMarkerWritesTheMarker:
+
+    def test_bigtranslate_does_not_write_the_json_itself(self):
+        driver = (BIN / "bigtranslate").read_text()
+        body = driver[driver.index("beat_run() {"):]
+        body = body[:body.index("\n}")]
+        assert "printf" not in body, (
+            "a second writer of the marker; it overwrites the chunk counts "
+            "the stages put there")
+        assert "bt-run-marker" in body
+
+    def test_mark_run_goes_through_it_too(self):
+        driver = (BIN / "bigtranslate").read_text()
+        body = driver[driver.index("mark_run() {"):]
+        body = body[:body.index("\n}")]
+        assert "bt-run-marker" in body
+        assert "printf" not in body
+
+
+class TestTheMarkerStaysJson:
+
+    def test_an_exclude_with_a_backslash_round_trips(self, tmp_path,
+                                                     monkeypatch):
+        home = home_with(tmp_path)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        run_marker.main(["start", "--path", "/corpus", "--started-by", "cli",
+                         "--exclude", BACKSLASH_EXCLUDE])
+        # The assertion is that this parses at all.
+        assert marker(tmp_path)["exclude"] == BACKSLASH_EXCLUDE
+
+    def test_the_exclude_survives_a_beat(self, tmp_path, monkeypatch):
+        home = home_with(tmp_path)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        run_marker.main(["start", "--path", "/corpus", "--started-by", "cli",
+                         "--exclude", BACKSLASH_EXCLUDE])
+        run_marker.main(["beat", "--started-by", "workflow"])
+        assert marker(tmp_path)["exclude"] == BACKSLASH_EXCLUDE
+
+
+class TestACliHeartbeatKeepsWhatTheStagesWrote:
+
+    def test_the_chunk_counts_survive(self, tmp_path, monkeypatch):
+        home = home_with(tmp_path, made=458, done=106)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        run_marker.main(["start", "--path", "/corpus", "--started-by", "cli",
+                         "--exclude", BACKSLASH_EXCLUDE])
+        # The wait loop polling, as it does every TRANSLATE_POLL seconds.
+        run_marker.main(["beat", "--path", "/corpus", "--started-by", "cli"])
+        after = marker(tmp_path)
+        assert after["chunksTotal"] == 458
+        assert after["chunksDone"] == 106
+        assert after["stage"] == "translating"
+
+    def test_the_start_time_is_not_reset_by_a_heartbeat(self, tmp_path,
+                                                        monkeypatch):
+        # A rebuilt marker dates itself from the work on disk. A marker that
+        # is merely beaten must keep the time it already had, or the rate and
+        # the estimate are computed over the wrong interval.
+        home = home_with(tmp_path, made=458, done=106)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        run_marker.main(["start", "--path", "/corpus", "--started-by", "cli",
+                         "--exclude", BACKSLASH_EXCLUDE])
+        began = marker(tmp_path)["startedAt"]
+        time.sleep(0.01)
+        run_marker.main(["beat", "--path", "/corpus", "--started-by", "cli"])
+        assert marker(tmp_path)["startedAt"] == began
+
+    def test_the_path_is_not_lost_by_a_heartbeat(self, tmp_path, monkeypatch):
+        home = home_with(tmp_path, made=458, done=106)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        run_marker = load("bt-run-marker")
+        run_marker.main(["start", "--path", "/corpus", "--started-by", "cli",
+                         "--exclude", BACKSLASH_EXCLUDE])
+        run_marker.main(["beat", "--started-by", "workflow"])
+        assert marker(tmp_path)["path"] == "/corpus"

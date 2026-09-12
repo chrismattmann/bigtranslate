@@ -134,10 +134,13 @@ RUN_MARKER="$BIGTRANSLATE_HOME/data/run"
 mark_run() {
     mkdir -p "$(dirname "$RUN_MARKER")" 2>/dev/null
     RUN_MARKER_STATUS="$1"
-    RUN_MARKER_PATH="${2//\"/}"
-    RUN_MARKER_EXCLUDE="${3//\"/}"
-    RUN_MARKER_STARTED="$(($(date +%s) * 1000))"
-    beat_run
+    RUN_MARKER_PATH="$2"
+    RUN_MARKER_EXCLUDE="$3"
+    "$BIGTRANSLATE_HOME/bin/bt-run-marker" start \
+        --status "$RUN_MARKER_STATUS" \
+        --path "$RUN_MARKER_PATH" \
+        --exclude "$RUN_MARKER_EXCLUDE" \
+        --started-by cli 2>/dev/null || true
 }
 
 # The marker carries a heartbeat as well as a start time, refreshed for as
@@ -151,11 +154,25 @@ mark_run() {
 #
 # A reader can tell the difference: a heartbeat that stopped is a run that
 # stopped.
+# Through bin/bt-run-marker, which is the only thing that writes this file.
+#
+# There were two writers. This one wrote the whole marker from a printf every
+# poll -- status, path, exclude, the two timestamps -- and the stages wrote it
+# through bt-run-marker with the chunk counts in it. Each overwrote the
+# other's fields, and since this one polls more often it usually won: the
+# counts vanished within a poll of being written, /service/progress carried
+# none, and Gloss fell back to showing a tail of the log for the length of a
+# run. Which is the thing the counts exist to replace.
+#
+# The printf also escaped nothing, so the moment the exclude regex contained
+# a backslash the file stopped being JSON. bt-run-marker merges rather than
+# replaces, and json.dump escapes.
 beat_run() {
     [ -n "${RUN_MARKER_STATUS:-}" ] || return 0
-    printf '{"status":"%s","startedBy":"cli","path":"%s","exclude":"%s","startedAt":%s,"heartbeatAt":%s}\n' \
-        "$RUN_MARKER_STATUS" "$RUN_MARKER_PATH" "$RUN_MARKER_EXCLUDE" \
-        "$RUN_MARKER_STARTED" "$(($(date +%s) * 1000))" > "$RUN_MARKER" 2>/dev/null
+    "$BIGTRANSLATE_HOME/bin/bt-run-marker" beat \
+        --status "$RUN_MARKER_STATUS" \
+        --path "$RUN_MARKER_PATH" \
+        --started-by cli 2>/dev/null || true
 }
 
 unmark_run() {
