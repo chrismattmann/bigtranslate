@@ -139,6 +139,24 @@ public class TestWorkflowInstanceSchema {
         WorkflowInstanceSchema.resolve("[NOT_A_REAL_VARIABLE_ANYWHERE]/x"));
   }
 
+  /**
+   * An unresolved placeholder is not a path, and carrying on with one is
+   * worse than stopping. HSQLDB opens
+   * {@code jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst} without
+   * complaint, creating a directory called "[OODT_HOME]" next to wherever
+   * the process was started, and the run that follows finds an empty
+   * data/winstdb behind a message saying the tables were created.
+   */
+  @Test
+  public void refusesAUrlWithAnUnresolvedPlaceholder() throws Exception {
+    File properties = properties(
+        "jdbc:hsqldb:file:[NOT_A_REAL_VARIABLE_ANYWHERE]/data/winstdb/winst");
+    assertFalse("a url with a placeholder nothing answers is not a database",
+        WorkflowInstanceSchema.ensure(properties, sql));
+    assertFalse("it created the database under the literal placeholder",
+        new File("[NOT_A_REAL_VARIABLE_ANYWHERE]").exists());
+  }
+
   @Test
   public void doesNotTakeATrailingCommentForAStatement() throws Exception {
     List<String> statements = WorkflowInstanceSchema.statements(sql);
