@@ -113,6 +113,78 @@ class TestWithASiteFile:
             "SOLR_URL must not follow BIGTRANSLATE_HOST")
 
 
+class TestTheDriverDoesNotDeriveThemAgain:
+    """bin/bigtranslate used to work the same urls out a second time.
+
+    It kept its own OODT_HOST=localhost and rebuilt FILEMGR_URL and SOLR_URL
+    from it -- after sourcing setenv.sh, so it overwrote what setenv.sh had
+    worked out from BIGTRANSLATE_HOST. That is the second derivation this
+    file exists because of. It stayed quiet because the values agree on a
+    single machine deployment: the manager is localhost to itself.
+    """
+
+    DRIVER = BIN / "bigtranslate"
+
+    def urls(self, site=None):
+        """Run the driver far enough to have set its urls, and read them."""
+        home = Path(tempfile.mkdtemp())
+        (home / "bin").mkdir()
+        (home / "conf").mkdir()
+        for name in ("setenv.sh", "bigtranslate"):
+            (home / "bin" / name).write_text(
+                (BIN / name).read_text(encoding="utf-8"), encoding="utf-8")
+        if site is not None:
+            (home / "conf" / "site.sh").write_text(site, encoding="utf-8")
+        probe = (home / "bin" / "bigtranslate").read_text(encoding="utf-8")
+        anchor = "OPSUI_URL=http://$BIGTRANSLATE_HOST:$TOMCAT_PORT/opsui\n"
+        assert anchor in probe, "the driver no longer derives OPSUI_URL here"
+        probe = probe.replace(anchor, anchor + (
+            'for v in FILEMGR_URL WORKFLOW_URL CLIENT_URL SOLR_URL OPSUI_URL;'
+            ' do eval "printf \'%s=%s\\n\' $v \\"\\$$v\\""; done\n'
+            'exit 0\n'), 1)
+        (home / "bin" / "probe").write_text(probe, encoding="utf-8")
+        out = subprocess.run(["bash", str(home / "bin" / "probe"), "help"],
+                             capture_output=True, text=True,
+                             env={"PATH": os.environ["PATH"]})
+        assert out.returncode == 0, out.stderr
+        found = {}
+        for line in out.stdout.splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                found[key] = value
+        return found
+
+    def test_it_has_no_host_of_its_own(self):
+        body = self.DRIVER.read_text(encoding="utf-8")
+        code = [line for line in body.splitlines()
+                if not line.lstrip().startswith("#")]
+        assert not [line for line in code if "OODT_HOST" in line], (
+            "the driver still keeps its own idea of where the services are")
+
+    def test_the_manager_urls_follow_the_site_file(self):
+        urls = self.urls("export BIGTRANSLATE_HOST=10.168.168.6\n"
+                         "export WORKFLOW_PORT=9201\n"
+                         "export FILEMGR_PORT=9200\n")
+        assert urls["FILEMGR_URL"] == "http://10.168.168.6:9200"
+        assert urls["WORKFLOW_URL"] == "http://10.168.168.6:9201"
+        assert urls["CLIENT_URL"] == urls["WORKFLOW_URL"], (
+            "the driver talks to a different workflow manager than the "
+            "deployment is configured for")
+
+    def test_solr_stays_on_loopback_in_the_driver_too(self):
+        urls = self.urls("export BIGTRANSLATE_HOST=10.168.168.6\n"
+                         "export SOLR_PORT=8985\n")
+        assert urls["SOLR_URL"] == "http://localhost:8985/solr/bigtranslate", (
+            "the driver rebuilt SOLR_URL and sent it off the loopback again")
+
+    def test_it_still_works_with_no_site_file(self):
+        urls = self.urls()
+        assert urls["FILEMGR_URL"] == "http://localhost:9000"
+        assert urls["WORKFLOW_URL"] == "http://localhost:9001"
+        assert urls["CLIENT_URL"] == "http://localhost:9001"
+        assert urls["SOLR_URL"] == "http://localhost:8983/solr/bigtranslate"
+
+
 class TestItWorksWhereItHasTo:
 
     def test_a_posix_shell_can_source_it(self):
