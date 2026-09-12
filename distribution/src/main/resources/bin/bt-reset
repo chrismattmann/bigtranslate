@@ -1,0 +1,108 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Put a deployment back to a defined starting state.
+#
+# A run that begins on top of the last one does not fail; it produces a
+# worse thing than a failure. Chunk products from a previous run make the
+# translate stage's lookup return several comma joined paths, so the PGE is
+# handed a --chunk argument naming two files and dies on an argument error
+# that says nothing about stale catalog entries. Leftover translated chunks
+# make the join's count reach its target before this run has produced
+# anything, so it indexes the previous run's translations.
+#
+# Everything cleared here is derived: chunks, translations, workflow
+# instances, the catalog, the Solr index and the job directories are all
+# rebuilt by a run. The corpus is never touched, and neither is the
+# configuration.
+
+set -u
+
+if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
+  echo "BIGTRANSLATE_HOME is not set. Source bin/setenv.sh first."
+  exit 1
+fi
+. "$BIGTRANSLATE_HOME"/bin/setenv.sh
+
+force=no
+keep_solr=no
+for arg in "$@"; do
+  case "$arg" in
+    --force) force=yes ;;
+    --keep-solr) keep_solr=yes ;;
+    *) echo "usage: bt-reset [--force] [--keep-solr]"; exit 2 ;;
+  esac
+done
+
+for port in "$FILEMGR_PORT" "$WORKFLOW_PORT"; do
+  if lsof -ti tcp:"$port" > /dev/null 2>&1; then
+    echo "The stack is running (port $port). Stop it first: bin/oodt stop"
+    exit 1
+  fi
+done
+
+echo "This will clear, under $BIGTRANSLATE_HOME:"
+echo "  data/strings, data/translated, data/translated-catalog"
+echo "  data/jobs, data/winstdb, data/run"
+echo "  filemgr/catalog"
+[ "$keep_solr" = no ] && echo "  and every document in $SOLR_URL"
+echo
+echo "The corpus at ${BIGTRANSLATE_CORPUS:-unset} is not touched."
+if [ "$force" != yes ]; then
+  printf "Type 'reset' to continue: "
+  read -r answer
+  if [ "$answer" != "reset" ]; then
+    echo "Nothing was cleared."
+    exit 1
+  fi
+fi
+
+for dir in data/strings data/translated data/translated-catalog data/jobs \
+           data/winstdb filemgr/catalog; do
+  rm -rf "${BIGTRANSLATE_HOME:?}/$dir"
+  mkdir -p "$BIGTRANSLATE_HOME/$dir"
+done
+rm -f "$BIGTRANSLATE_HOME/data/run"
+
+# The instance repository is a database when it is not a Lucene index, and
+# an empty directory is not a schema. Rebuilt through the same tool bin/oodt
+# runs at startup, which no-ops unless the configured repository is the JDBC
+# one and the tables are missing -- so this needs no opinion of its own about
+# which repository the deployment uses.
+schema="$BIGTRANSLATE_HOME/workflow/etc/workflow-instances.sql"
+props="$BIGTRANSLATE_HOME/workflow/etc/workflow.properties"
+if [ -f "$schema" ] && [ -f "$props" ]; then
+  "${JAVA_HOME:-/usr}/bin/java" -cp "$BIGTRANSLATE_HOME/workflow/lib/*" \
+    org.bigtranslate.workflow.WorkflowInstanceSchema "$props" "$schema" || {
+      echo "Could not rebuild the instance database; see above."
+      exit 1
+    }
+fi
+
+if [ "$keep_solr" = no ]; then
+  # Solr is stopped, so the index is a directory again and can simply go.
+  # Emptying it through the update handler would need it running, which is
+  # the state this command refuses to operate in.
+  index="${SOLR_DATA_DIR:-$BIGTRANSLATE_HOME/solr}/index"
+  if [ -d "$index" ]; then
+    rm -rf "$index"
+    echo "Cleared the Solr index at $index"
+  else
+    echo "No Solr index at $index; nothing to clear."
+  fi
+fi
+
+echo "Reset. The next run starts from nothing."
