@@ -1,7 +1,24 @@
+# Columns whose values are sent to the model, by name in colheaders.txt.
+#
+# department is deliberately absent. It holds the administrative department
+# or province -- Lima, Antioquia, Cundinamarca, Capital Federal -- and the
+# model translates proper nouns:
+#
+#     Lima             -> Five             20,318,816 documents
+#     Antioquia        -> Antioch           3,757,343 documents
+#     Valle            -> Valais            (a Swiss canton)
+#     Capital Federal  -> Federal Capital
+#     Distrito Federal -> Federal District
+#     Santiago         -> SANTIAGO
+#
+# "Lima" became the number five and was the largest department value in the
+# index. Place names are the one thing in this corpus that must survive a
+# translation unchanged, because every geographic question asked of the data
+# is grouped by them. location is not in this list either, and its city names
+# came through clean.
 salary
 title
 duration
 start
 applications
-department
 jobtype
