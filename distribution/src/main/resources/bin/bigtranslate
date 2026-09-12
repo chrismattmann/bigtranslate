@@ -252,12 +252,20 @@ wait_for_workflow() {
         fi
 
         if [ "$running" = "0" ]; then
-            # Two quiet passes, not one. Instances are created as splits are
-            # made, so early on there is a moment with none running and more
-            # still to come; ending the run there would report success in the
-            # middle of it.
-            quiet=$((quiet + 1))
-            if [ "$quiet" -ge 2 ]; then
+            # Quiet for a while, not for one poll. Instances are created as
+            # work is found, so there are moments with none running and more
+            # still to come; ending the run at one would report success in
+            # the middle of it.
+            #
+            # Two polls -- thirty seconds -- was enough when the only thing
+            # being waited on was the per-file W1 instances, which are made
+            # by the crawl and then only finish. It is not enough now that
+            # this waits on the three stage pipeline, where the gaps are
+            # between stages: the last chunk finishing and the join's gating
+            # condition being asked again is exactly such a gap, and a run
+            # ended there is a run reported finished with nothing indexed.
+            quiet=$((quiet + TRANSLATE_POLL))
+            if [ "$quiet" -ge "$TRANSLATE_SETTLE" ]; then
                 say "Workflow finished after ${waited}s."
                 return 0
             fi
@@ -276,6 +284,44 @@ wait_for_workflow() {
 }
 
 # How many BigTranslate instances are not in a terminal state.
+# Start the pipeline the run is actually for.
+#
+# The crawl catalogues the corpus and the crawler's post ingest action fires
+# one event per file. Nothing fires the event that starts the extract, and
+# nothing ever has: EmploymentCorpusReady appears exactly once in the whole
+# deployment, in the declaration that says which workflow it starts. Every
+# run of the three stage pipeline this project is built around was started by
+# somebody sending it by hand.
+#
+# Left out, the run does not fail. The crawl succeeds, the per-file W1
+# instances finish, the wait below sees nothing running and the script says
+# "Workflow finished" and exits 0 having extracted nothing, translated
+# nothing and indexed nothing.
+#
+# After the crawl, not before: the extract reads the catalogue, so starting
+# it while files are still arriving deduplicates a corpus that is not all
+# there yet.
+start_the_pipeline() {
+    local out
+
+    out=$("$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$CLIENT_URL" \
+        --operation --sendEvent --eventName EmploymentCorpusReady 2>&1)
+
+    case "$out" in
+        *SUCCESS*)
+            say "Extract started (EmploymentCorpusReady)."
+            return 0
+            ;;
+    esac
+
+    # Said loudly, because everything after this point would otherwise look
+    # like a short and successful run.
+    say "Could not start the extract: the workflow manager did not accept"
+    say "EmploymentCorpusReady. Nothing will be translated."
+    say "  $out"
+    return 1
+}
+
 running_instance_count() {
     local instances count
 
@@ -308,6 +354,10 @@ running_instance_count() {
 
 TRANSLATE_TIMEOUT=${TRANSLATE_TIMEOUT:-86400}
 TRANSLATE_POLL=${TRANSLATE_POLL:-15}
+# How long the workflow manager has to report nothing running before the run
+# is called over. Covers the gap between one stage finishing and the next
+# being started by what it produced.
+TRANSLATE_SETTLE=${TRANSLATE_SETTLE:-120}
 
 function translate {
     check_services_running
@@ -344,8 +394,13 @@ function translate {
         --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
     )
 
-    say "Crawl finished; the workflow manager is translating."
+    say "Crawl finished."
     export BIGTRANSLATE_EXCLUDE=""
+
+    if ! start_the_pipeline; then
+        unmark_run
+        return 1
+    fi
 
     # The run is not over when the crawl is over.
     wait_for_workflow

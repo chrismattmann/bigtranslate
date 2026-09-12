@@ -91,7 +91,7 @@ def test_the_wait_loop_stops_on_a_clean_zero():
     body = source[source.index("wait_for_workflow() {"):]
     body = body[:body.index("\n}\n") + 3]
     script = (
-        'TRANSLATE_TIMEOUT=100\nTRANSLATE_POLL=1\n'
+        'TRANSLATE_TIMEOUT=100\nTRANSLATE_POLL=1\nTRANSLATE_SETTLE=2\n'
         'say() { echo "$@"; }\n'
         # A file, not a variable: the caller reads this through $(...), and
         # a subshell's increment is lost the moment it exits.
@@ -116,7 +116,7 @@ def test_the_wait_loop_does_not_stop_while_the_manager_is_silent():
     body = source[source.index("wait_for_workflow() {"):]
     body = body[:body.index("\n}\n") + 3]
     script = (
-        'TRANSLATE_TIMEOUT=4\nTRANSLATE_POLL=1\n'
+        'TRANSLATE_TIMEOUT=4\nTRANSLATE_POLL=1\nTRANSLATE_SETTLE=2\n'
         'say() { echo "$@"; }\n'
         'running_instance_count() { echo unknown; }\n'
         + body +
