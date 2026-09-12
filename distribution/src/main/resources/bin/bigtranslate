@@ -210,15 +210,85 @@ validate_corpus_path() {
 
     # An empty directory is a crawl that finishes instantly having done
     # nothing, which reads exactly like success.
+    #
+    # Counted the way the crawler counts, which is recursively. With
+    # -maxdepth 1 this said "2806 TSV file(s)" for a corpus the crawler then
+    # ingested 5616 products from: the only number the operator was given
+    # about the size of their run was half of it.
     local count
-    count=$(find "$CORPUS_PATH" -maxdepth 1 -type f -name '*.tsv' 2>/dev/null | wc -l | tr -d ' ')
+    count=$(find "$CORPUS_PATH" -type f -name '*.tsv' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" == "0" ]]; then
         echo "No .tsv files in [$CORPUS_PATH]."
         echo "BigTranslate crawls TSV; there is nothing here to translate."
         exit 1
     fi
+
+    validate_corpus_shape "$CORPUS_PATH"
+
     echo "Translating $count TSV file(s) from $CORPUS_PATH"
     CORPUS_FILE_COUNT="$count"
+}
+
+# Check the TSVs have the shape this deployment is configured to read.
+#
+# The corpus is headerless: the first line is data, and the column names come
+# positionally from conf/colheaders.txt. Nothing downstream re-checks that.
+# The translate columns -- salary, title, duration and the rest -- are looked
+# up by position, so a directory of TSVs with a different number of columns
+# does not fail. It translates whatever happens to sit in those positions and
+# indexes the result, and the run looks exactly like a good one: products
+# catalogued, chunks translated, documents posted, no errors anywhere.
+#
+# Gloss asks for "a TSV directory", which invites precisely that. Five hours
+# is a long time to spend finding out the columns were never the ones named.
+#
+# Checked against the configured names rather than a fixed number or a fixed
+# path, so a deployment that reads a different corpus says so in
+# colheaders.txt and this follows it.
+validate_corpus_shape() {
+    local root="$1"
+    local headers="$BIGTRANSLATE_HOME/conf/colheaders.txt"
+
+    # No header list is not a reason to refuse: a deployment may have been set
+    # up before this file existed, and this check is not the thing that makes
+    # a run work.
+    [ -r "$headers" ] || return 0
+
+    local expected
+    expected=$(grep -cvE '^[[:space:]]*(#|$)' "$headers" 2>/dev/null | tr -d ' ')
+    case "$expected" in
+        '' | 0 | *[!0-9]*) return 0 ;;
+    esac
+
+    # A sample rather than the corpus: reading one line of a handful of files
+    # is instant, and a corpus whose columns differ differs in all of them.
+    local checked=0 file fields
+    while IFS= read -r file; do
+        fields=$(head -n 1 "$file" 2>/dev/null | awk -F'\t' '{print NF; exit}')
+        case "$fields" in
+            '' | *[!0-9]*) continue ;;
+        esac
+        if [ "$fields" != "$expected" ]; then
+            echo "[$root] does not look like the corpus this deployment reads."
+            echo
+            echo "  $(basename "$file") has $fields tab separated columns;"
+            echo "  conf/colheaders.txt names $expected."
+            echo
+            echo "The files are headerless, so the columns in conf/translate.cols"
+            echo "-- $(tr '\n' ' ' < "$BIGTRANSLATE_HOME/conf/translate.cols" 2>/dev/null)--"
+            echo "are read by position. Translating this would put whatever sits"
+            echo "in those positions through the model and index the result,"
+            echo "which reads like a successful run."
+            echo
+            echo "If this corpus is right and the names are not, edit"
+            echo "conf/colheaders.txt to describe it."
+            exit 1
+        fi
+        checked=$((checked + 1))
+        [ "$checked" -ge 5 ] && break
+    done <<EOF
+$(find "$root" -type f -name '*.tsv' 2>/dev/null | head -20)
+EOF
 }
 
 
