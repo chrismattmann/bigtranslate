@@ -276,3 +276,52 @@ class TestTheLogicIsTested:
         pkg = (GLOSS.parent / "package.json").read_text()
         assert "src/*.test.js" in pkg, (
             "the test script does not glob the new file")
+
+
+class TestTheHindsightPanel:
+    """The panels are checked against what actually happened.
+
+    The corpus stops in November 2013. Twelve years on, the answers to its
+    challenge questions are a matter of record, so a panel that projects a
+    line three months forward can be checked rather than admired.
+    """
+
+    LOGIC = GLOSS / "hindsight.js"
+
+    def test_the_module_ships_and_is_tested(self):
+        assert self.LOGIC.is_file()
+        assert (GLOSS / "hindsight.test.js").is_file()
+
+    def test_the_panel_is_on_the_page(self):
+        panel = PANEL.read_text()
+        assert "How well did it do?" in panel
+        assert "hindsight.js" in panel, "the checks are not imported"
+
+    def test_every_claim_is_measured_live(self):
+        # A number typed into the module would be a claim about whichever
+        # index was in front of whoever typed it, and would go stale on the
+        # next rebuild.
+        panel = PANEL.read_text()
+        assert "function measure(check)" in panel
+        for kind in ("sectorTrend", "fullTimeShare", "lifetime", "opportunity"):
+            assert kind in panel, "%s is never measured" % kind
+
+    def test_the_record_is_cited(self):
+        logic = self.LOGIC.read_text()
+        assert logic.count("https://") >= 6, "too few sources to check against"
+        panel = PANEL.read_text()
+        assert 'rel="noopener"' in panel, "citations are not linked out"
+
+    def test_it_records_misses_not_only_hits(self):
+        # A hindsight panel that only lists successes is marketing.
+        logic = self.LOGIC.read_text()
+        assert "missed" in logic
+        assert "Missed it" in logic
+
+    def test_the_summary_cannot_be_cheerful_about_a_bad_result(self):
+        # Written from the counts rather than chosen, so a table that later
+        # goes badly cannot keep a good sentence above it.
+        logic = self.LOGIC.read_text()
+        fn = logic[logic.index("export function verdictLine"):]
+        assert "counts.held" in fn and "counts.missed" in fn
+        assert "Nothing here can be checked" in fn
