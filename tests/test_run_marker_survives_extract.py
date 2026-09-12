@@ -368,3 +368,43 @@ class TestACliHeartbeatKeepsWhatTheStagesWrote:
                          "--exclude", BACKSLASH_EXCLUDE])
         run_marker.main(["beat", "--started-by", "workflow"])
         assert marker(tmp_path)["path"] == "/corpus"
+
+
+class TestBothImplementationsCountTheSameThing:
+    """bt-run-marker and ProcessBtWrapper.countChunks both read the chunks.
+
+    Two implementations of one rule, in two languages, because the panel
+    needs the counts through the translate pass and nothing writes the
+    marker then. They have to stay in step: the directories they read and
+    the union of translated with the archive are the whole rule.
+    """
+
+    WRAPPER = (ROOT / "webapps" / "gloss-services" / "src" / "main" / "java"
+               / "org" / "bigtranslate" / "gloss" / "ProcessBtWrapper.java")
+    CONSTANTS = (ROOT / "webapps" / "gloss-services" / "src" / "main" / "java"
+                 / "org" / "bigtranslate" / "gloss" / "FileConstants.java")
+
+    def test_the_same_three_directories(self):
+        python = (BIN / "bt-run-marker").read_text()
+        java = self.CONSTANTS.read_text()
+        for directory in ("data/strings", "data/translated",
+                          "data/translated-catalog"):
+            leaf = directory.split("/")[1]
+            assert '"%s"' % leaf in python or "'%s'" % leaf in python, leaf
+            assert "/%s" % directory in java, directory
+
+    def test_the_java_side_takes_the_union_too(self):
+        java = self.WRAPPER.read_text()
+        body = java[java.index("countChunks()"):]
+        body = body[:body.index("\n  }")]
+        assert "translatedDir" in body and "translatedCatalogDir" in body, (
+            "the archive is the only complete copy on a distributed run; "
+            "counting the flat directory alone reported 43 of 458")
+        assert "addAll" in body, "a union, so a chunk in both counts once"
+
+    def test_the_same_three_stages(self):
+        python = (BIN / "bt-run-marker").read_text()
+        java = self.WRAPPER.read_text()
+        for stage in ("extracting", "translating", "joining"):
+            assert '"%s"' % stage in python, stage
+            assert '"%s"' % stage in java, stage

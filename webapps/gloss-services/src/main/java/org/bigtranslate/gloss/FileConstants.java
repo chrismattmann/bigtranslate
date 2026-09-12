@@ -103,6 +103,24 @@ public final class FileConstants {
     return path("/data/jobs");
   }
 
+  /** Chunks the extract made: one file per chunk. */
+  public static String stringsDir() {
+    return path("/data/strings");
+  }
+
+  /** Chunks this machine translated into its own flat directory. */
+  public static String translatedDir() {
+    return path("/data/translated");
+  }
+
+  /**
+   * Chunks the File Manager has archived, which on a distributed run is
+   * every node's output and so a superset of what this machine translated.
+   */
+  public static String translatedCatalogDir() {
+    return path("/data/translated-catalog");
+  }
+
   public static String workflowDataDir() {
     return path("/data/workflow");
   }

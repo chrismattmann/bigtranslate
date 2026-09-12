@@ -78,6 +78,16 @@ public class ServicesRestResource {
   public Map<String, Object> progress() {
     Map<String, Object> progress = new LinkedHashMap<String, Object>();
     progress.putAll(ProcessBtWrapper.getInstance().snapshot());
+    // Whatever the marker did not carry. Through the translate pass the only
+    // writer of the marker is the wait loop in bin/bigtranslate, which has no
+    // counts to write, so without this the panel spends the longest stage of
+    // the run showing a tail of the log instead of the bar.
+    for (Map.Entry<String, Object> each : ProcessBtWrapper.countChunks()
+        .entrySet()) {
+      if (progress.get(each.getKey()) == null) {
+        progress.put(each.getKey(), each.getValue());
+      }
+    }
     progress.put("jobDirs", Long.valueOf(ProcessBtWrapper.countJobDirs()));
     try {
       progress.put("solrDocs", Long.valueOf(new SolrSupport().numFound()));
