@@ -188,6 +188,21 @@ class TestTheTabIsWired:
             "row count and the job count differ")
         assert "challenge questions" in intro
 
+    def test_the_intro_uses_the_width_it_is_given(self):
+        # Capped at 74ch it read as text collapsed against the left edge of a
+        # wide window rather than as a measure.
+        panel = PANEL.read_text()
+        style = panel[panel.index("<style scoped>"):]
+        intro_rule = [line for line in style.splitlines()
+                      if line.strip().startswith(".intro p")
+                      or line.strip().startswith(".intro-text p")]
+        for line in intro_rule:
+            assert "max-width" not in line, (
+                "the introduction is still capped: " + line.strip())
+        assert ".intro-text" in style, "the paragraphs have no column context"
+        assert "columns: 2" in style, (
+            "a wide window gets one very long line instead of columns")
+
     def test_the_intro_gives_both_counts(self):
         panel = PANEL.read_text()
         intro = panel[:panel.index('<p v-if="error"')]

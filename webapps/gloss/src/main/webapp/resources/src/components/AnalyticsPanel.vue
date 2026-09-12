@@ -2,30 +2,33 @@
   <section class="analytics" ref="root">
     <header class="intro">
       <h2>Analytics</h2>
-      <p>
-        Job postings from <strong>computrabajo.com</strong> affiliate sites,
-        which serve Mexico and South America: Argentina, Colombia, the
-        Dominican Republic, Honduras, Mexico, Peru and Venezuela. Postings are
-        temporary and come down without notice, so the corpus is an attempt at
-        persisting them long enough to be analysed. Almost all of it was
-        written in Spanish; the columns below are readable because the
-        pipeline translated them.
-      </p>
-      <p>
-        <strong>{{ totalLabel }}</strong> rows over
-        <strong>{{ jobLabel }}</strong> distinct jobs, {{ monthRange }}. Every
-        page of every affiliate site was parsed once a day: a posting's first
-        and last seen dates are set when it first appears, and the last seen
-        date is updated on each day it is still there. So a job appears once
-        per day it was up, about 57 times on average, and the two numbers
-        above are not the same question. Panels say which one they counted.
-      </p>
-      <p>
-        The dataset ships with a list of challenge questions. These are the
-        ones this index can answer on its own; the others need data we do not
-        have here, such as joining posting URLs against the WDC hyperlink
-        graph or correlating against Twitter.
-      </p>
+      <div class="intro-text">
+        <p>
+          Job postings from <strong>computrabajo.com</strong> affiliate sites,
+          which serve Mexico and South America: Argentina, Colombia, the
+          Dominican Republic, Honduras, Mexico, Peru and Venezuela. Postings are
+          temporary and come down without notice, so the corpus is an attempt at
+          persisting them long enough to be analysed. Almost all of it was
+          written in Spanish; the columns below are readable because the
+          pipeline translated them.
+        </p>
+        <p>
+          <strong>{{ totalLabel }}</strong> rows over
+          <strong>{{ jobLabel }}</strong> distinct jobs, {{ monthRange }}. Every
+          page of every affiliate site was parsed once a day: a posting's first
+          and last seen dates are set when it first appears, and the last seen
+          date is updated on each day it is still there. So a job appears once
+          per day it was up, about 57 times on average, and the two numbers
+          above are not the same question. Panels say which one they counted.
+        </p>
+        <p>
+          The dataset ships with a list of challenge questions. These are the
+          ones this index can answer on its own; the others need data we do not
+          have here, such as joining posting URLs against the WDC hyperlink
+          graph or correlating against Twitter.
+        </p>
+      </div>
+
       <p v-if="sectorField === 'text'" class="caveat">
         Sectors are matched against the catch-all <code>text</code> field,
         which copies every column, so a match may have come from a company
@@ -760,10 +763,22 @@ export default {
 
 <style scoped>
 .analytics { display: flex; flex-direction: column; gap: 18px; }
-.intro h2 { margin: 0 0 4px; }
-.intro p { margin: 0 0 6px; color: #55606b; max-width: 74ch; }
+/* The introduction sits in a card like everything else, and fills it.
+   It was capped at 74ch for line length, which on a wide window reads as
+   text collapsed against the left edge rather than as a measure. Columns
+   rather than one long line: the three paragraphs are independent facts
+   about the corpus, so they split without losing their thread, and the
+   width gets used without setting anyone a 200 character line to read. */
+.intro { background: #fff; border: 1px solid #e2e6ea; border-radius: 6px;
+         padding: 14px 16px; }
+.intro h2 { margin: 0 0 6px; }
+.intro-text { columns: 1; column-gap: 26px; }
+.intro-text p { margin: 0 0 10px; color: #55606b;
+                break-inside: avoid; }
+@media (min-width: 900px) { .intro-text { columns: 2; } }
+@media (min-width: 1500px) { .intro-text { columns: 3; } }
 .caveat { font-size: 0.86rem; background: #fff8e6; border-left: 3px solid #d9a441;
-          padding: 8px 10px; border-radius: 3px; }
+          padding: 8px 10px; border-radius: 3px; margin: 4px 0 0; }
 .caveat code { background: #f3ecd8; padding: 0 3px; border-radius: 2px; }
 .card { background: #fff; border: 1px solid #e2e6ea; border-radius: 6px;
         padding: 14px 16px; }
@@ -771,7 +786,7 @@ export default {
 .q { margin: 0 0 10px; font-size: 0.8rem; color: #7a8691;
      text-transform: uppercase; letter-spacing: 0.03em; }
 .chart { display: block; width: 100%; overflow: visible; }
-.note { margin: 10px 0 0; font-size: 0.86rem; color: #55606b; max-width: 82ch; }
+.note { margin: 10px 0 0; font-size: 0.86rem; color: #55606b; }
 .loading { color: #7a8691; }
 .analytics { position: relative; }
 .tip { position: absolute; z-index: 20; pointer-events: none;
