@@ -190,13 +190,6 @@ fi
 
 echo
 echo "Done. Installed:"
-for tool in tsvtojson repackage poster; do
-    if [ -x "$VENV/bin/$tool" ]; then
-        echo "  $tool"
-    else
-        echo "  $tool  MISSING -- check the output above"
-    fi
-done
 if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
     # Said here rather than left to fail at run time.
     installed=$("$VENV/bin/python" -c \

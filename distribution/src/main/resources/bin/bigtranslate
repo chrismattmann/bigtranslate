@@ -78,25 +78,28 @@ fi
 # The PGE shells out to these. Without them each step writes "command not
 # found" into its own log and the workflow still reports FINISHED, so the run
 # looks successful and translates nothing. Say so up front instead.
+#
+# tsvtojson, repackage and poster used to be checked here too. They are
+# ETLLib's, and ETLLib was W1: one task per TSV file, turning every row into
+# JSON and posting it. W2 replaced that with extract, translate and join,
+# which are three scripts in bin/ that import nothing outside the standard
+# library. Demanding ETLLib went on refusing to start runs that did not need
+# it, for tools nothing would have called.
 function check_python_tools {
-    missing=""
-    for tool in tsvtojson repackage poster; do
-        command -v $tool > /dev/null 2>&1 || missing="$missing $tool"
-    done
     # pantogloss-translatejson runs under "#!/usr/bin/env python3", so the
-    # interpreter first on PATH is the one that has to be able to import it
-    python3 -c "import pantogloss" > /dev/null 2>&1 || missing="$missing pantogloss"
-    if [ -n "$missing" ]; then
-        echo "Missing Python tools:$missing"
-        echo
-        echo "Install them with:"
-        echo "  PANTOGLOSS_SOURCE=<checkout or wheel> $BIGTRANSLATE_HOME/bin/bigtranslate-setup"
-        echo "  $BIGTRANSLATE_HOME/bin/oodt restart"
-        echo
-        echo "The services must be restarted afterwards: the PGEs inherit their"
-        echo "environment from the workflow manager, not from this shell."
-        exit 1
+    # interpreter first on PATH is the one that has to be able to import it.
+    if python3 -c "import pantogloss" > /dev/null 2>&1; then
+        return 0
     fi
+    echo "Missing Python tool: pantogloss"
+    echo
+    echo "Install it with:"
+    echo "  PANTOGLOSS_SOURCE=<checkout or wheel> $BIGTRANSLATE_HOME/bin/bigtranslate-setup"
+    echo "  $BIGTRANSLATE_HOME/bin/oodt restart"
+    echo
+    echo "The services must be restarted afterwards: the PGEs inherit their"
+    echo "environment from the workflow manager, not from this shell."
+    exit 1
 }
 # The workflow manager, by the one name the deployment knows it by.
 CLIENT_URL=$WORKFLOW_URL

@@ -1,11 +1,12 @@
-# Python side of the pipeline. tsvtojson, repackage, and poster come from
-# etllib. Translation is pantogloss-translatejson, so the [translate] extra
-# (hirlite) is not required.
-etllib @ git+https://github.com/chrismattmann/etllib.git
-
-# Pantogloss is not listed here because the extras it needs depend on the
-# machine: bigtranslate-setup installs it with the [server] extra and, where
-# there is a GPU, [metal] or [cuda]. It must be 0.19.0 or later; the setup
-# script checks what it landed on and says so if it is older. Earlier servers
-# cannot batch concurrent callers into one model call, so on Apple silicon
-# they translate one request at a time.
+# The pipeline's own scripts -- bt-extract-strings, bt-translate-chunk,
+# bt-join-index -- import nothing outside the standard library, and the
+# translation is reached over HTTP. So there is nothing to install here.
+#
+# ETLLib used to be listed: tsvtojson, repackage and poster were W1, which
+# turned every row of every TSV into JSON and posted it. W2 deduplicates
+# globally first and joins the answers back, and none of those three are
+# called any more.
+#
+# Pantogloss is not here either, and never was: it is not published, so
+# bigtranslate-setup takes it as PANTOGLOSS_SOURCE -- a checkout, a wheel, or
+# any pip specifier.
