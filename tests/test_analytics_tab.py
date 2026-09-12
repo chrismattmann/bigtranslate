@@ -97,6 +97,46 @@ class TestTheTabIsWired:
         assert "sectorField === 'text'" in panel, (
             "the caveat is not conditioned on the field actually used")
 
+    def test_the_charts_are_drawn_after_the_dom_exists(self):
+        """The svg elements live in the template's v-else.
+
+        Drawing while loading is still true finds every ref null and returns
+        having drawn nothing, silently: a chart with no data to plot looks
+        exactly like one that was never asked to. The panel rendered five
+        empty boxes and reported no error.
+        """
+        panel = PANEL.read_text()
+        body = panel[panel.index("async function load()"):]
+        body = body[:body.index("function redraw()")]
+        for fn in ("drawHours(", "drawLifetimes(", "drawZones(",
+                   "drawTrends(", "drawGaps("):
+            assert fn not in body, (
+                "%s is called from load(), before Vue has rendered the "
+                "elements it draws into" % fn)
+        assert "await nextTick()" in body, (
+            "nothing waits for the template to be flushed")
+        assert body.index("loading.value = false") < body.index("await nextTick()")
+
+    def test_a_resize_redraws_rather_than_refetches(self):
+        # The composite query takes about six seconds; issuing it per frame
+        # of a window drag would be unusable.
+        panel = PANEL.read_text()
+        observer = panel[panel.index("new ResizeObserver"):]
+        observer = observer[:observer.index("observer.observe")]
+        assert "redraw()" in observer
+        assert "load()" not in observer
+
+    def test_the_resize_guard_breaks_the_loop(self):
+        # Drawing changes the height of the element being observed, so
+        # redrawing on any size change is a loop the browser breaks with
+        # "ResizeObserver loop completed with undelivered notifications".
+        panel = PANEL.read_text()
+        assert "drawnAt" in panel, "no record of the width already drawn at"
+        observer = panel[panel.index("new ResizeObserver"):]
+        observer = observer[:observer.index("observer.observe")]
+        assert "width === drawnAt" in observer, (
+            "the observer does not compare against the last drawn width")
+
     def test_the_arithmetic_is_separable_from_the_drawing(self):
         # analytics.js is unit tested by npm test; a chart that computed its
         # own numbers inline would not be.

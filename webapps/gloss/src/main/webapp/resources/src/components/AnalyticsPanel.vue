@@ -1,5 +1,5 @@
 <template>
-  <section class="analytics">
+  <section class="analytics" ref="root">
     <header class="intro">
       <h2>Analytics</h2>
       <p>
@@ -93,7 +93,7 @@
 </template>
 
 <script>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as d3 from 'd3'
 import { solrFacet } from '../api.js'
 import {
@@ -110,6 +110,7 @@ const HOUR_TYPES = ['Full Time', 'Part Time', 'Hourly', 'Temporary',
 export default {
   name: 'AnalyticsPanel',
   setup() {
+    const root = ref(null)
     const hoursSvg = ref(null)
     const lifeSvg = ref(null)
     const zoneSvg = ref(null)
@@ -123,6 +124,11 @@ export default {
     const sectorField = ref(SECTOR_FIELDS.broad)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
     let observer = null
+    // What the last fetch returned, so a resize redraws without asking
+    // Solr again. The panels are a function of this and the frame width.
+    let data = null
+    // The width the charts were last drawn at; see the observer below.
+    let drawnAt = 0
 
     const colour = d3.scaleOrdinal()
       .domain(SECTORS.map((s) => s.key))
@@ -196,21 +202,40 @@ export default {
             + `${monthLabel(months.value[months.value.length - 1].val)}`
         }
 
-        drawHours(months.value)
-        drawLifetimes(((f.life && f.life.buckets) || []))
-        const regions = ((f.regions && f.regions.buckets) || []).map((b) => ({
-          name: b.val,
-          total: b.count,
-          counts: sectorCounts(b)
-        }))
-        drawZones(regions)
-        drawTrends(months.value)
-        drawGaps(regions, months.value, sectorShares(sectorCounts(f.national)))
+        data = {
+          months: months.value,
+          life: (f.life && f.life.buckets) || [],
+          regions: ((f.regions && f.regions.buckets) || []).map((b) => ({
+            name: b.val,
+            total: b.count,
+            counts: sectorCounts(b)
+          })),
+          national: sectorShares(sectorCounts(f.national))
+        }
       } catch (e) {
         error.value = e && e.message ? e.message : String(e)
       } finally {
         loading.value = false
       }
+      // After loading is false, not before. The svg elements live in the
+      // template's v-else, so until Vue has flushed that update every ref is
+      // null and every draw below returns having drawn nothing -- silently,
+      // because a chart with no data to plot looks the same as one that was
+      // never asked to.
+      await nextTick()
+      redraw()
+    }
+
+    function redraw() {
+      if (!data || error.value) {
+        return
+      }
+      drawnAt = root.value ? Math.round(root.value.clientWidth) : 0
+      drawHours(data.months)
+      drawLifetimes(data.life)
+      drawZones(data.regions)
+      drawTrends(data.months)
+      drawGaps(data.regions, data.months, data.national)
     }
 
     /** A chart frame sized to whatever room the card has. */
@@ -464,14 +489,23 @@ export default {
     onMounted(() => {
       load()
       if (typeof ResizeObserver !== 'undefined') {
-        observer = new ResizeObserver(() => {
-          if (!loading.value && !error.value) {
-            load()
+        // Redraw, never reload: the charts are a function of the data and
+        // the width, and re-asking Solr on every resize step would issue a
+        // six second query per frame of a window drag.
+        //
+        // On width alone, because drawing changes the height of what is being
+        // observed: redrawing on any size change is a loop that the browser
+        // eventually breaks with "ResizeObserver loop completed with
+        // undelivered notifications". Redrawing at a width already drawn at
+        // produces the same charts, so the guard also makes it free.
+        observer = new ResizeObserver((entries) => {
+          const width = Math.round(entries[0].contentRect.width)
+          if (loading.value || width === drawnAt) {
+            return
           }
+          redraw()
         })
-        if (hoursSvg.value && hoursSvg.value.parentNode) {
-          observer.observe(hoursSvg.value.parentNode)
-        }
+        observer.observe(root.value || document.body)
       }
     })
     onUnmounted(() => {
@@ -481,7 +515,7 @@ export default {
     })
 
     return {
-      hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg,
+      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion
     }
   }
