@@ -267,14 +267,61 @@ class TestCorpusConfig:
         cols = [c for c in (CONF / "colheaders.txt").read_text().splitlines() if c.strip()]
         assert len(cols) == 20
 
+    @staticmethod
+    def _columns(name):
+        """The same reading the tools do: blank lines and # comments skipped."""
+        return [c.strip() for c in (CONF / name).read_text().splitlines()
+                if c.strip() and not c.lstrip().startswith("#")]
+
     def test_translate_columns_all_exist_in_the_header_list(self):
-        headers = {c.strip() for c in
-                   (CONF / "colheaders.txt").read_text().splitlines() if c.strip()}
-        targets = [c.strip() for c in
-                   (CONF / "translate.cols").read_text().splitlines() if c.strip()]
+        headers = set(self._columns("colheaders.txt"))
+        targets = self._columns("translate.cols")
         assert targets
         for col in targets:
             assert col in headers, "%r is not a known column" % col
+
+    def test_place_name_columns_are_never_translated(self):
+        """The model translates proper nouns, and it does it confidently.
+
+            Lima             -> Five             20,318,816 documents
+            Antioquia        -> Antioch           3,757,343 documents
+            Valle            -> Valais            (a Swiss canton)
+            Capital Federal  -> Federal Capital
+            Santiago         -> SANTIAGO
+
+        "Lima" became the number five and was the largest department value in
+        the index. Every geographic question asked of this corpus groups by
+        these, so they are the one thing that has to survive unchanged.
+        """
+        targets = set(self._columns("translate.cols"))
+        for col in ("department", "location"):
+            assert col not in targets, (
+                "%r holds place names and must not be translated" % col)
+
+    def test_the_tools_read_this_file_the_same_way(self):
+        """Extract decides what is collected; join decides what is put back.
+
+        A file the two read differently translates a column nobody
+        substitutes, or substitutes one nobody translated.
+        """
+        import importlib.machinery
+        import importlib.util
+
+        def load(name):
+            path = BIN / name
+            spec = importlib.util.spec_from_loader(
+                name, importlib.machinery.SourceFileLoader(name, str(path)))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        path = str(CONF / "translate.cols")
+        extract = load("bt-extract-strings").read_columns(path)
+        join = load("bt-join-index").read_columns(path)
+        assert extract == join
+        assert extract == self._columns("translate.cols")
+        # And a comment is a comment, not a column named "# ...".
+        assert not any(c.startswith("#") for c in extract)
 
     def test_latin1_is_declared(self):
         # The corpus is not UTF-8: byte 0xe9 in "Mexico" aborts a strict read.

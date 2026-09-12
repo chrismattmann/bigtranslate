@@ -47,8 +47,16 @@ def log(message):
 
 
 def read_columns(path):
+    """Column names, one per line. Blank lines and # comments are skipped.
+
+    Must agree with bt-extract-strings: extract decides which columns are
+    collected and this decides which are substituted back, so a file the two
+    read differently translates a column nobody puts back, or puts back one
+    nobody translated.
+    """
     with open(path, encoding="utf-8") as handle:
-        return [line.strip() for line in handle if line.strip()]
+        return [line.strip() for line in handle
+                if line.strip() and not line.lstrip().startswith("#")]
 
 
 class Translations(object):

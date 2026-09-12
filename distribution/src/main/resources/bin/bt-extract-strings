@@ -47,9 +47,16 @@ def log(message):
 
 
 def read_columns(path):
-    """Column names, one per line, in the order they appear in the TSVs."""
+    """Column names, one per line, in the order they appear in the TSVs.
+
+    Blank lines and # comments are skipped, so the file can say why a column
+    is or is not in it. Without that they were returned as column names --
+    harmless only because no header ever matches one, which is not a thing to
+    rely on.
+    """
     with open(path, encoding="utf-8") as handle:
-        return [line.strip() for line in handle if line.strip()]
+        return [line.strip() for line in handle
+                if line.strip() and not line.lstrip().startswith("#")]
 
 
 def column_indices(headers, wanted):
