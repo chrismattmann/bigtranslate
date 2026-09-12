@@ -16,6 +16,7 @@
         <button :class="{ active: view === 'map' }" @click="go('map')">Map</button>
         <button :class="{ active: view === 'table' || view === 'record' }" @click="go('table')">Table</button>
         <button :class="{ active: view === 'facets' }" @click="go('facets')">Facets</button>
+        <button :class="{ active: view === 'analytics' }" @click="go('analytics')">Analytics</button>
       </nav>
     </header>
 
@@ -53,6 +54,7 @@
       :loading="recordLoading"
       @back="go('table')"
     />
+    <AnalyticsPanel v-else-if="view === 'analytics'" />
     <FacetPanel
       v-else
       :payload="facetPayload"
@@ -75,11 +77,12 @@ import PostingMap from './components/PostingMap.vue'
 import PostingTable from './components/PostingTable.vue'
 import RecordView from './components/RecordView.vue'
 import FacetPanel from './components/FacetPanel.vue'
+import AnalyticsPanel from './components/AnalyticsPanel.vue'
 import { getFacets, getLog, getMap, getOodtStatus, getProgress, getRecord, getStatus, getSummary, getTable } from './api.js'
 
 export default {
   name: 'App',
-  components: { ControlBar, SummaryBar, ProgressPane, PostingMap, PostingTable, FacetPanel, RecordView },
+  components: { ControlBar, SummaryBar, ProgressPane, PostingMap, PostingTable, FacetPanel, AnalyticsPanel, RecordView },
   setup() {
     const parsed = parseHash()
     const view = ref(parsed.view)
@@ -113,7 +116,8 @@ export default {
           return { view: 'table', id: '' }
         }
       }
-      if (raw === 'table' || raw === 'facets' || raw === 'map') {
+      if (raw === 'table' || raw === 'facets' || raw === 'map'
+          || raw === 'analytics') {
         return { view: raw, id: '' }
       }
       return { view: 'map', id: '' }

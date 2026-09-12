@@ -90,6 +90,26 @@
   <field name="SplitFilename" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
   <field name="TsvFile" type="string" indexed="true" stored="true" required="false" multiValued="false"/>
 
+  <!-- Tokenised copies of the two free-text fields, for asking what a
+       posting is about rather than what it is called exactly.
+
+       title and salary are string fields, which is right for faceting and
+       grouping and useless for "which of these are driving jobs": title:Sales
+       matches the posting titled exactly "Sales" and nothing else. Grouping
+       the 119 million postings into sectors that way reached 1.9% of them,
+       because the titles are a long tail of 1,012,292 distinct values, of
+       which the top 500 are only 19% of the corpus.
+
+       The catch-all text field below does tokenise, and covers 42.9%, but it
+       is a copy of every field: a search for "Sales" there also matches a
+       company called Sales and a salary that mentions sales commission. These
+       two are the fields the question is actually about.
+
+       Not stored: they exist to be searched, and the string fields already
+       hold the values. -->
+  <field name="title_txt" type="text_general" indexed="true" stored="false" multiValued="false"/>
+  <field name="salary_txt" type="text_general" indexed="true" stored="false" multiValued="false"/>
+
   <field name="content" type="text_general" indexed="false" stored="true" multiValued="true"/>
   <field name="text" type="text_general" indexed="true" stored="false" multiValued="true"/>
   <field name="text_rev" type="text_general_rev" indexed="true" stored="false" multiValued="true"/>
@@ -101,6 +121,8 @@
 
   <copyField source="*" dest="text"/>
   <copyField source="*" dest="text_rev"/>
+  <copyField source="title" dest="title_txt"/>
+  <copyField source="salary" dest="salary_txt"/>
 
   <uniqueKey>id</uniqueKey>
 
