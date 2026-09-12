@@ -655,7 +655,12 @@ export default {
         return
       }
 
-      const m = { top: 88, right: 16, bottom: 16, left: 150 }
+      // Room at the top for a horizontal label row, and at the bottom for
+      // the colour ramp. The ramp used to sit top right, where the rotated
+      // axis labels ran diagonally into it: "Food and hospitality" crossed
+      // "no opening". Short labels sit flat, and the ramp is out of their
+      // way entirely rather than merely further from them.
+      const m = { top: 34, right: 16, bottom: 46, left: 150 }
       const height = names.length * 26 + m.top + m.bottom
       const { sel, width } = frame(gapSvg.value, height)
       const x = d3.scaleBand().domain(SECTORS.map((s) => s.key))
@@ -701,16 +706,16 @@ export default {
       sel.append('g').attr('transform', `translate(0,${m.top})`)
         .call(d3.axisTop(x).tickFormat((k) => {
           const s = SECTORS.find((c) => c.key === k)
-          return s ? s.label : k
+          return s ? s.short : k
         }))
         .selectAll('text')
-        .attr('transform', 'rotate(-32)')
-        .style('text-anchor', 'start')
+        .attr('class', 'leg')
 
-      // The colour ramp, so a dark cell can be read as a number.
-      const rampW = 120
-      const rampX = width - m.right - rampW
-      const ramp = sel.append('g').attr('transform', `translate(${rampX},8)`)
+      // The colour ramp, so a dark cell can be read as a number. Below the
+      // grid, where nothing else is.
+      const rampW = 140
+      const ramp = sel.append('g')
+        .attr('transform', `translate(${m.left},${height - m.bottom + 16})`)
       const id = 'gapramp'
       const grad = ramp.append('defs').append('linearGradient').attr('id', id)
       d3.range(0, 1.01, 0.1).forEach((t) => {

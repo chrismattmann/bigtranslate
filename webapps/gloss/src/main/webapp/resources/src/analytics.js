@@ -35,31 +35,37 @@
  * These are English because the pipeline has already translated the titles.
  * That is the point of the translation and it is what makes this list short
  * enough to read: the Spanish would need every inflection of every word.
+ *
+ * Each carries a short form as well. "Food and hospitality" written along an
+ * axis of nine columns has to be rotated to fit, and a rotated label runs
+ * diagonally into whatever is above it -- in the openings heatmap, into the
+ * colour ramp. The full label stays on the key and in the tooltip, where
+ * there is room for it.
  */
 export const SECTORS = [
-  { key: 'office', label: 'Office and admin',
+  { key: 'office', label: 'Office and admin', short: 'Office',
     words: ['Assistant', 'Secretary', 'Administrative', 'Accountant',
             'Analyst', 'Receptionist', 'Clerk', 'Auxiliary'] },
-  { key: 'retail', label: 'Retail and sales',
+  { key: 'retail', label: 'Retail and sales', short: 'Retail',
     words: ['Sales', 'Seller', 'Vendor', 'Cashier', 'Commercial', 'Store',
             'Shop', 'Promoter'] },
-  { key: 'industrial', label: 'Industry and trades',
+  { key: 'industrial', label: 'Industry and trades', short: 'Industry',
     words: ['Operator', 'Mechanic', 'Welder', 'Production', 'Maintenance',
             'Electrician', 'Machinist'] },
-  { key: 'it', label: 'Software and IT',
+  { key: 'it', label: 'Software and IT', short: 'IT',
     words: ['Developer', 'Programmer', 'Software', 'Systems', 'Web',
             'Database'] },
-  { key: 'medical', label: 'Health',
+  { key: 'medical', label: 'Health', short: 'Health',
     words: ['Nurse', 'Doctor', 'Medical', 'Dentist', 'Pharmacy', 'Nursing',
             'Therapist'] },
-  { key: 'transport', label: 'Transport and logistics',
+  { key: 'transport', label: 'Transport and logistics', short: 'Transport',
     words: ['Driver', 'Logistics', 'Delivery', 'Courier', 'Warehouse',
             'Transport'] },
-  { key: 'teaching', label: 'Education',
+  { key: 'teaching', label: 'Education', short: 'Education',
     words: ['Teacher', 'Professor', 'Instructor', 'Tutor', 'Trainer'] },
-  { key: 'hospitality', label: 'Food and hospitality',
+  { key: 'hospitality', label: 'Food and hospitality', short: 'Hospitality',
     words: ['Waiter', 'Chef', 'Cook', 'Kitchen', 'Bartender', 'Hotel'] },
-  { key: 'construction', label: 'Construction',
+  { key: 'construction', label: 'Construction', short: 'Construction',
     words: ['Construction', 'Builder', 'Architect', 'Plumber', 'Mason',
             'Painter'] }
 ]

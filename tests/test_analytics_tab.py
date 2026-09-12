@@ -209,6 +209,19 @@ class TestTheTabIsWired:
         assert "totalLabel" in intro and "jobLabel" in intro, (
             "the reader is given one number where the corpus has two")
 
+    def test_the_heatmap_axis_does_not_run_into_its_key(self):
+        # Rotated labels travel diagonally: "Food and hospitality" crossed
+        # the colour ramp in the top right corner, and the rightmost ones ran
+        # past the edge of the chart.
+        panel = PANEL.read_text()
+        gaps = panel[panel.index("function drawGaps"):]
+        gaps = gaps[:gaps.index("onMounted")]
+        assert "rotate(-32)" not in gaps, (
+            "the sector axis is still rotated into the ramp")
+        assert "s.short" in gaps, "the axis is not using the short labels"
+        assert "height - m.bottom" in gaps, (
+            "the colour ramp is not below the grid")
+
     def test_an_empty_result_says_so(self):
         # An empty panel is indistinguishable from a broken one, which is how
         # the openings panel was first reported.

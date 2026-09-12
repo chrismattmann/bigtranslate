@@ -249,3 +249,15 @@ test('a month with nothing in it contributes no share', () => {
   assert.deepEqual(shareSeries([{ count: 10 }], 'it'), [0])
   assert.deepEqual(shareSeries(null, 'it'), [])
 })
+
+
+test('every sector has a short form for a crowded axis', () => {
+  // "Food and hospitality" across an axis of nine columns has to be rotated
+  // to fit, and a rotated label runs diagonally into whatever is above it.
+  SECTORS.forEach((s) => {
+    assert.ok(s.short, s.key + ' has no short label')
+    assert.ok(s.short.length <= 12,
+      s.short + ' is too long to sit flat on the axis')
+    assert.ok(s.label.length >= s.short.length)
+  })
+})
