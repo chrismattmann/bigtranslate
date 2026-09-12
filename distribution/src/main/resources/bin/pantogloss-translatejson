@@ -308,8 +308,16 @@ class TranslationCache:
 # glossary
 # --------------------------------------------------------------------------
 
-def is_untranslatable(value):
-    """True for a value with no letter in it.
+# How many letters a value needs before the model is asked to translate it.
+#
+# Overridable so the threshold can be tried against a corpus without a code
+# change: BIGTRANSLATE_MIN_LETTERS=5 bin/bigtranslate translate ...
+MIN_TRANSLATABLE_LETTERS = int(
+    os.environ.get("BIGTRANSLATE_MIN_LETTERS", "4"))
+
+
+def is_untranslatable(value, min_letters=None):
+    """True for a value with fewer than min_letters letters in it.
 
     These are not language and the model should never see them. Asked to
     translate "!" it answers "- I'm sorry."; "-----------" comes back the
@@ -338,8 +346,43 @@ def is_untranslatable(value):
 
     Passing them through unchanged is both more correct and cheaper than
     asking.
+
+    One letter was not enough of a bar. A value with a letter or two in it is
+    a code, an abbreviation or a stray character, and the model invents
+    language for it exactly as it did for punctuation. Measured over the
+    1,460,000 distinct strings of a full run:
+
+        letters  strings  altered
+              1    7,152    6,525   "i" -> "& Add", "o" -> "o The"
+              2    2,959    2,312   "9AM" -> "b.", "N/A" -> "N / A"
+              3    4,187    3,484   "Sqe" -> "& Left", "Ilo" -> "_ Tool"
+
+    36,140 strings have fewer than four letters and 12,321 of them came back
+    altered. Almost none of those alterations are translations: of the 180
+    purely alphabetic ones, a handful are right ("dia" -> "He" is wrong while
+    "dia" with its tilde is right) and the rest are invented.
+
+    It also closes what the digit rule above left open. A sol amount carries
+    a single letter, so "S/ 900=" and "S/.30" went to the model and came back
+    as "S / 900" and "S / 2007 / 1" -- the same invented salary the digit rule
+    was written to stop, walking through on the strength of one "S".
+
+    Four rather than five, because four letters is where real words start:
+    "otro", "Caja" and "alto" are translated correctly, and suppressing them
+    to catch "fino" would cost more than it saves. A term shorter than that
+    which does need translating belongs in the glossary, which is consulted
+    first -- see conf/glossary.es-en.tsv, where the corpus's day, month and
+    year abbreviations now live.
     """
-    return not any(character.isalpha() for character in value)
+    if min_letters is None:
+        min_letters = MIN_TRANSLATABLE_LETTERS
+    letters = 0
+    for character in value:
+        if character.isalpha():
+            letters += 1
+            if letters >= min_letters:
+                return False
+    return True
 
 
 class Glossary:

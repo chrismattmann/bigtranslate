@@ -69,13 +69,51 @@ class TestUntranslatable:
         # 467.
         assert shim.is_untranslatable(value)
 
-    @pytest.mark.parametrize("value", ["Inmediato", "6 months", "A1", "40 hs",
+    @pytest.mark.parametrize("value", ["Inmediato", "6 months", "otro", "Caja",
+                                       "3 d\u00edas", "M\u00ednimo",
                                        "$800.000 - 1.100.000 (Segun estudios)",
                                        "Administrativa (oeste)"])
-    def test_anything_with_a_letter_is_still_translated(self, value):
+    def test_real_words_are_still_translated(self, value):
         # A salary that carries words is worth translating, and this is what
         # keeps that working rather than throwing the field away wholesale.
+        # Four letters is where real words start: "otro", "Caja" and "alto"
+        # come back correctly.
         assert not shim.is_untranslatable(value)
+
+    @pytest.mark.parametrize("value", ["i", "o", "9AM", "Sqe", "Ilo", "N/A",
+                                       "A1", "40 hs", "P.S", "lun"])
+    def test_too_few_letters_to_be_language(self, value):
+        # One letter was not enough of a bar. A value with a letter or two is
+        # a code, an abbreviation or a stray character, and the model invents
+        # language for it exactly as it did for punctuation: "i" came back as
+        # "& Add", "Sqe" as "& Left", "9AM" as "b.", "N/A" as "N / A".
+        #
+        # Measured over the 1,460,000 distinct strings of a full run: 36,140
+        # have fewer than four letters and 12,321 of them came back altered.
+        assert shim.is_untranslatable(value)
+
+    @pytest.mark.parametrize("value", ["S/ 900=", "S/.30", "s/.25", "S/ 1000"])
+    def test_a_sol_amount_is_not_language_either(self, value):
+        # What the digit rule left open. A sol amount carries a single letter,
+        # so these went to the model on the strength of one "S" and came back
+        # as "S / 900" and "S / 2007 / 1" -- the same invented salary the
+        # digit rule was written to stop.
+        assert shim.is_untranslatable(value)
+
+    def test_the_threshold_can_be_tried_without_a_code_change(self):
+        # So a corpus can be measured at five before anyone commits to it.
+        assert shim.is_untranslatable("otro", min_letters=5)
+        assert not shim.is_untranslatable("otro", min_letters=4)
+
+    def test_a_short_term_that_must_translate_goes_in_the_glossary(self):
+        # The rule makes short strings pass through unchanged, which is safe
+        # but not useful in a duration column. The glossary is consulted
+        # first, so an entry still wins.
+        chunk = _load("bt-translate-chunk")
+        resolved, remaining = chunk.resolve_with_glossary(
+            ["dia", "Sqe"], Glossary({"dia": "day"}), shim.is_untranslatable)
+        assert resolved == {"dia": "day", "Sqe": "Sqe"}
+        assert remaining == []
 
     def test_this_is_the_shape_that_produced_an_apology(self):
         # Asked to translate "!" the model answered "- I'm sorry." -- which
@@ -185,3 +223,49 @@ class TestTheWiring:
         assert g.lookup("correo electronico") == "Email"
         assert g.lookup("Asap") == "Immediate"
         assert g.lookup("Medio Tiempo") == "Part Time"
+
+
+class TestShortTimeUnitsAreCovered:
+    """The terms the new threshold would otherwise pass through untouched.
+
+    Unchanged is safe but not useful in a duration or start column, and the
+    model got these wrong or got them inconsistently: "hrs" came back as
+    "timer", "mes" as "month" in one chunk and "We" in another, and "dia" as
+    "He" while the tilde'd "dia" came back as "Day".
+    """
+
+    def setup_method(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        self.path = (root / "distribution" / "src" / "main" / "resources"
+                     / "conf" / "glossary.es-en.tsv")
+
+    def _entries(self):
+        out = {}
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) == 2:
+                out[parts[0].strip().lower()] = parts[1].strip()
+        return out
+
+    @pytest.mark.parametrize("term,english", [
+        ("dia", "day"), ("día", "day"), ("mes", "month"),
+        ("hrs", "hours"), ("ano", "year"), ("año", "year"),
+    ])
+    def test_the_term_is_covered(self, term, english):
+        assert self._entries().get(term) == english
+
+    def test_every_entry_is_the_glossarys_two_column_shape(self):
+        # A stray third column silently becomes part of the English value.
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            assert line.count("\t") == 1, "not source<TAB>target: %r" % line
+
+    def test_each_covered_term_would_otherwise_be_suppressed(self):
+        # If one of these grew past the threshold the entry would be dead
+        # weight rather than a fix, and nothing would say so.
+        for term in ("dia", "mes", "hrs", "ano"):
+            assert shim.is_untranslatable(term)

@@ -117,3 +117,19 @@ Atencion al Cliente	Customer Service
 Contabilidad	Accounting
 Informática	IT
 Informatica	IT
+
+# Time units shorter than the model is now asked to translate.
+#
+# is_untranslatable requires four letters, so these would otherwise pass
+# through unchanged. Unchanged is safe but not useful in a duration or start
+# column, and the model got them wrong or got them inconsistently: "hrs" came
+# back as "timer", "mes" as "month" in one chunk and "We" in another, and
+# "dia" as "He" while "día" with its tilde came back as "Day".
+dia	day
+día	day
+mes	month
+hrs	hours
+# "ano" is "año" typed without the tilde -- the corpus writes both, and the
+# model itself reads the plural "anos" as "years". It came back as "Yes".
+ano	year
+año	year
