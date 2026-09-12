@@ -228,12 +228,13 @@ validate_corpus_path() {
     # An empty directory is a crawl that finishes instantly having done
     # nothing, which reads exactly like success.
     #
-    # Counted the way the crawler counts, which is recursively. With
-    # -maxdepth 1 this said "2806 TSV file(s)" for a corpus the crawler then
-    # ingested 5616 products from: the only number the operator was given
-    # about the size of their run was half of it.
+    # Counted recursively, because the crawler descends -- but skipping any
+    # path with a dot directory in it, because the crawler now does too.
+    # This number and the crawler's product count have twice disagreed, and
+    # both times the answer was that one of them was counting things that
+    # are not corpus. See corpus_files().
     local count
-    count=$(find "$CORPUS_PATH" -type f -name '*.tsv' 2>/dev/null | wc -l | tr -d ' ')
+    count=$(corpus_files "$CORPUS_PATH" | wc -l | tr -d ' ')
     if [[ "$count" == "0" ]]; then
         echo "No .tsv files in [$CORPUS_PATH]."
         echo "BigTranslate crawls TSV; there is nothing here to translate."
@@ -244,6 +245,33 @@ validate_corpus_path() {
 
     echo "Translating $count TSV file(s) from $CORPUS_PATH"
     CORPUS_FILE_COUNT="$count"
+}
+
+# The TSV files a crawl will actually ingest, one per line.
+#
+# The corpus lives on a volume that has been served over AFP, and every file
+# on it has a 741 byte AppleDouble sidecar beside it under .AppleDouble/ --
+# carrying the same name, ending in .tsv, and matching -name '*.tsv' exactly
+# as the real thing does. There are 2,806 real files and 2,806 sidecars, and
+# there is a .lacie directory besides.
+#
+# Nothing rejected them. The crawler ingested 5,616 products where the corpus
+# holds 2,806 files, and the extra products are 741 bytes of binary resource
+# fork apiece. Nothing downstream distinguishes them either: a catalogued
+# product is a catalogued product.
+#
+# A dot directory is never corpus. Filtered here, in one place, so the count
+# the operator is shown, the files the shape check samples, and the files the
+# crawler ingests are the same set -- the three have disagreed before.
+corpus_files() {
+    find "$1" -type f -name '*.tsv' 2>/dev/null | grep -v '/\.'
+}
+
+# The regular expression that keeps the crawler off everything corpus_files()
+# excludes. Matched by RegExExcludeComparator against the whole absolute
+# path, so it has to describe the path and not just the name.
+corpus_exclude_pattern() {
+    echo '.*/\.[^/]*(/.*)?'
 }
 
 # Check the TSVs have the shape this deployment is configured to read.
@@ -279,20 +307,27 @@ validate_corpus_shape() {
 
     # A sample rather than the corpus: reading one line of a handful of files
     # is instant, and a corpus whose columns differ differs in all of them.
-    local checked=0 file fields
+    local checked=0 file fields columns
     while IFS= read -r file; do
         fields=$(head -n 1 "$file" 2>/dev/null | awk -F'\t' '{print NF; exit}')
         case "$fields" in
             '' | *[!0-9]*) continue ;;
         esac
         if [ "$fields" != "$expected" ]; then
+            # The path from the corpus root down, not the basename. Every
+            # AppleDouble sidecar carries the name of the real file it
+            # shadows, so a basename here named a file that was fine and
+            # sent the reader to check a corpus that was not the problem.
+            columns=$(grep -vE '^[[:space:]]*(#|$)' \
+                "$BIGTRANSLATE_HOME/conf/translate.cols" 2>/dev/null \
+                | tr '\n' ' ')
             echo "[$root] does not look like the corpus this deployment reads."
             echo
-            echo "  $(basename "$file") has $fields tab separated columns;"
+            echo "  ${file#$root/} has $fields tab separated columns;"
             echo "  conf/colheaders.txt names $expected."
             echo
             echo "The files are headerless, so the columns in conf/translate.cols"
-            echo "-- $(tr '\n' ' ' < "$BIGTRANSLATE_HOME/conf/translate.cols" 2>/dev/null)--"
+            echo "-- ${columns}--"
             echo "are read by position. Translating this would put whatever sits"
             echo "in those positions through the model and index the result,"
             echo "which reads like a successful run."
@@ -304,7 +339,7 @@ validate_corpus_shape() {
         checked=$((checked + 1))
         [ "$checked" -ge 5 ] && break
     done <<EOF
-$(find "$root" -type f -name '*.tsv' 2>/dev/null | head -20)
+$(corpus_files "$root" | head -20)
 EOF
 }
 
@@ -448,13 +483,19 @@ TRANSLATE_SETTLE=${TRANSLATE_SETTLE:-120}
 
 function translate {
     check_services_running
+    # Dot directories are excluded whether or not anything was asked for.
+    # .AppleDouble holds a .tsv shaped sidecar for every file in this corpus
+    # and the crawler ingested all 2,806 of them; an operator who has never
+    # heard of AppleDouble cannot be expected to pass --exclude for it.
+    local always
+    always=$(corpus_exclude_pattern)
     if [ $1 = "--exclude" ]; then
 	check_num_args "translate" $# 3
-	export BIGTRANSLATE_EXCLUDE=".*${2}.*"
+	export BIGTRANSLATE_EXCLUDE="($always)|(.*${2}.*)"
 	PRODUCT_PATH=$3
     else
     	check_num_args "crawl" $# 1
-	export BIGTRANSLATE_EXCLUDE=""
+	export BIGTRANSLATE_EXCLUDE="$always"
 	PRODUCT_PATH=$1
     fi
 
