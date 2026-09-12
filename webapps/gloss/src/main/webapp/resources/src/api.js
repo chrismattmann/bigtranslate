@@ -70,6 +70,28 @@ export function getFacets(query, filters) {
   return fetch(`${services()}/service/facets?${params.toString()}`).then(readJson)
 }
 
+/**
+ * A json.facet query, straight through to Solr.
+ *
+ * The Analytics panels ask questions the service layer has no opinion about
+ * -- nine sectors crossed with eighteen months crossed with a dozen regions
+ * -- and gloss-services already exposes the core for exactly this. Adding an
+ * endpoint per chart would put the arithmetic on the far side of a network
+ * call from the chart that has to explain it.
+ */
+export function solrFacet(facet, params) {
+  const query = new URLSearchParams()
+  query.set('q', (params && params.q) || '*:*')
+  query.set('rows', '0')
+  query.set('wt', 'json')
+  if (params && params.fq) {
+    query.append('fq', params.fq)
+  }
+  query.set('json.facet', JSON.stringify(facet))
+  return fetch(`${services()}/solr/bigtranslate/select?${query.toString()}`)
+    .then(readJson)
+}
+
 export function getProgress() {
   return fetch(`${services()}/service/progress`).then(readJson)
 }
