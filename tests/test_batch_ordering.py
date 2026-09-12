@@ -29,8 +29,6 @@ REPO = Path(__file__).resolve().parent.parent
 PGE = (REPO / "distribution" / "src" / "main" / "resources"
        / "bin" / "pantogloss-translatejson")
 TASKS = REPO / "workflow" / "src" / "main" / "resources" / "policy" / "tasks.xml"
-PGECONF = (REPO / "pge" / "src" / "main" / "resources" / "policy"
-           / "no_filter" / "PgeConfig_BigTranslate.xml")
 
 
 def test_sorting_is_on_by_default():
@@ -80,13 +78,26 @@ def test_sorting_actually_groups_by_length():
         "the worst batch is no better than it was unsorted")
 
 
-def test_batch_size_and_sorting_are_workflow_properties():
+def test_batch_size_is_a_workflow_property():
     """Per deployment, because the best batch size depends on the device."""
     tasks = TASKS.read_text()
     assert '<property name="TranslateBatchSize"' in tasks
-    assert '<property name="TranslateSortFlag"' in tasks, (
-        "the sort flag cannot be set per deployment")
-    cmd = PGECONF.read_text()
-    assert "--batch-size [TranslateBatchSize]" in cmd
-    assert "[TranslateSortFlag]" in cmd, (
+    cmd = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+           / "no_filter" / "PgeConfig_TranslateChunk.xml").read_text()
+    assert "--batch-size [TranslateBatchSize]" in cmd, (
         "the workflow property never reaches the PGE command line")
+
+
+def test_w2_does_not_need_a_sort_flag():
+    """The sorting is done once, by the extract, not per translate job.
+
+    TranslateSortFlag was W1's, where each task sorted the rows of its own
+    TSV. W2 chunks arrive length-sorted from the extract stage, so a chunk's
+    batches pad almost nothing and there is no per-job ordering left to
+    choose.
+    """
+    tasks = TASKS.read_text()
+    assert "TranslateSortFlag" not in tasks
+    cmd = (REPO / "pge" / "src" / "main" / "resources" / "policy"
+           / "no_filter" / "PgeConfig_TranslateChunk.xml").read_text()
+    assert "TranslateSortFlag" not in cmd

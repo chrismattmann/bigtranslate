@@ -18,12 +18,6 @@
 <!--
   TODO: Add some examples
 -->
- <event name="EmploymentJobAggregatesTsvIngest">
-    <workflow id="urn:bigtranslate:SplitWorkflow"/>
- </event>
- <event name="EmploymentJobAggregatesTsvSplitIngest">
-    <workflow id="urn:bigtranslate:BigTranslateWorkflow"/>
- </event>
 
 
  <!-- The W2 pipeline, chained by what each stage produces. Extract makes
