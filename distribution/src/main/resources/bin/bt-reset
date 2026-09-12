@@ -85,6 +85,16 @@ rm -f "$BIGTRANSLATE_HOME/data/run"
 schema="$BIGTRANSLATE_HOME/workflow/etc/workflow-instances.sql"
 props="$BIGTRANSLATE_HOME/workflow/etc/workflow.properties"
 if [ -f "$schema" ] && [ -f "$props" ]; then
+  # The configured JDBC URL is jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst,
+  # and [OODT_HOME] is resolved from the environment. bin/oodt exports it by
+  # way of bin/env.sh; bin/setenv.sh, which is all this script sources, does
+  # not. Without it the placeholder survives and HSQLDB cheerfully creates a
+  # directory named "[OODT_HOME]" next to the deployment, reports "tables
+  # created", and leaves data/winstdb empty -- a reset that says it rebuilt
+  # the instance database and did not.
+  OODT_HOME="$BIGTRANSLATE_HOME"
+  OODT_BASE="$BIGTRANSLATE_HOME"
+  export OODT_HOME OODT_BASE
   "${JAVA_HOME:-/usr}/bin/java" -cp "$BIGTRANSLATE_HOME/workflow/lib/*" \
     org.bigtranslate.workflow.WorkflowInstanceSchema "$props" "$schema" || {
       echo "Could not rebuild the instance database; see above."

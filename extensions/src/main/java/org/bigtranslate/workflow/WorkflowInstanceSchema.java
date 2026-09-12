@@ -112,6 +112,20 @@ public class WorkflowInstanceSchema {
             + "; leaving the workflow instance database alone");
         return false;
       }
+      // A placeholder that nothing in the environment answers is not a path.
+      // HSQLDB will happily open jdbc:hsqldb:file:[OODT_HOME]/data/winstdb --
+      // creating a directory literally named "[OODT_HOME]" beside wherever
+      // this was run from -- and every line after here then reports success
+      // for a database the Workflow Manager will never look at. Refuse, and
+      // say which variable is missing.
+      Matcher unresolved = PLACEHOLDER.matcher(url);
+      if (unresolved.find()) {
+        System.err.println("The instance database URL still contains "
+            + unresolved.group(0) + " after resolution: " + url);
+        System.err.println("Set and export " + unresolved.group(1)
+            + " before running this; bin/oodt does it through bin/env.sh.");
+        return false;
+      }
       String driver = properties.getProperty(DRIVER_KEY);
       if (driver != null && driver.trim().length() > 0) {
         Class.forName(driver.trim());

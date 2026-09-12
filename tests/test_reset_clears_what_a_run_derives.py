@@ -89,3 +89,18 @@ def test_it_uses_the_shared_schema_tool():
     body = RESET.read_text()
     assert "WorkflowInstanceSchema" in body, (
         "bt-reset rebuilds the instance schema its own way")
+
+
+def test_it_exports_oodt_home_for_the_schema_tool():
+    # The configured URL is jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst.
+    # bin/oodt resolves that because bin/env.sh exports OODT_HOME; bt-reset
+    # sources only bin/setenv.sh, which does not. Unexported, the placeholder
+    # survived, HSQLDB created a directory named "[OODT_HOME]" beside the
+    # deployment, and the reset printed "Workflow instance tables created"
+    # over an empty data/winstdb.
+    body = RESET.read_text()
+    call = body.index("WorkflowInstanceSchema")
+    before = body[:call]
+    assert "export OODT_HOME" in before, (
+        "bt-reset runs the schema tool without exporting OODT_HOME, so "
+        "[OODT_HOME] in the JDBC URL resolves to nothing")
