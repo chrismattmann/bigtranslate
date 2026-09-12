@@ -31,10 +31,10 @@
       <p class="kicker">Mnemosyne · Pantogloss · Solr</p>
       <h1>Point it at a TSV.<br/>Get English in Solr.</h1>
       <p class="lede">
-        Hosted translation APIs do not finish a million rows.
-        BigTranslate splits the file, runs Pantogloss locally —
-        glossary, then cache, then the model — and posts the
-        English into Solr while you watch.
+        Translating every cell of a 38GB corpus is 836 million model
+        calls. Translating every <em>distinct</em> string is 2.3 million.
+        BigTranslate deduplicates first, translates once on local
+        Pantogloss, and joins the English back into Solr.
       </p>
       <pre class="cmd"><span>$</span> bin/bigtranslate translate ~/untranslated</pre>
       <div class="hero-actions">
@@ -63,13 +63,13 @@
       glossary terms stamped, originals still on the record.
     </p>
     <div class="report">
-      <h3>andina-pe-20121106.tsv</h3>
-      <p class="meta">1,840 postings · split → tsvtojson → repackage → pantogloss → Solr</p>
+      <h3>DARPA XDATA employment corpus</h3>
+      <p class="meta">5,612 country-day TSVs · extract → translate → join · two nodes, seven hours</p>
       <div class="stats">
-        <div class="stat"><strong>1,840</strong><span>in Solr</span></div>
-        <div class="stat"><strong>24</strong><span>locations</span></div>
-        <div class="stat"><strong>446</strong><span>cache strings</span></div>
-        <div class="stat"><strong>69</strong><span>glossary overrides</span></div>
+        <div class="stat"><strong>119,453,210</strong><span>documents in Solr</span></div>
+        <div class="stat"><strong>2,286,371</strong><span>distinct strings translated</span></div>
+        <div class="stat"><strong>2,107,374</strong><span>unique jobs</span></div>
+        <div class="stat"><strong>458</strong><span>chunks, 0 skipped</span></div>
       </div>
       <table class="jobs">
         <thead>
@@ -112,7 +112,7 @@
       </figure>
       <figure>
         <img src="assets/glossary.jpg" alt="A small glossary notebook and a crimson ink pad"/>
-        <figcaption>Glossary first, then the SQLite cache, then the local model.</figcaption>
+        <figcaption>Glossary first, then the local model. An entry always wins.</figcaption>
       </figure>
     </div>
     <div class="gloss-list">
@@ -129,12 +129,17 @@
     <p class="kicker">One command</p>
     <h2>translate hides the MapReduce.</h2>
     <ol class="pipe">
-      <li><strong>split</strong><span>~1000-line chunks</span></li>
-      <li><strong>tsvtojson</strong><span>ETLLib, one file</span></li>
-      <li><strong>repackage</strong><span>One JSON per job</span></li>
-      <li><strong>pantogloss</strong><span>Columns in <code>translate.cols</code></span></li>
-      <li><strong>poster</strong><span>Solr <code>bigtranslate</code></span></li>
+      <li><strong>crawl</strong><span>Catalogue every TSV</span></li>
+      <li><strong>extract</strong><span>Distinct strings, length sorted</span></li>
+      <li><strong>translate</strong><span>One instance per chunk, any node</span></li>
+      <li><strong>join</strong><span>English back into the rows</span></li>
+      <li><strong>index</strong><span>Solr <code>bigtranslate</code>, sharded</span></li>
     </ol>
+    <p style="margin-top:1rem">
+      Local or across a cluster on one setting.
+      <a href="https://github.com/chrismattmann/bigtranslate/wiki/Pipeline">What each stage reads and writes</a> ·
+      <a href="https://github.com/chrismattmann/bigtranslate/wiki/Architecture">Architecture</a>
+    </p>
     <div class="pair" style="margin-top:1.8rem">
       <div>
         <img src="assets/corpus.jpg" alt="Stacked country-day printouts on a desk"/>
@@ -146,7 +151,7 @@
         <img src="assets/pages.jpg" alt="Bilingual notebook"/>
         <p class="kicker" style="margin-top:0.7rem">Offline</p>
         <h2>No hosted API. A local many-to-English model.</h2>
-        <p>Pantogloss is TensorFlow/Keras on the box. Tested on up to 190 million rows on 16-core nodes.</p>
+        <p>Pantogloss is TensorFlow/Keras on the box. A full XDATA corpus &mdash; 119,453,210 documents &mdash; ran in about seven hours across an M3 Mac and one RTX 3080 Ti.</p>
       </div>
     </div>
     <div class="features">
@@ -156,7 +161,7 @@
       </article>
       <article class="card">
         <h3>Reset and go again</h3>
-        <p><code>bigtranslate reset --yes</code> wants the services down. Gloss Reset is a live wipe and keeps the translation cache.</p>
+        <p><code>bigtranslate reset --yes</code> wants the services down. Gloss Reset is a live wipe and leaves the services running.</p>
       </article>
       <article class="card">
         <h3>Setup once</h3>
@@ -201,8 +206,7 @@
   <footer>
     <div class="wrap">
       BigTranslate is a RADiX overlay on <a href="https://github.com/chrismattmann/mnemosyne">Mnemosyne</a> 1.11.0,
-      translating with <a href="https://github.com/chrismattmann/pantogloss">Pantogloss</a>
-      and <a href="https://github.com/chrismattmann/etllib">ETLLib</a>.
+      translating with <a href="https://github.com/chrismattmann/pantogloss">Pantogloss</a>.
       Work of <a href="https://github.com/chrismattmann">Chris Mattmann</a>
       and <a href="https://mattmann.ai">Mattmann.AI</a>.
       Apache License 2.0.
