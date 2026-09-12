@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 330" role="img"
+     aria-labelledby="pipe-title pipe-desc" font-family="'Source Sans 3', 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="pipe-title">How BigTranslate turns a TSV corpus into an English Solr index</title>
+  <desc id="pipe-desc">A directory of Spanish TSV files is crawled and
+    catalogued. Extract collects every distinct translatable string into
+    length sorted chunks. Translate runs one workflow instance per chunk,
+    locally or across a cluster of nodes each running a local Pantogloss
+    model. Join reads the corpus again, substitutes the English, and posts
+    sharded documents to Solr. Gloss reads the Solr index and the
+    provenance the run left behind.</desc>
+
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6b5e4e"/>
+    </marker>
+    <style>
+      .lbl  { font-size: 15px; font-weight: 600; fill: #1a1410; }
+      .sub  { font-size: 12.5px; fill: #6b5e4e; }
+      .num  { font-size: 12.5px; font-weight: 700; fill: #990000; }
+      .step { font-size: 11px; font-weight: 700; fill: #990000;
+              letter-spacing: .08em; }
+      .edge { stroke: #6b5e4e; stroke-width: 1.6; fill: none;
+              marker-end: url(#ar); }
+      .dash { stroke-dasharray: 5 4; }
+      .box  { fill: #ffffff; stroke: #e6d9c2; stroke-width: 1.5; rx: 8; }
+      .in   { fill: #f3e6cc; stroke: #e6d9c2; stroke-width: 1.5; rx: 8; }
+      .out  { fill: #fff8e7; stroke: #990000; stroke-width: 2; rx: 8; }
+      .band { fill: none; stroke: #e6d9c2; stroke-width: 1.2;
+              stroke-dasharray: 3 4; rx: 10; }
+    </style>
+  </defs>
+
+  <!-- input -->
+  <rect class="in" x="8" y="96" width="150" height="82"/>
+  <text class="lbl" x="83" y="124" text-anchor="middle">TSV corpus</text>
+  <text class="sub" x="83" y="143" text-anchor="middle">5,612 files, Spanish</text>
+  <text class="num" x="83" y="162" text-anchor="middle">119.4M rows</text>
+
+  <path class="edge" d="M162 137 H 206"/>
+
+  <!-- the three stages -->
+  <rect class="band" x="210" y="58" width="516" height="188"/>
+  <text class="step" x="468" y="48" text-anchor="middle">MNEMOSYNE · WORKFLOW 2</text>
+
+  <rect class="box" x="222" y="96" width="152" height="82"/>
+  <text class="step" x="298" y="88" text-anchor="middle">1 · EXTRACT</text>
+  <text class="lbl" x="298" y="124" text-anchor="middle">distinct strings</text>
+  <text class="sub" x="298" y="143" text-anchor="middle">length sorted chunks</text>
+  <text class="num" x="298" y="162" text-anchor="middle">2,286,371</text>
+
+  <path class="edge" d="M378 137 H 422"/>
+  <text class="sub" x="400" y="128" text-anchor="middle">458</text>
+
+  <rect class="box" x="426" y="96" width="152" height="82"/>
+  <text class="step" x="502" y="88" text-anchor="middle">2 · TRANSLATE</text>
+  <text class="lbl" x="502" y="124" text-anchor="middle">one per chunk</text>
+  <text class="sub" x="502" y="143" text-anchor="middle">glossary, then model</text>
+  <text class="num" x="502" y="162" text-anchor="middle">5 hours</text>
+
+  <path class="edge" d="M582 137 H 626"/>
+
+  <rect class="box" x="630" y="96" width="84" height="82"/>
+  <text class="step" x="672" y="88" text-anchor="middle">3 · JOIN</text>
+  <text class="lbl" x="672" y="126" text-anchor="middle">English</text>
+  <text class="lbl" x="672" y="144" text-anchor="middle">back in</text>
+  <text class="num" x="672" y="163" text-anchor="middle">4 shards</text>
+
+  <!-- where translate runs -->
+  <path class="edge dash" d="M502 182 V 224"/>
+  <rect class="box" x="392" y="228" width="220" height="58"/>
+  <text class="lbl" x="502" y="252" text-anchor="middle">local, or any node</text>
+  <text class="sub" x="502" y="271" text-anchor="middle">each runs Pantogloss on CPU or GPU</text>
+
+  <!-- the join reads the corpus a second time -->
+  <path class="edge dash" d="M83 182 V 306 H 672 V 182"/>
+  <text class="sub" x="360" y="322" text-anchor="middle">the join reads the corpus again — chunks are strings, not rows</text>
+
+  <path class="edge" d="M718 137 H 762"/>
+
+  <!-- outputs -->
+  <rect class="out" x="766" y="70" width="150" height="66"/>
+  <text class="lbl" x="841" y="96" text-anchor="middle">Solr</text>
+  <text class="num" x="841" y="118" text-anchor="middle">119,453,210 docs</text>
+
+  <rect class="box" x="766" y="150" width="150" height="66"/>
+  <text class="lbl" x="841" y="176" text-anchor="middle">Provenance</text>
+  <text class="sub" x="841" y="196" text-anchor="middle">catalogue · instances</text>
+
+  <path class="edge" d="M841 140 V 148"/>
+  <path d="M770 222 V 232 H 912 V 222" fill="none" stroke="#6b5e4e"
+        stroke-width="1.2" stroke-dasharray="3 4"/>
+  <text class="sub" x="841" y="250" text-anchor="middle">both read by Gloss</text>
+</svg>

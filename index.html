@@ -23,6 +23,7 @@
       <a href="#gloss">Gloss</a>
       <a href="https://github.com/chrismattmann/bigtranslate/wiki/Employment-Dataset">Dataset</a>
       <a href="https://github.com/chrismattmann/bigtranslate/wiki/Analytics">Analytics</a>
+      <a href="#heritage">Heritage</a>
       <a href="https://github.com/chrismattmann/bigtranslate/wiki">Docs</a>
       <a href="https://github.com/chrismattmann/bigtranslate">GitHub</a>
     </div>
@@ -142,6 +143,14 @@
       <a href="https://github.com/chrismattmann/bigtranslate/wiki/Pipeline">What each stage reads and writes</a> ·
       <a href="https://github.com/chrismattmann/bigtranslate/wiki/Architecture">Architecture</a>
     </p>
+
+    <figure style="margin:2rem 0 0">
+      <img src="assets/pipeline.svg" alt="TSV corpus into extract, translate and join, out to Solr and provenance, both read by Gloss" style="width:100%"/>
+      <figcaption>One command runs all of it. The translate stage is the only
+      one that moves: on a laptop it runs in the workflow manager's own
+      threads, on a cluster the resource manager hands each chunk to whichever
+      node is free.</figcaption>
+    </figure>
     <div class="pair" style="margin-top:1.8rem">
       <div>
         <img src="assets/corpus.jpg" alt="Stacked country-day printouts on a desk"/>
@@ -203,6 +212,51 @@
       <p>One verb for the whole corpus, reset before the next tree. <code>oodt start</code> is the Mnemosyne launcher — the name is unchanged on purpose.</p>
       <p><a class="btn" href="https://github.com/chrismattmann/bigtranslate/wiki">Wiki</a></p>
     </div>
+  </section>
+
+  <section class="wrap section" id="heritage">
+    <p class="kicker">Heritage</p>
+    <h2>It was built for a question set, and it answers ten of them.</h2>
+    <p>
+      The corpus is DARPA XDATA employment data, handed out at the 2014 Summer
+      Camp with fourteen challenge questions attached: where job types will
+      appear, how long postings last, how quickly jobs fill, where a new
+      business domain might succeed, how to zone a city by what it advertises
+      for. <strong>Ten can be answered from the index alone.</strong> Two need
+      datasets that no longer exist — the WDC hyperlink graph, Twitter. Two
+      are limited by what the corpus records.
+    </p>
+
+    <figure style="margin:1.6rem 0 0">
+      <img src="assets/analytics-zones.png" alt="Sector mix per region, each row a Latin American province, with its leading sector named on the right"/>
+      <figcaption><strong>Challenge 14</strong> — classify and zone places by
+      their jobs. Every region in the corpus, by what it advertises for, with
+      the leading sector and how far ahead of the next it is. A narrow margin
+      means the place has a mix, not a character.</figcaption>
+    </figure>
+
+    <figure style="margin:1.8rem 0 0">
+      <img src="assets/analytics-hindsight.png" alt="A scorecard of checks against the historical record, each cited"/>
+      <figcaption><strong>And then it marks its own work.</strong> The corpus
+      stops in November 2013, so twelve years on the answers are a matter of
+      record. Construction had the fastest rising share, and Colombia's
+      construction sector grew 9.8% in 2013 on the back of Vivienda Gratuita.
+      The projection that carried it upward missed: Peru slowed from 8.9% to
+      3.1% as the commodity supercycle ended. Buenos Aires retail read as an
+      opening two months before the peso was devalued 20%.</figcaption>
+    </figure>
+
+    <p style="margin-top:1.6rem">
+      The descriptive questions hold up. The predictive ones break, and they
+      break in the same place — a straight line through eighteen months cannot
+      see an exogenous shock two months after the data ends, and 2014 had two.
+      That is what a projection is, which is why the panel draws it dashed and
+      prints its R&sup2;.
+    </p>
+    <p>
+      <a class="btn" href="https://github.com/chrismattmann/bigtranslate/wiki/Employment-Dataset">The dataset</a>
+      <a class="btn ghost" href="https://github.com/chrismattmann/bigtranslate/wiki/Analytics">All fourteen questions</a>
+    </p>
   </section>
 
   <footer>
