@@ -145,14 +145,23 @@ def test_translate_waits_for_the_workflow_and_clears_the_marker():
     assert wait_at < unmark_at, "the marker is cleared before the run is over"
 
 
-def test_the_wait_needs_two_quiet_passes():
-    """Instances appear as splits are made, so there is a moment early on with
-    none running and more still to come. Ending there reports success in the
-    middle of the run."""
+def test_the_wait_needs_more_than_one_quiet_pass():
+    """Instances appear as work is found, so there are moments with none
+    running and more still to come. Ending there reports success in the
+    middle of the run.
+
+    Was two polls, counted as passes, which was enough when the wait only
+    covered the per-file W1 instances. It now covers the three stage
+    pipeline, where the quiet moments are between stages, so the threshold
+    is a settle period in seconds -- see
+    test_translate_starts_the_pipeline.
+    """
     text = DRIVER.read_text()
     import re
-    assert re.search(r'quiet"?\s+-ge\s+2', text), (
-        "a single quiet poll ends the wait")
+    assert re.search(r'quiet"?\s+-ge\s+"?\$TRANSLATE_SETTLE', text), (
+        "the wait does not use a settle period")
+    assert re.search(r'quiet=\$\(\(quiet \+ TRANSLATE_POLL\)\)', text), (
+        "the settle period is not counted in seconds")
 
 
 SETUP = (REPO / "distribution" / "src" / "main" / "resources"
