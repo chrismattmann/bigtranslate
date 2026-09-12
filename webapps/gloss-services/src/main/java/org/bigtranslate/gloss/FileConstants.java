@@ -79,8 +79,20 @@ public final class FileConstants {
     return path("/conf/glossary.es-en.tsv");
   }
 
-  public static String cacheFile() {
-    return path("/data/translationcache/cache.sqlite");
+  /**
+   * The translation database the join builds.
+   *
+   * Was data/translationcache/cache.sqlite, which is W1's: it is written
+   * only when a PGE is given --cache, and the only PGE that ever was is the
+   * one W1 ran per TSV file. Under W2 nothing creates it, so the panel
+   * reported nought translated strings after a run that translated
+   * 2,286,371 of them.
+   *
+   * bt-build-translation-db writes this one, from every translated chunk,
+   * and bt-join-index reads it back to put the English into the index.
+   */
+  public static String translationsDb() {
+    return path("/data/translations.sqlite");
   }
 
   public static String archiveDir() {

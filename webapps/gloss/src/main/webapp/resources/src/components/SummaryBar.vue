@@ -11,9 +11,10 @@
       <small>on the map</small>
     </article>
     <article>
-      <h3>Cache</h3>
+      <h3>Translations</h3>
       <p class="num">{{ format(summary.entries) }}</p>
-      <small>translated strings</small>
+      <small v-if="summary.chunks">distinct strings, from {{ format(summary.chunks) }} chunks</small>
+      <small v-else>distinct strings</small>
     </article>
     <article>
       <h3>Glossary</h3>

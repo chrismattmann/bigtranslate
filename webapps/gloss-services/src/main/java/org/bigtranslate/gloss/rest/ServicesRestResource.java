@@ -259,25 +259,55 @@ public class ServicesRestResource {
     return entries;
   }
 
+  /**
+   * How many distinct strings the last run translated.
+   *
+   * Read from the database the join builds, which holds one row per distinct
+   * source string. It used to read W1's per-file cache instead, a file
+   * nothing under W2 creates, so it answered nought after a run that had
+   * translated 2,286,371 strings -- and nought is exactly what an empty
+   * corpus looks like, so it read as a broken pipeline rather than as a
+   * panel pointed at the wrong file.
+   *
+   * The chunk count comes from the same database: bt-build-translation-db
+   * records how many chunks went into it, which is the other half of
+   * knowing the table is complete rather than merely present.
+   */
   static Map<String, Object> cacheStats() {
     Map<String, Object> stats = new LinkedHashMap<String, Object>();
-    File file = new File(FileConstants.cacheFile());
+    File file = new File(FileConstants.translationsDb());
     stats.put("path", file.getAbsolutePath());
     stats.put("exists", Boolean.valueOf(file.isFile()));
     stats.put("sizeBytes", Long.valueOf(file.isFile() ? file.length() : 0L));
     long entries = 0L;
+    long chunks = 0L;
     if (file.isFile()) {
       Connection conn = null;
       try {
         Class.forName("org.sqlite.JDBC");
         conn = DriverManager.getConnection("jdbc:sqlite:" + file.getAbsolutePath());
         Statement st = conn.createStatement();
-        ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM translation");
+        ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM t");
         if (rs.next()) {
           entries = rs.getLong(1);
         }
         rs.close();
         st.close();
+        // Reported when it is there and passed over when it is not: a
+        // database written by an older build has the translations without
+        // the count of what went into them, and the translations are the
+        // number being asked for.
+        try {
+          Statement builtSt = conn.createStatement();
+          ResultSet builtRs = builtSt.executeQuery("SELECT chunks FROM built");
+          if (builtRs.next()) {
+            chunks = builtRs.getLong(1);
+          }
+          builtRs.close();
+          builtSt.close();
+        } catch (Exception noBuiltTable) {
+          chunks = 0L;
+        }
       } catch (Exception e) {
         stats.put("error", e.getLocalizedMessage());
       } finally {
@@ -290,6 +320,7 @@ public class ServicesRestResource {
       }
     }
     stats.put("entries", Long.valueOf(entries));
+    stats.put("chunks", Long.valueOf(chunks));
     return stats;
   }
 }
