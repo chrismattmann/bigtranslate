@@ -100,6 +100,159 @@ public class TestProgressReachesThePanel {
     }
   }
 
+
+  // ------------------------------------------------ counted from disk ---
+  //
+  // Through the translate pass nothing writes the marker except the wait
+  // loop in bin/bigtranslate, which carries no counts, so the panel has to
+  // be able to work them out for itself. The rule is deliberately the same
+  // one progress() uses in bin/bt-run-marker, and the two must agree.
+
+  @Test
+  public void nothingExtractedYetIsExtracting() throws Exception {
+    File home = newHome();
+    withHome(home, new Body() {
+      public void run() {
+        Map<String, Object> seen = ProcessBtWrapper.countChunks();
+        assertEquals("extracting", seen.get("stage"));
+        assertEquals(Long.valueOf(0L), seen.get("chunksTotal"));
+      }
+    });
+  }
+
+  @Test
+  public void chunksMadeAndNoneTranslatedIsTranslating() throws Exception {
+    File home = newHome();
+    chunks(home, "strings", 458);
+    withHome(home, new Body() {
+      public void run() {
+        Map<String, Object> seen = ProcessBtWrapper.countChunks();
+        assertEquals("translating", seen.get("stage"));
+        assertEquals(Long.valueOf(458L), seen.get("chunksTotal"));
+        assertEquals(Long.valueOf(0L), seen.get("chunksDone"));
+      }
+    });
+  }
+
+  @Test
+  public void theArchiveCounts() throws Exception {
+    // On a distributed run the manager's own flat directory holds only the
+    // share it translated itself; the archive is the only complete copy.
+    // Counting the flat directory alone reported 43 of 458 while 121 were
+    // done, and the stage never turned over to joining.
+    File home = newHome();
+    chunks(home, "strings", 458);
+    chunks(home, "translated", 43);
+    chunks(home, "translated-catalog", 121);
+    withHome(home, new Body() {
+      public void run() {
+        assertEquals(Long.valueOf(121L),
+            ProcessBtWrapper.countChunks().get("chunksDone"));
+      }
+    });
+  }
+
+  @Test
+  public void aChunkInBothIsCountedOnce() throws Exception {
+    File home = newHome();
+    chunks(home, "strings", 10);
+    chunks(home, "translated", 4);
+    chunks(home, "translated-catalog", 4);
+    withHome(home, new Body() {
+      public void run() {
+        assertEquals(Long.valueOf(4L),
+            ProcessBtWrapper.countChunks().get("chunksDone"));
+      }
+    });
+  }
+
+  @Test
+  public void everythingTranslatedIsJoining() throws Exception {
+    File home = newHome();
+    chunks(home, "strings", 12);
+    chunks(home, "translated-catalog", 12);
+    withHome(home, new Body() {
+      public void run() {
+        assertEquals("joining", ProcessBtWrapper.countChunks().get("stage"));
+      }
+    });
+  }
+
+  @Test
+  public void theRateHasSomethingToMeasureOver() throws Exception {
+    // chunksPerMinute() returns 0 without translatingSince, and the panel
+    // then drops Rate and Remaining without saying why. The bar came up with
+    // no chunks/min beside it for exactly this reason.
+    File home = newHome();
+    chunks(home, "strings", 458);
+    chunks(home, "translated-catalog", 16);
+    withHome(home, new Body() {
+      public void run() {
+        Object since = ProcessBtWrapper.countChunks().get("translatingSince");
+        assertTrue("no translatingSince, so no rate", since instanceof Long);
+        long when = ((Long) since).longValue();
+        assertTrue("not a plausible epoch millis: " + when,
+            when > 1000000000000L && when <= System.currentTimeMillis() + 1000L);
+      }
+    });
+  }
+
+  @Test
+  public void nothingTranslatedYetHasNoRate() throws Exception {
+    // Measuring from the start of the run would fold in the extract pass,
+    // which on the full corpus is ten minutes of translating nothing.
+    File home = newHome();
+    chunks(home, "strings", 458);
+    withHome(home, new Body() {
+      public void run() {
+        assertEquals(null,
+            ProcessBtWrapper.countChunks().get("translatingSince"));
+      }
+    });
+  }
+
+  @Test
+  public void itIsTheFirstChunkNotTheLast() throws Exception {
+    File home = newHome();
+    chunks(home, "strings", 10);
+    chunks(home, "translated", 3);
+    File dir = new File(new File(home, "data"), "translated");
+    File first = new File(dir, "chunk-00000.json");
+    final long old = System.currentTimeMillis() - (90L * 60L * 1000L);
+    assertTrue(first.setLastModified(old));
+    withHome(home, new Body() {
+      public void run() {
+        Object since = ProcessBtWrapper.countChunks().get("translatingSince");
+        assertTrue(since instanceof Long);
+        assertEquals("it took the newest, so the rate reads far too fast",
+            old / 1000L, ((Long) since).longValue() / 1000L);
+      }
+    });
+  }
+
+  private interface Body {
+    void run();
+  }
+
+  private void withHome(File home, Body body) {
+    String previous = System.getProperty("BIGTRANSLATE_HOME");
+    System.setProperty("BIGTRANSLATE_HOME", home.getAbsolutePath());
+    try {
+      body.run();
+    } finally {
+      restore(previous);
+    }
+  }
+
+  private void chunks(File home, String dir, int count) throws Exception {
+    File where = new File(new File(home, "data"), dir);
+    assertTrue(where.isDirectory() || where.mkdirs());
+    for (int n = 0; n < count; n++) {
+      assertTrue(new File(where, String.format("chunk-%05d.json",
+          Integer.valueOf(n))).createNewFile());
+    }
+  }
+
   // ------------------------------------------------------------- helpers ---
 
   private Map<String, Object> snapshotWithMarker() throws Exception {

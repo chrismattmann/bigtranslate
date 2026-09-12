@@ -33,8 +33,10 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -523,6 +525,118 @@ public class ProcessBtWrapper {
     } catch (NumberFormatException e) {
       return 0L;
     }
+  }
+
+  /**
+   * How far the run has got, read from the directories rather than from the
+   * marker.
+   *
+   * <p>The marker is what a stage last wrote, and between stages nothing
+   * writes it: through the whole translate pass the only writer is the wait
+   * loop in bin/bigtranslate, which carries no counts. The panel then has no
+   * chunksTotal and falls back to showing a tail of the log, which is the
+   * thing the counts exist to replace.</p>
+   *
+   * <p>The directories are current whatever last touched the marker, and
+   * survive a restart. This is deliberately the same rule as progress() in
+   * bin/bt-run-marker, including the union: a chunk that exists anywhere has
+   * an answer, the archive is the only complete copy on a distributed run,
+   * and a single machine install has no archive at all. The two must agree;
+   * TestProgressReachesThePanel pins the rule on both sides.</p>
+   */
+  public static Map<String, Object> countChunks() {
+    long made = countEntries(FileConstants.stringsDir());
+    Set<String> done = new LinkedHashSet<String>();
+    done.addAll(names(FileConstants.translatedDir()));
+    done.addAll(names(FileConstants.translatedCatalogDir()));
+    Map<String, Object> seen = new LinkedHashMap<String, Object>();
+    String stage;
+    if (done.size() >= made && made > 0) {
+      stage = "joining";
+    } else if (made > 0) {
+      stage = "translating";
+    } else {
+      stage = "extracting";
+    }
+    seen.put("stage", stage);
+    seen.put("chunksTotal", Long.valueOf(made));
+    seen.put("chunksDone", Long.valueOf(done.size()));
+    // When the first chunk landed, which is what a rate is measured over.
+    // Measuring from the start of the run instead folds in the extract pass
+    // -- ten minutes of apparently translating nothing on the full corpus --
+    // and makes every early estimate wrong. Without it chunksPerMinute()
+    // returns 0 and the panel drops Rate and Remaining silently, which is
+    // how the bar came up with no chunks/min beside it.
+    if (!done.isEmpty()) {
+      Long began = earliestChunk();
+      if (began != null) {
+        seen.put("translatingSince", began);
+      }
+    }
+    return seen;
+  }
+
+  /**
+   * When the first translated chunk appeared, in epoch millis.
+   *
+   * <p>The same rule as earliest() in bin/bt-run-marker, and for the same
+   * reason: taking "now" would date a run that is hours old to this second,
+   * and a rate worked out from it -- a hundred chunks in no time at all --
+   * is nonsense in the direction that looks like good news.</p>
+   */
+  private static Long earliestChunk() {
+    long best = Long.MAX_VALUE;
+    for (String dir : new String[] {FileConstants.translatedDir(),
+        FileConstants.translatedCatalogDir()}) {
+      Path path = Paths.get(dir);
+      if (!Files.isDirectory(path)) {
+        continue;
+      }
+      try {
+        DirectoryStream<Path> stream = Files.newDirectoryStream(path);
+        try {
+          for (Path child : stream) {
+            if (!child.getFileName().toString().startsWith("chunk-")) {
+              continue;
+            }
+            long when = Files.getLastModifiedTime(child).toMillis();
+            if (when > 0 && when < best) {
+              best = when;
+            }
+          }
+        } finally {
+          stream.close();
+        }
+      } catch (IOException e) {
+        continue;
+      }
+    }
+    return best == Long.MAX_VALUE ? null : Long.valueOf(best);
+  }
+
+  private static Set<String> names(String dir) {
+    Set<String> out = new LinkedHashSet<String>();
+    Path path = Paths.get(dir);
+    if (!Files.isDirectory(path)) {
+      return out;
+    }
+    try {
+      DirectoryStream<Path> stream = Files.newDirectoryStream(path);
+      try {
+        for (Path child : stream) {
+          out.add(child.getFileName().toString());
+        }
+      } finally {
+        stream.close();
+      }
+    } catch (IOException e) {
+      return out;
+    }
+    return out;
+  }
+
+  private static long countEntries(String dir) {
+    return names(dir).size();
   }
 
   public static long countJobDirs() {

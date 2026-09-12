@@ -33,6 +33,12 @@
     </div>
 
     <!--
+      Only until there are counts. The tally answers the question the log was
+      being read for -- how far along, how fast, how much longer -- and it
+      answers it in one line instead of a scrolling wall of
+      "Translating: 890 workflow instances still running (1200s)". Once the
+      bar is up the log is noise beside it.
+
       A run started from the command line writes to the deployment's own log,
       not to the one Gloss keeps of what it did itself, so this waited for a
       log that was never going to arrive and said "Waiting for log…" for the
@@ -40,7 +46,7 @@
       actually writing; when there genuinely is not one yet, say that rather
       than implying something is stuck.
     -->
-    <pre v-if="log" class="tail">{{ log }}</pre>
+    <pre v-if="log && !hasCounts" class="tail">{{ log }}</pre>
     <p v-else-if="!hasCounts" class="nolog">
       No log output yet. The workflow manager is running this; its progress
       shows above and in OPSUI.
