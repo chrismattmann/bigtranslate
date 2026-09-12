@@ -54,14 +54,6 @@ inherit the workflow manager's environment, and `env.sh` adds
 the tools resolve first, because otherwise every step logs "command not found"
 while the workflow still reports `FINISHED`.
 
-## The original single-task pipeline
-
-`BigTranslateWorkflow` is the earlier design: one task per TSV file, running
-[ETLLib](https://github.com/chrismattmann/etllib/)'s `tsvtojson`, `repackage`
-and `poster` around the translation step. It still ships and `requirements.txt`
-still installs ETLLib for it, but it translates every cell and creates one
-instance per file, so it is not the path to use at corpus scale.
-
 ## More
 
 * [Installation](https://github.com/chrismattmann/bigtranslate/wiki/Installation)

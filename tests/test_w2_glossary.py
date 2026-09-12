@@ -209,8 +209,9 @@ class TestTheWiring:
 
     def test_the_tasks_that_use_it_define_it(self):
         text = (WORKFLOW_POLICY / "tasks.xml").read_text()
-        # W1's BigTranslate_Task, plus the two W2 tasks that now need it.
-        assert text.count('name="TranslateGlossary"') == 3
+        # The two W2 tasks that need it. Was three while W1's
+        # BigTranslate_Task still existed.
+        assert text.count('name="TranslateGlossary"') == 2
 
     def test_the_glossary_ships(self):
         assert (CONF / "glossary.es-en.tsv").exists()

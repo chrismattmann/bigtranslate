@@ -454,6 +454,14 @@ function translate {
         say "  skipping anything matching $BIGTRANSLATE_EXCLUDE"
     fi
 
+    # No --actionIds. TriggerPostIngestWorkflow fires [ProductType]Ingest,
+    # which here is EmploymentJobAggregatesTsvIngest -- the event that started
+    # the W1 split. W2 wants no event per file: the corpus is catalogued by
+    # this crawl and read once, whole, by the extract that start_the_pipeline
+    # sets going. The extract keeps its own trigger, because
+    # EmploymentStringChunkIngest is what gives each chunk a translate
+    # workflow.
+    #
     # A subshell rather than pushd/popd: the directory stack was echoed into
     # the log, and it was the only thing in there.
     (
@@ -461,7 +469,7 @@ function translate {
         ./crawler_launcher --operation --metPC --metExtractorConfig \
         $BIGTRANSLATE_HOME/extractors/default/default.cpr.conf --metExtractor org.apache.oodt.cas.metadata.extractors.CopyAndRewriteExtractor \
         --filemgrUrl $FILEMGR_URL --clientTransferer org.apache.oodt.cas.filemgr.datatransfer.InPlaceDataTransferFactory \
-        --preCondIds RegExExcludeComparator --actionIds TriggerPostIngestWorkflow --productPath $PRODUCT_PATH
+        --preCondIds RegExExcludeComparator --productPath $PRODUCT_PATH
     )
 
     say "Crawl finished."
@@ -475,21 +483,6 @@ function translate {
     # The run is not over when the crawl is over.
     wait_for_workflow
     unmark_run
-}
-
-# Get the current list of RatAuditTasks running.
-function current_pges {
-    STATUS="PGE%20EXEC"
-    tika="java -jar $BIGTRANSLATE_HOME/lib/tika-app-1.13.jar"
-
-    # Added workaround to catch the intermitent 500 error (very unlikely) and let the script continue
-    # The workaround shall not be required once we solve OODT-920 issue
-    status=$(($tika "${OPSUI_URL}/instances/${STATUS}/1" | grep -v FINISHED | grep BigTranslateWorkflow) 2>&1)
-    if echo "$status" | grep -q "Server returned HTTP response code: 500"; then
-	echo "500 Error occurred but continue";	 
-    else
-	echo $status;
-    fi
 }
 
 # Ensure the number of arguments matches the expected number. Expects three arguments:

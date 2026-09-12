@@ -28,10 +28,9 @@ import pytest
 
 from conftest import BIN, CONF, POLICY, REPO, RESOURCES, WORKFLOW_POLICY
 
-PGE_CONFIG = POLICY / "no_filter" / "PgeConfig_BigTranslate.xml"
-SPLIT_CONFIG = POLICY / "no_filter" / "PgeConfig_Split.xml"
 METOUT = POLICY / "metout"
 TASKS = WORKFLOW_POLICY / "tasks.xml"
+POLICY_DIR = WORKFLOW_POLICY
 
 
 def xml_files():
@@ -65,9 +64,11 @@ class TestJdk21Runtime:
     def test_no_java_endorsed_dirs(self, script):
         assert "-Djava.endorsed.dirs" not in script.read_text()
 
-    def test_pge_config_carries_no_ext_dirs(self):
-        assert "java.ext.dirs" not in PGE_CONFIG.read_text()
-        assert "java.ext.dirs" not in SPLIT_CONFIG.read_text()
+    @pytest.mark.parametrize("name", ["PgeConfig_ExtractStrings.xml",
+                                      "PgeConfig_TranslateChunk.xml",
+                                      "PgeConfig_JoinIndex.xml"])
+    def test_pge_config_carries_no_ext_dirs(self, name):
+        assert "java.ext.dirs" not in (POLICY / "no_filter" / name).read_text()
 
 
 class TestAvroTransport:
@@ -187,127 +188,77 @@ class TestWorkflowExecution:
         assert not active, "resourcemgr.url is enabled: %r" % active
 
 
-class TestTranslateStep:
-    def test_pge_invokes_the_pantogloss_shim(self):
-        assert "pantogloss-translatejson" in PGE_CONFIG.read_text()
-
-    def test_pge_no_longer_invokes_the_tika_backed_tool(self):
-        text = PGE_CONFIG.read_text()
-        assert not re.search(r"\btranslatejson\b(?!\s*\")", text.replace(
-            "pantogloss-translatejson", ""))
-
-    def test_translate_runs_once_per_directory(self):
-        # One process per document would reload the model for every posting.
-        text = PGE_CONFIG.read_text()
-        assert "--in-dir" in text and "--out-dir" in text
-        assert "xargs -I infile" not in text
-
-    def test_shim_receives_the_glossary(self):
-        assert "--glossary" in PGE_CONFIG.read_text()
-
-    def test_poster_reads_the_translated_directory(self):
-        text = PGE_CONFIG.read_text()
-        assert re.search(r"find \[JobOutputDir\]/translated .*\| poster", text)
-
-    def test_stamps_solr_lineage_before_poster(self):
-        text = PGE_CONFIG.read_text()
-        stamp = text.find("stamp-solr-lineage")
-        poster = text.find("| poster")
-        assert stamp != -1 and poster != -1 and stamp < poster
-
-
-def _pge_output_dirs(path):
-    root = ET.parse(path).getroot()
-    output = root.find("output")
-    assert output is not None, "%s has no <output>" % path
-    return list(output.findall("dir"))
-
-
-def _metout_keys(path):
-    root = ET.parse(path).getroot()
-    found = {}
-    for node in root.findall("metadata"):
-        found[node.get("key")] = node.get("val")
-    return found
-
-
-class TestBigTranslateIngest:
-    """File Manager catalogs the TSV and the split; Solr holds the postings."""
-
-    def test_split_still_writes_met_via_generic_metout(self):
-        dirs = _pge_output_dirs(SPLIT_CONFIG)
-        assert dirs
-        files = dirs[0].find("files")
-        assert files.get("metFileWriterClass").endswith("MetadataListPcsMetFileWriter")
-        assert files.get("args").endswith("generic_metout.xml")
-
-    def test_translate_does_not_ingest_leaf_json(self):
-        dirs = _pge_output_dirs(PGE_CONFIG)
-        paths = [d.get("path") for d in dirs]
-        assert "[JobOutputDir]/employmentjobs" not in paths
-        assert "[JobOutputDir]/translated" not in paths
-        assert "[JobOutputDir]/aggregatejson" not in paths
-
-    def test_does_not_delete_the_split_parent(self):
-        text = PGE_CONFIG.read_text()
-        assert "DeleteProduct" not in text
-        assert "fmdel" not in text
-
-    def test_wipes_working_copies_after_solr_post(self):
-        text = PGE_CONFIG.read_text()
-        poster = text.find("| poster")
-        wipe = text.find("rm -rf [JobOutputDir]")
-        assert poster != -1 and wipe != -1 and poster < wipe
-
-    def test_lineage_keys_are_the_split_and_original_tsv(self):
-        root = ET.parse(PGE_CONFIG).getroot()
-        keys = {m.get("key"): m.get("val") for m in root.find("customMetadata").findall("metadata")}
-        assert keys["SplitFilename"] == "[TsvFile]"
-        assert keys["SourceTsv"] == "[InputFiles]"
-        assert "[SplitFilename]" in PGE_CONFIG.read_text()
-        assert "[SourceTsv]" in PGE_CONFIG.read_text()
+class TestRetiredTooling:
+    """Things the pipeline used to need and must not quietly come back."""
 
     def test_tika_server_classpath_is_retired(self):
         text = (BIN / "setenv.sh").read_text()
         assert "TIKA_SERVER_CLASSPATH" not in text
 
+    def test_the_w1_pipeline_is_gone(self):
+        # One task per TSV, translating every row of every file. Superseded
+        # by the extract/translate/join pipeline, which deduplicates globally
+        # first: 836 million model calls became 2.3 million. It stayed wired
+        # to the crawler long after nothing used it, and because its tasks
+        # named no queue every one of them failed on submission -- 11,232
+        # failed instances in a single run, which is most of what the failure
+        # count reported.
+        for name in ("Split.workflow.xml", "BigTranslate.workflow.xml"):
+            assert not (POLICY_DIR / name).exists(), "%s is back" % name
+        for name in ("PgeConfig_Split.xml", "PgeConfig_BigTranslate.xml"):
+            assert not (POLICY / "no_filter" / name).exists(), "%s is back" % name
+        tasks = TASKS.read_text()
+        for task in ("Split_Task", "BigTranslate_Task", "FilterTask"):
+            assert task not in tasks, "%s is back in tasks.xml" % task
+        events = (POLICY_DIR / "events.xml").read_text()
+        for event in ("EmploymentJobAggregatesTsvIngest",
+                      "EmploymentJobAggregatesTsvSplitIngest"):
+            assert event not in events, "%s is back in events.xml" % event
 
-@pytest.fixture(scope="module")
-def properties():
-    """Configuration properties of the BigTranslate_Task.
+    def test_the_corpus_crawl_fires_no_per_file_event(self):
+        # TriggerPostIngestWorkflow fires [ProductType]Ingest, which for the
+        # corpus crawl is EmploymentJobAggregatesTsvIngest -- W1's trigger.
+        # The extract keeps its own, because EmploymentStringChunkIngest is
+        # what gives each chunk a translate workflow.
+        driver = (BIN / "bigtranslate").read_text()
+        crawl = driver[driver.index("crawler_launcher"):]
+        crawl = crawl[:crawl.index("productPath")]
+        assert "--actionIds" not in crawl, (
+            "the corpus crawl still fires a per-file workflow event")
+        extract = (POLICY / "no_filter" / "PgeConfig_ExtractStrings.xml").read_text()
+        assert "TriggerPostIngestWorkflow" in extract, (
+            "the extract must still trigger the chunk ingest event")
 
-    The root element is namespaced but its children are not, so the task
-    elements sit in no namespace.
+
+class TestEveryTaskConfigShips:
+    """A task naming a conf file that is not there fails at run time.
+
+    Was the BigTranslate_Task's properties; now every task, because the
+    check was never specific to that one and W2 has three tasks referencing
+    four conf files between them.
     """
-    root = ET.parse(TASKS).getroot()
-    found = {}
-    for task in root.iter("task"):
-        if task.get("name") == "BigTranslate_Task":
+
+    def test_every_referenced_conf_file_ships(self):
+        root = ET.parse(TASKS).getroot()
+        missing = []
+        for task in root.iter("task"):
             for prop in task.iter("property"):
-                found[prop.get("name")] = prop.get("value")
-    return found
+                value = prop.get("value") or ""
+                if "/conf/" not in value:
+                    continue
+                name = value.rsplit("/", 1)[-1]
+                if not (CONF / name).is_file():
+                    missing.append("%s -> %s" % (task.get("name"), name))
+        assert not missing, "conf files named but not shipped: " + ", ".join(missing)
 
-
-class TestTaskProperties:
-    def test_near_dupe_threshold_is_conservative(self, properties):
-        # Direction is easy to read backwards: higher keeps more. At 0.1 the
-        # filter discarded 206 of 211 rows on a sample country-day.
-        assert float(properties["NearDupeThreshold"]) >= 0.7
-
-    def test_cache_is_sqlite(self, properties):
-        # rlite is unreachable: hirlite no longer builds.
-        assert properties["TranslateCachePath"].endswith(".sqlite")
-
-    def test_glossary_path_is_declared(self, properties):
-        assert properties["TranslateGlossary"].endswith("glossary.es-en.tsv")
-
-    def test_batch_size_is_positive(self, properties):
-        assert int(properties["TranslateBatchSize"]) > 0
-
-    def test_every_referenced_conf_file_ships(self, properties):
-        for key in ("TranslateCols", "TranslateGlossary"):
-            name = properties[key].rsplit("/", 1)[-1]
-            assert (CONF / name).is_file(), "%s missing from conf/" % name
+    def test_the_translate_task_still_declares_its_batch_size(self):
+        root = ET.parse(TASKS).getroot()
+        for task in root.iter("task"):
+            if task.get("name") == "Translate_Chunk_Task":
+                names = {p.get("name") for p in task.iter("property")}
+                assert "TranslateBatchSize" in names
+                return
+        raise AssertionError("no Translate_Chunk_Task in tasks.xml")
 
 
 class TestCorpusConfig:
