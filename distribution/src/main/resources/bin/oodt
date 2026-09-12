@@ -450,6 +450,34 @@ wait_for_port() {
 # Done here rather than only in bigtranslate-setup because setup is exactly
 # what is not re-run in that situation. It creates nothing when the tables are
 # already there.
+# Write the Resource Manager's node and queue policy from conf/nodes.conf.
+#
+# resmgr/policy/nodes.xml and node-to-queue-mapping.xml are generated from
+# conf/nodes.conf by bin/bt-cluster policy -- and they are also shipped, with
+# stock contents, inside the distribution. Unpacking a release over a
+# deployment therefore replaces the generated policy with the stock one, and
+# nothing says so. The node list is gone, "conditions" is served by nobody,
+# and every gated task sits unschedulable: a run that starts cleanly and then
+# does nothing, which reads as slow rather than as broken.
+#
+# Regenerated here rather than left to the operator because the failure
+# follows an upgrade, which is exactly when nobody is thinking about the
+# resource policy. Reading conf/nodes.conf and writing two files is local and
+# takes no measurable time, so doing it on every start costs nothing and
+# removes a step that has to be remembered.
+#
+# Before the Resource Manager starts, because it reads the policy once.
+ensure_resource_policy() {
+  cluster="$OODT_BASE/bin/bt-cluster"
+  nodes_conf="$OODT_BASE/conf/nodes.conf"
+  # A deployment with no node list is a single machine one that never had
+  # generated policy; leave whatever it has alone.
+  [ -x "$cluster" ] && [ -f "$nodes_conf" ] || return 0
+  BIGTRANSLATE_HOME="$OODT_BASE" "$cluster" policy > /dev/null 2>&1 \
+    || echo "Could not write the resource policy from conf/nodes.conf;" \
+            "starting with whatever is in resmgr/policy."
+}
+
 ensure_workflow_instance_schema() {
   schema_sql="$OODT_BASE/workflow/etc/workflow-instances.sql"
   schema_props="$OODT_BASE/workflow/etc/workflow.properties"
@@ -498,6 +526,7 @@ wait_for_pantogloss() {
 
 start_oodt() {
   ensure_working_dirs
+  ensure_resource_policy
   nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
   nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
 

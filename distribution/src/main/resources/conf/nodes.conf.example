@@ -1,9 +1,18 @@
 # The machines that run translate tasks: id, address, capacity.
 #
-# Edit this file, then `bin/bt-cluster policy` to write nodes.xml and
-# the queue map from it. A deployment's own node list is a local edit
-# to a tracked file, so keep a copy: `bin/bt-cluster deploy` and an
-# unpacked tarball will both put this default back.
+# THIS FILE IS AN EXAMPLE AND IS NOT READ. Copy it once:
+#
+#     cp conf/nodes.conf.example conf/nodes.conf
+#
+# and edit the copy. bin/bt-cluster reads conf/nodes.conf, writes the
+# Resource Manager's policy from it, and bin/oodt rewrites that policy at
+# every start -- so a node list, once written, survives an upgrade.
+#
+# It is an example rather than the file itself because it used to be the
+# file itself. Unpacking a release over a deployment put "local localhost 8"
+# back over a two machine node list, the policy was then regenerated from
+# that, and the run went on without the GPU node while reporting nothing
+# wrong: half the throughput, no error, no mention.
 #
 # One line is a single machine install and needs no cluster at all.
 

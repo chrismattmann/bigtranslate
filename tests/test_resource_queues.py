@@ -57,7 +57,19 @@ class TestEveryW2TaskHasAQueue:
             assert _task_properties(task_id).get("TaskLoad"), task_id
 
 
-class TestOnlyTranslateLeavesTheMachine:
+class TestTheShippedPolicyIsASingleMachineDefault:
+    """What resmgr/src/main/resources/policy describes.
+
+    It used to be a hand maintained snapshot of the two machine cluster this
+    project runs, and it went stale: conditions were given a node id of their
+    own and this file was not updated, so it served no "conditions" queue at
+    all. An upgrade unpacks it over the generated policy, and until bin/oodt
+    rewrote it nothing could schedule a gate.
+
+    It is a single machine default now. The multi node invariants belong to
+    the thing that generates the real policy, and are tested against
+    bin/bt-cluster policy in test_bt_cluster.py.
+    """
 
     def _map(self):
         root = ET.parse(str(RESMGR_POLICY / "node-to-queue-mapping.xml")).getroot()
@@ -66,25 +78,33 @@ class TestOnlyTranslateLeavesTheMachine:
             out[node.get("id")] = {q.get("name") for q in node.iter("queue")}
         return out
 
-    def test_every_node_serves_translate(self):
-        # A chunk carries no state beyond its own output file, so any node
-        # may take any chunk.
-        m = self._map()
-        assert m, "no nodes mapped"
-        for node, queues in m.items():
-            assert "translate" in queues, node
+    def test_it_describes_one_machine(self):
+        addresses = {
+            node.get("ip")
+            for node in ET.parse(str(RESMGR_POLICY / "nodes.xml")).getroot()
+                          .iter("node")
+        }
+        assert len(addresses) == 1, addresses
 
-    def test_only_the_manager_node_serves_the_managers_queue(self):
-        # Extract reads /Volumes/CHIPOTLE_BRICK and join writes
-        # /Volumes/BTSOLR. Neither volume exists on a compute node.
-        m = self._map()
-        serving = [n for n, q in m.items() if "managers" in q]
-        assert serving == ["local"], serving
+    def test_every_queue_the_tasks_ask_for_is_served(self):
+        served = set()
+        for queues in self._map().values():
+            served |= queues
+        assert set(W2_TASKS.values()) <= served, sorted(served)
+        assert "conditions" in served, (
+            "a gate is dispatched as a task; unserved, it never runs and the "
+            "run stops without an error")
 
-    def test_the_compute_node_cannot_take_extract_or_join(self):
-        queues = self._map().get("gpu")
-        assert queues is not None, "the gpu node is not mapped"
-        assert "managers" not in queues
+    def test_managers_and_conditions_each_get_a_node_of_their_own(self):
+        # The Resource Manager tracks load per node id, not per queue, so a
+        # queue sharing an id shares its capacity. The join once sat queued
+        # behind 131 translate jobs on a full node after every translation it
+        # was waiting for had already succeeded.
+        m = self._map()
+        for queue in ("managers", "conditions", "translate"):
+            owners = [n for n, q in m.items() if queue in q]
+            assert len(owners) == 1, (queue, owners)
+            assert m[owners[0]] == {queue}, (owners[0], m[owners[0]])
 
 
 class TestTheTranslateStageStartsNothing:

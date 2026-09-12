@@ -88,7 +88,18 @@ export PANTOGLOSS_SOURCE
 NODES_CONF="${NODES_CONF:-${BT_NODES_CONF:-$BIGTRANSLATE_HOME/conf/nodes.conf}}"
 SSH="${SSH:-${BT_SSH:-ssh -o BatchMode=yes}}"
 
-[ -f "$NODES_CONF" ] || die "no node list at $NODES_CONF"
+# Shipped as conf/nodes.conf.example and copied once, so that unpacking a
+# release over a deployment cannot put "local localhost 8" back over a real
+# node list. It did, and the run that followed simply left the GPU node out.
+if [ ! -f "$NODES_CONF" ]; then
+  if [ -f "$BIGTRANSLATE_HOME/conf/nodes.conf.example" ]; then
+    echo "no node list at $NODES_CONF" >&2
+    echo "Copy the example and edit it:" >&2
+    echo "  cp $BIGTRANSLATE_HOME/conf/nodes.conf.example $NODES_CONF" >&2
+    exit 1
+  fi
+  die "no node list at $NODES_CONF"
+fi
 
 # --node picks one out of the list. Adding a machine to a running cluster
 # should not mean redeploying the ones already working.
