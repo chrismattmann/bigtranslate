@@ -127,6 +127,38 @@
           is a shortfall in every sector at once.
         </p>
       </article>
+      <!-- Hindsight -->
+      <article class="card">
+        <h3>How well did it do?</h3>
+        <p class="q">Twelve years on &middot; the panels above, against the record</p>
+        <p class="note lede">{{ verdict }}</p>
+        <svg ref="scoreSvg" class="chart"></svg>
+        <div class="checks">
+          <div v-for="c in checks" :key="c.key" class="check">
+            <div class="verdict" :style="{ background: c.colour }">{{ c.verdictLabel }}</div>
+            <div class="body">
+              <p class="said">
+                <span class="qtag">{{ c.question }}</span>
+                {{ c.claim }}
+                <em v-if="c.measured"> &mdash; the index says {{ c.measured }}.</em>
+              </p>
+              <p class="then">{{ c.happened }}</p>
+              <p v-if="c.citations.length" class="cites">
+                <a v-for="s in c.citations" :key="s.url" :href="s.url"
+                   target="_blank" rel="noopener">{{ s.label }}</a>
+              </p>
+            </div>
+          </div>
+        </div>
+        <p class="note">
+          The corpus stops in November 2013, so these are a matter of record
+          rather than of opinion. The measured half of each line is computed
+          from the index as this page loads; the other half is cited. The
+          misses are the entries worth having: a straight line through
+          eighteen months could not see a currency devaluation two months
+          after the data ends, and it did not.
+        </p>
+      </article>
     </template>
   </section>
 </template>
@@ -135,6 +167,9 @@
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as d3 from 'd3'
 import { solrFacet } from '../api.js'
+import {
+  CHECKS, VERDICTS, citations, tally, verdictLine
+} from '../hindsight.js'
 import {
   MIN_REGION_POSTINGS, SECTORS, SECTOR_FIELDS, growthRate, monthLabel,
   opportunities, project, sectorCounts, sectorFacet, sectorShares,
@@ -163,6 +198,9 @@ export default {
     const jobLabel = ref('')
     const sectorField = ref(SECTOR_FIELDS.broad)
     const tip = ref(null)
+    const checks = ref([])
+    const verdict = ref('')
+    const scoreSvg = ref(null)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
     let observer = null
     // What the last fetch returned, so a resize redraws without asking
@@ -277,6 +315,7 @@ export default {
       // null and every draw below returns having drawn nothing -- silently,
       // because a chart with no data to plot looks the same as one that was
       // never asked to.
+      buildChecks()
       await nextTick()
       redraw()
     }
@@ -291,6 +330,110 @@ export default {
       drawZones(data.regions)
       drawTrends(data.months)
       drawGaps(data.regions, data.months, data.national)
+      drawScorecard()
+    }
+
+    /**
+     * What each check claimed, measured from the index as this loads.
+     *
+     * Written down it would be a number about whichever index happened to be
+     * in front of whoever typed it. Measured, the claim is about the corpus
+     * actually loaded, and a rebuild that changed the answer would change
+     * what the panel says it claimed.
+     */
+    function measure(check) {
+      if (!data) {
+        return ''
+      }
+      const m = check.measure || {}
+      if (m.kind === 'sectorTrend') {
+        const rate = growthRate(shareSeries(data.months, m.sector))
+        return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}% a month`
+      }
+      if (m.kind === 'fullTimeShare') {
+        const totals = data.months.reduce((acc, b) => {
+          acc.all += b.count || 0
+          acc.ft += (b['Full Time'] && b['Full Time'].count) || 0
+          return acc
+        }, { all: 0, ft: 0 })
+        return totals.all
+          ? `${(100 * totals.ft / totals.all).toFixed(1)}% of postings`
+          : ''
+      }
+      if (m.kind === 'lifetime') {
+        const full = data.life.find((b) => b.val === 'Full Time')
+        return full && typeof full.days === 'number'
+          ? `${full.days.toFixed(1)} days per job`
+          : ''
+      }
+      if (m.kind === 'opportunity') {
+        const growth = {}
+        SECTORS.forEach((sec) => {
+          growth[sec.key] = growthRate(shareSeries(data.months, sec.key))
+        })
+        const found = opportunities(data.regions, data.national, growth)
+          .filter((o) => (!m.region || m.region.test(o.region))
+            && (!m.sector || o.sector === m.sector))
+        if (!found.length) {
+          return 'no opening found now'
+        }
+        const rank = opportunities(data.regions, data.national, growth)
+          .indexOf(found[0]) + 1
+        return `ranked ${rank} of the openings, `
+          + `${(found[0].gap * 100).toFixed(1)} points short`
+      }
+      return ''
+    }
+
+    function buildChecks() {
+      checks.value = CHECKS.map((c) => ({
+        key: c.key,
+        question: c.question,
+        claim: c.claim,
+        happened: c.happened,
+        measured: measure(c),
+        verdictLabel: VERDICTS[c.verdict].label,
+        colour: VERDICTS[c.verdict].colour,
+        citations: citations(c)
+      }))
+      verdict.value = verdictLine(tally(CHECKS))
+    }
+
+    function drawScorecard() {
+      if (!scoreSvg.value) {
+        return
+      }
+      const counts = tally(CHECKS)
+      const rows = ['held', 'partial', 'missed', 'untestable']
+        .map((k) => ({ key: k, n: counts[k], ...VERDICTS[k] }))
+        .filter((r) => r.n > 0)
+      const total = rows.reduce((sum, r) => sum + r.n, 0)
+      if (!total) {
+        return
+      }
+      const { sel, width } = frame(scoreSvg.value, 54)
+      const x = d3.scaleLinear().domain([0, total]).range([0, width])
+      let acc = 0
+      const bands = rows.map((r) => {
+        const band = { ...r, from: acc }
+        acc += r.n
+        return band
+      })
+      hoverable(
+        sel.append('g').selectAll('rect').data(bands).join('rect')
+          .attr('x', (d) => x(d.from)).attr('y', 6)
+          .attr('width', (d) => Math.max(0, x(d.from + d.n) - x(d.from)))
+          .attr('height', 20).attr('fill', (d) => d.colour),
+        (d) => ({
+          title: d.label,
+          lines: [`${d.n} of ${total} checks`]
+        }))
+      bands.forEach((d) => {
+        const mid = (x(d.from) + x(d.from + d.n)) / 2
+        sel.append('text').attr('x', mid).attr('y', 44)
+          .attr('text-anchor', 'middle').attr('class', 'leg')
+          .text(`${d.label} ${d.n}`)
+      })
     }
 
     /**
@@ -759,7 +902,8 @@ export default {
     })
 
     return {
-      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, tip, jobLabel,
+      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, scoreSvg, tip,
+      jobLabel, checks, verdict,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion
     }
   }
@@ -793,6 +937,23 @@ export default {
 .chart { display: block; width: 100%; overflow: visible; }
 .note { margin: 10px 0 0; font-size: 0.86rem; color: #55606b; }
 .loading { color: #7a8691; }
+.lede { font-size: 0.95rem; color: #2f3a45; margin-top: 0; }
+.checks { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.check { display: flex; gap: 12px; align-items: flex-start;
+         border-top: 1px solid #eef1f4; padding-top: 10px; }
+.check:first-child { border-top: none; padding-top: 0; }
+.verdict { flex: 0 0 84px; color: #fff; font-size: 0.72rem; font-weight: 600;
+           text-align: center; padding: 4px 0; border-radius: 3px;
+           text-transform: uppercase; letter-spacing: 0.02em; }
+.check .body { flex: 1 1 auto; min-width: 0; }
+.said { margin: 0 0 4px; color: #2f3a45; font-size: 0.9rem; }
+.said em { color: #4e79a7; font-style: normal; font-weight: 600; }
+.qtag { display: inline-block; background: #eef1f4; color: #55606b;
+        border-radius: 3px; padding: 0 5px; font-size: 0.74rem;
+        font-weight: 600; margin-right: 5px; }
+.then { margin: 0; color: #55606b; font-size: 0.87rem; }
+.cites { margin: 5px 0 0; font-size: 0.79rem; }
+.cites a { color: #4e79a7; margin-right: 12px; }
 .analytics { position: relative; }
 .tip { position: absolute; z-index: 20; pointer-events: none;
        background: #1f2933; color: #f5f7fa; border-radius: 4px;
