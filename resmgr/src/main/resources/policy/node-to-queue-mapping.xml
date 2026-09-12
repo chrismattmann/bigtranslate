@@ -14,35 +14,40 @@
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   See the License for the specific language governing permissions and
   limitations under the License.
--->
-<!--
-  Two queues, because only one stage is portable.
 
-  A chunk carries no state beyond its own output file, so any node may take
-  any chunk and the results merge either way: that is the translate queue,
-  and every node serves it.
+  A SINGLE MACHINE DEFAULT, so a fresh install runs without configuring a
+  cluster. It is not maintained by hand. The moment conf/nodes.conf exists,
+  bin/bt-cluster policy writes this file from it, and bin/oodt rewrites it
+  at every start.
 
-  Extract and join are not portable. Both read the 38GB corpus from
-  /Volumes/CHIPOTLE_BRICK and join writes its index to /Volumes/BTSOLR, and
-  those volumes are attached to the machine running the managers. They do
-  not exist on a compute node, and are not exported. So they get a queue
-  only that machine serves.
+  It was maintained by hand once, and it went stale. Conditions were given a
+  node id of their own, so that long running translations cannot exhaust the
+  pool the gates need, and this file was not updated. An upgrade unpacked it
+  over the generated policy, nothing served the "conditions" queue any more,
+  and every gated task became unschedulable: a run that crawls, extracts,
+  and then sits there. bin/bt-cluster preflight reports it as
 
-  This distinction did not exist while the workflow engine used the local
-  runner, because then extract and join never reached the Resource Manager
-  at all. Under ResourceRunnerFactory every task is submitted, so a stage
-  with no queue of its own is eligible for a node that cannot run it.
+      manager: queue [conditions] is asked for but no node serves it
+
+  Three node ids on one machine, because the Resource Manager tracks load
+  per node id rather than per queue. A queue that shares an id shares its
+  capacity: the join once sat queued behind 131 translate jobs on a full
+  node after every translation had already succeeded.
 -->
 <cas:nodeMap xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">
   <node id="local">
     <queues>
       <queue name="translate"/>
+    </queues>
+  </node>
+  <node id="local-managers">
+    <queues>
       <queue name="managers"/>
     </queues>
   </node>
-  <node id="gpu">
+  <node id="local-conditions">
     <queues>
-      <queue name="translate"/>
+      <queue name="conditions"/>
     </queues>
   </node>
 </cas:nodeMap>

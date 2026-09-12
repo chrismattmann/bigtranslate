@@ -190,10 +190,29 @@ class TestNodeSelection:
 
 class TestTheShippedConfig:
 
-    def test_a_node_list_ships(self):
-        assert (CONF / "nodes.conf").exists()
+    def test_a_node_list_ships_as_an_example(self):
+        # Not as conf/nodes.conf. Shipping the file itself meant an unpacked
+        # release put "local localhost 8" back over a two machine node list,
+        # and the run that followed left the GPU node out without saying so.
+        assert (CONF / "nodes.conf.example").exists()
+        assert not (CONF / "nodes.conf").exists(), (
+            "the node list ships under the name it is read from; an upgrade "
+            "will overwrite the deployment's own")
 
     def test_it_documents_the_path_rule(self):
         # The rule that is not obvious and cost the most time.
-        text = (CONF / "nodes.conf").read_text()
+        text = (CONF / "nodes.conf.example").read_text()
         assert "absolute path" in text.lower() or "same" in text.lower()
+
+    def test_it_says_it_has_to_be_copied(self):
+        text = (CONF / "nodes.conf.example").read_text()
+        assert "cp conf/nodes.conf.example conf/nodes.conf" in text
+
+    def test_a_missing_list_points_at_the_example(self, tmp_path):
+        home = tmp_path / "fresh"
+        (home / "conf").mkdir(parents=True)
+        (home / "conf" / "nodes.conf.example").write_text("local  localhost  8\n")
+        done = subprocess.run(["sh", str(CLUSTER), "--home", str(home), "nodes"],
+                              capture_output=True, text=True)
+        assert done.returncode != 0
+        assert "nodes.conf.example" in done.stderr, done.stderr

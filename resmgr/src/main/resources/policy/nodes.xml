@@ -14,22 +14,28 @@
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   See the License for the specific language governing permissions and
   limitations under the License.
--->
-<!--
-  The machines that may run a translate chunk.
 
-  Each node runs a batch stub, which is what actually instantiates the
-  workflow task; the resource manager only decides which stub gets the job.
-  Capacity is how many jobs a node will take at once, and it is the node's
-  Pantogloss concurrency rather than its core count: a chunk spends its life
-  waiting on the translation service, so more jobs than the service has
-  inference slots simply queue inside the service instead of outside it.
+  A SINGLE MACHINE DEFAULT, so a fresh install runs without configuring a
+  cluster. It is not maintained by hand. The moment conf/nodes.conf exists,
+  bin/bt-cluster policy writes this file from it, and bin/oodt rewrites it
+  at every start.
 
-  BIGTRANSLATE_NODE_URL and BIGTRANSLATE_NODE2_URL are set per deployment,
-  so a single-machine install needs no edit here: the second node simply
-  goes unset and unused.
+  It was maintained by hand once, and it went stale. Conditions were given a
+  node id of their own, so that long running translations cannot exhaust the
+  pool the gates need, and this file was not updated. An upgrade unpacked it
+  over the generated policy, nothing served the "conditions" queue any more,
+  and every gated task became unschedulable: a run that crawls, extracts,
+  and then sits there. bin/bt-cluster preflight reports it as
+
+      manager: queue [conditions] is asked for but no node serves it
+
+  Three node ids on one machine, because the Resource Manager tracks load
+  per node id rather than per queue. A queue that shares an id shares its
+  capacity: the join once sat queued behind 131 translate jobs on a full
+  node after every translation had already succeeded.
 -->
 <cas:nodes xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">
   <node nodeId="local" ip="[BIGTRANSLATE_NODE_URL]" capacity="8" envReplace="true"/>
-  <node nodeId="gpu" ip="[BIGTRANSLATE_NODE2_URL]" capacity="8" envReplace="true"/>
+  <node nodeId="local-managers" ip="[BIGTRANSLATE_NODE_URL]" capacity="4" envReplace="true"/>
+  <node nodeId="local-conditions" ip="[BIGTRANSLATE_NODE_URL]" capacity="20" envReplace="true"/>
 </cas:nodes>
