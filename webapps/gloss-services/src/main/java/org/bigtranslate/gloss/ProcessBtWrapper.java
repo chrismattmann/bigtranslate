@@ -128,11 +128,7 @@ public class ProcessBtWrapper {
       // What it has actually done. A status of TRANSLATING and a log tail
       // says almost nothing at hour eleven of a run; how many chunks of
       // how many, and at what rate, says all of it.
-      for (String key : PROGRESS_KEYS) {
-        if (recorded.get(key) != null) {
-          snap.put(key, recorded.get(key));
-        }
-      }
+      copyProgress(recorded, snap);
       return snap;
     }
 
@@ -141,7 +137,26 @@ public class ProcessBtWrapper {
     snap.put("exclude", exclude);
     snap.put("message", message);
     snap.put("startedAt", startedAt == 0 ? null : Long.valueOf(startedAt));
+    // Here too. A run started from the Translate button leaves status
+    // TRANSLATING on this object, which took the branch above out of play --
+    // so the counts reached the panel for a run begun on the command line
+    // and never for one begun in Gloss, which is the only place the panel is
+    // being read. The stages write the same marker either way.
+    copyProgress(recorded, snap);
     return snap;
+  }
+
+  /** What the stages recorded about how far along they are, if anything. */
+  private static void copyProgress(Map<String, Object> recorded,
+      Map<String, Object> snap) {
+    if (recorded == null) {
+      return;
+    }
+    for (String key : PROGRESS_KEYS) {
+      if (recorded.get(key) != null) {
+        snap.put(key, recorded.get(key));
+      }
+    }
   }
 
   /**

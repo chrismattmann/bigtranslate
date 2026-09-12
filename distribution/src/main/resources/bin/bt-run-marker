@@ -123,6 +123,13 @@ def main(argv=None):
     parser.add_argument("--status", default="TRANSLATING")
     parser.add_argument("--path", default="")
     parser.add_argument("--started-by", default="workflow")
+    # The crawl's exclude regex. It contains backslashes -- the default is
+    # .*/\.[^/]*(/.*)? -- and it used to be written into the marker by a
+    # printf in bin/bigtranslate that escaped nothing. "\." is not a valid
+    # JSON escape, so the file this writes and reads stopped parsing: every
+    # beat found no marker, rebuilt one from scratch, and lost the corpus
+    # path and the real start time with it. json.dump escapes it.
+    parser.add_argument("--exclude", default=None)
     args = parser.parse_args(argv)
 
     path = marker_path()
@@ -160,7 +167,8 @@ def main(argv=None):
         "startedBy": existing.get("startedBy", args.started_by),
         "path": existing.get("path", args.path) if args.action == "beat"
                 else args.path,
-        "exclude": existing.get("exclude", ""),
+        "exclude": (existing.get("exclude", "") if args.exclude is None
+                    else args.exclude),
         "startedAt": existing.get("startedAt", now),
         "heartbeatAt": now,
     }
