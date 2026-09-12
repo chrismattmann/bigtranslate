@@ -371,16 +371,18 @@ export default {
         SECTORS.forEach((sec) => {
           growth[sec.key] = growthRate(shareSeries(data.months, sec.key))
         })
-        const found = opportunities(data.regions, data.national, growth)
-          .filter((o) => (!m.region || m.region.test(o.region))
-            && (!m.sector || o.sector === m.sector))
-        if (!found.length) {
-          return 'no opening found now'
+        // One list, ranked once. Calling opportunities() a second time to
+        // find the rank built a fresh set of objects, so indexOf never
+        // matched and every check reported "ranked 0".
+        const all = opportunities(data.regions, data.national, growth)
+        const rank = all.findIndex((o) =>
+          (!m.region || m.region.test(o.region))
+          && (!m.sector || o.sector === m.sector))
+        if (rank < 0) {
+          return 'no opening there now'
         }
-        const rank = opportunities(data.regions, data.national, growth)
-          .indexOf(found[0]) + 1
-        return `ranked ${rank} of the openings, `
-          + `${(found[0].gap * 100).toFixed(1)} points short`
+        return `ranked ${rank + 1} of ${all.length} openings, `
+          + `${(all[rank].gap * 100).toFixed(1)} points short`
       }
       return ''
     }
