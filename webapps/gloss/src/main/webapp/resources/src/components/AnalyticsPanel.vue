@@ -16,6 +16,11 @@
       </p>
     </header>
 
+    <div v-if="tip" class="tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">
+      <strong>{{ tip.title }}</strong>
+      <span v-for="(line, i) in tip.lines" :key="i">{{ line }}</span>
+    </div>
+
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-else-if="loading" class="loading">Asking Solr…</p>
 
@@ -99,7 +104,7 @@ import { solrFacet } from '../api.js'
 import {
   MIN_REGION_POSTINGS, SECTORS, SECTOR_FIELDS, growthRate, monthLabel,
   opportunities, project, sectorCounts, sectorFacet, sectorShares,
-  wholeMonths, zone
+  shareSeries, wholeMonths, zone
 } from '../analytics.js'
 
 const REGION_LIMIT = 12
@@ -122,6 +127,7 @@ export default {
     const monthRange = ref('')
     const totalLabel = ref('')
     const sectorField = ref(SECTOR_FIELDS.broad)
+    const tip = ref(null)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
     let observer = null
     // What the last fetch returned, so a resize redraws without asking
@@ -238,6 +244,73 @@ export default {
       drawGaps(data.regions, data.months, data.national)
     }
 
+    /**
+     * Hover, on every mark that stands for something.
+     *
+     * A stacked band and a shaded cell are the two shapes here that carry a
+     * number nothing else shows: the colour says which sector and the width
+     * says roughly how much, and "roughly how much" is not an answer. The
+     * tooltip is the answer.
+     */
+    function hoverable(sel, describe) {
+      sel.style('cursor', 'crosshair')
+        .on('mousemove', (event, d) => {
+          const info = describe(d)
+          if (!info || !root.value) {
+            return
+          }
+          const box = root.value.getBoundingClientRect()
+          tip.value = {
+            x: event.clientX - box.left + 14,
+            y: event.clientY - box.top + 14,
+            title: info.title,
+            lines: info.lines || []
+          }
+        })
+        .on('mouseleave', () => { tip.value = null })
+    }
+
+    /**
+     * The key, down the right of every chart.
+     *
+     * Nine colours and a label of "Office and admin +3" is not a chart
+     * anybody can read: the reader has to be able to get from a band to a
+     * sector without hovering it first.
+     */
+    function legend(sel, x, y, items) {
+      const g = sel.append('g').attr('transform', `translate(${x},${y})`)
+      items.forEach((item, i) => {
+        const row = g.append('g').attr('transform', `translate(0,${i * 17})`)
+        row.append('rect').attr('width', 11).attr('height', 11).attr('rx', 2)
+          .attr('fill', item.colour)
+        row.append('text').attr('x', 16).attr('y', 10)
+          .attr('class', 'leg').text(item.label)
+      })
+      return g
+    }
+
+    /**
+     * The nine sectors, laid out across the top rather than down the side.
+     *
+     * Nine rows down the right of a chart that is itself twelve rows tall
+     * crowds it; across the top it wraps into two lines and stays out of the
+     * way of the bars.
+     */
+    function sectorKey(sel, width, left) {
+      const perRow = Math.max(3, Math.floor((width - left) / 168))
+      SECTORS.forEach((s, i) => {
+        const col = i % perRow
+        const row = Math.floor(i / perRow)
+        const g = sel.append('g')
+          .attr('transform', `translate(${left + col * 168},${8 + row * 17})`)
+        g.append('rect').attr('width', 11).attr('height', 11).attr('rx', 2)
+          .attr('fill', colour(s.key))
+        g.append('text').attr('x', 16).attr('y', 10)
+          .attr('class', 'leg').text(s.label)
+      })
+      return Math.ceil(SECTORS.length / perRow) * 17 + 10
+    }
+
     /** A chart frame sized to whatever room the card has. */
     function frame(node, height) {
       const width = Math.max(360, (node.parentNode || {}).clientWidth || 720)
@@ -286,15 +359,26 @@ export default {
       sel.append('g').attr('transform', `translate(${m.left},0)`)
         .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format('.0%')))
 
-      const legend = sel.append('g')
-        .attr('transform', `translate(${width - m.right + 12},${m.top})`)
-      HOUR_TYPES.forEach((t, i) => {
-        const row = legend.append('g').attr('transform', `translate(0,${i * 18})`)
-        row.append('rect').attr('width', 11).attr('height', 11)
-          .attr('fill', d3.schemeTableau10[i])
-        row.append('text').attr('x', 16).attr('y', 10)
-          .attr('class', 'leg').text(t)
-      })
+      // A band per month, invisible, so the whole column is hoverable rather
+      // than only the pixel row where a particular type happens to sit.
+      const step = (width - m.right - m.left) / Math.max(1, rows.length - 1)
+      hoverable(
+        sel.append('g').selectAll('rect').data(rows).join('rect')
+          .attr('x', (r) => x(r.label) - step / 2)
+          .attr('y', m.top)
+          .attr('width', step)
+          .attr('height', height - m.bottom - m.top)
+          .attr('fill', 'transparent'),
+        (r) => ({
+          title: r.label,
+          lines: HOUR_TYPES
+            .filter((t) => r[t] > 0)
+            .map((t) => `${t} ${(r[t] * 100).toFixed(1)}%`)
+        }))
+
+      legend(sel, width - m.right + 12, m.top, HOUR_TYPES.map((t, i) => ({
+        label: t, colour: d3.schemeTableau10[i]
+      })))
     }
 
     function drawLifetimes(buckets) {
@@ -318,11 +402,19 @@ export default {
         .domain(rows.map((r) => r.label))
         .range([m.top, height - m.bottom]).padding(0.24)
 
-      sel.append('g').selectAll('rect').data(rows).join('rect')
-        .attr('x', m.left).attr('y', (r) => y(r.label))
-        .attr('width', (r) => x(r.days) - m.left)
-        .attr('height', y.bandwidth())
-        .attr('fill', '#4e79a7')
+      hoverable(
+        sel.append('g').selectAll('rect').data(rows).join('rect')
+          .attr('x', m.left).attr('y', (r) => y(r.label))
+          .attr('width', (r) => Math.max(0, x(r.days) - m.left))
+          .attr('height', y.bandwidth())
+          .attr('fill', '#4e79a7'),
+        (r) => ({
+          title: r.label,
+          lines: [
+            `${r.days.toFixed(1)} days up, on average`,
+            `${r.n.toLocaleString()} postings`
+          ]
+        }))
       sel.append('g').selectAll('text').data(rows).join('text')
         .attr('x', (r) => x(r.days) + 8)
         .attr('y', (r) => y(r.label) + y.bandwidth() / 2 + 4)
@@ -345,36 +437,58 @@ export default {
       if (!rows.length) {
         return
       }
-      const m = { top: 10, right: 210, bottom: 28, left: 150 }
+      const m = { top: 46, right: 210, bottom: 28, left: 150 }
       const height = rows.length * 28 + m.top + m.bottom
       const { sel, width } = frame(zoneSvg.value, height)
+      sectorKey(sel, width, m.left)
       const x = d3.scaleLinear().domain([0, 1]).range([m.left, width - m.right])
       const y = d3.scaleBand().domain(rows.map((r) => r.name))
         .range([m.top, height - m.bottom]).padding(0.24)
 
+      const bands = []
       rows.forEach((row) => {
         let acc = 0
-        const g = sel.append('g')
         SECTORS.forEach((s) => {
           const share = row.shares[s.key] || 0
           if (share <= 0) {
             return
           }
-          g.append('rect')
-            .attr('x', x(acc)).attr('y', y(row.name))
-            .attr('width', Math.max(0, x(acc + share) - x(acc)))
-            .attr('height', y.bandwidth())
-            .attr('fill', colour(s.key))
-            .append('title')
-            .text(`${row.name} · ${s.label} · ${(share * 100).toFixed(1)}%`)
+          bands.push({ row, sector: s, share, from: acc })
           acc += share
         })
-        sel.append('text')
-          .attr('x', width - m.right + 10)
-          .attr('y', y(row.name) + y.bandwidth() / 2 + 4)
-          .attr('class', 'val')
-          .text(`${row.z.label} +${(row.z.margin * 100).toFixed(0)}`)
       })
+
+      hoverable(
+        sel.append('g').selectAll('rect').data(bands).join('rect')
+          .attr('x', (d) => x(d.from)).attr('y', (d) => y(d.row.name))
+          .attr('width', (d) => Math.max(0, x(d.from + d.share) - x(d.from)))
+          .attr('height', y.bandwidth())
+          .attr('fill', (d) => colour(d.sector.key)),
+        (d) => ({
+          title: `${d.row.name} · ${d.sector.label}`,
+          lines: [
+            `${(d.share * 100).toFixed(1)}% of its sector postings`,
+            `${d.row.total.toLocaleString()} postings in the region`,
+            `leading sector: ${d.row.z.label}`
+          ]
+        }))
+
+      hoverable(
+        sel.append('g').selectAll('text').data(rows).join('text')
+          .attr('x', width - m.right + 10)
+          .attr('y', (r) => y(r.name) + y.bandwidth() / 2 + 4)
+          .attr('class', 'val')
+          .text((r) => `${r.z.label} +${(r.z.margin * 100).toFixed(0)}`),
+        (r) => ({
+          title: `${r.name} reads as ${r.z.label}`,
+          lines: [
+            `${(r.z.share * 100).toFixed(1)}% of its sector postings`,
+            `${(r.z.margin * 100).toFixed(1)} points ahead of the next sector`,
+            r.z.margin < 0.05
+              ? 'a narrow lead: this region has a mix, not a character'
+              : 'a clear lead'
+          ]
+        }))
       sel.append('g').attr('transform', `translate(${m.left},0)`)
         .call(d3.axisLeft(y))
       sel.append('g').attr('transform', `translate(0,${height - m.bottom})`)
@@ -385,18 +499,22 @@ export default {
       if (!trendSvg.value || buckets.length < 3) {
         return
       }
+      // Share of the month, not the count. Collection wound down across this
+      // corpus -- postings per month fall about 7% a month -- so every
+      // sector's raw count falls with it and every sparkline slopes down.
+      // That is the scraper stopping, not the job market turning.
       const series = SECTORS.map((s) => ({
         key: s.key,
         label: s.label,
-        values: buckets.map((b) => (b[s.key] && b[s.key].count) || 0)
+        values: shareSeries(buckets, s.key)
       })).filter((s) => d3.sum(s.values) > 0)
       if (!series.length) {
         return
       }
       const cols = 3
       const rows = Math.ceil(series.length / cols)
-      const cellH = 92
-      const { sel, width, height } = frame(trendSvg.value, rows * cellH + 20)
+      const cellH = 104
+      const { sel, width, height } = frame(trendSvg.value, rows * cellH + 24)
       const cellW = width / cols
 
       series.forEach((s, i) => {
@@ -406,9 +524,9 @@ export default {
         const gy = Math.floor(i / cols) * cellH
         const g = sel.append('g').attr('transform', `translate(${gx},${gy})`)
         const x = d3.scaleLinear().domain([0, all.length - 1])
-          .range([56, cellW - 14])
+          .range([10, cellW - 18])
         const y = d3.scaleLinear().domain([0, d3.max(all) || 1])
-          .range([cellH - 26, 14])
+          .range([cellH - 16, 34])
         const line = d3.line().x((d, k) => x(k)).y((d) => y(d))
 
         g.append('path').datum(s.values)
@@ -421,11 +539,35 @@ export default {
           .attr('opacity', 0.75)
           .attr('d', d3.line()
             .x((d, k) => x(s.values.length - 1 + k)).y((d) => y(d)))
-        g.append('text').attr('x', 0).attr('y', 16)
+
+        g.append('rect').attr('x', 0).attr('y', 20).attr('width', 11)
+          .attr('height', 11).attr('rx', 2).attr('fill', colour(s.key))
+        g.append('text').attr('x', 16).attr('y', 30)
           .attr('class', 'small').text(s.label)
-        g.append('text').attr('x', 0).attr('y', 30)
+        const trend = growthRate(s.values)
+        g.append('text').attr('x', 16).attr('y', 14)
           .attr('class', 'tiny')
-          .text(`R² ${fit.r2.toFixed(2)}`)
+          .text(`${trend >= 0 ? '+' : ''}${(trend * 100).toFixed(1)}%/mo`
+            + ` · R² ${fit.r2.toFixed(2)}`)
+
+        // A point per month, so a reader can put a number on any part of the
+        // line rather than only see its direction.
+        const marks = s.values.map((v, k) => ({ k, v, s, fit, trend }))
+        hoverable(
+          g.append('g').selectAll('circle').data(marks).join('circle')
+            .attr('cx', (d) => x(d.k)).attr('cy', (d) => y(d.v))
+            .attr('r', 7).attr('fill', 'transparent'),
+          (d) => ({
+            title: `${d.s.label} · ${monthLabel(buckets[d.k].val)}`,
+            lines: [
+              `${(d.v * 100).toFixed(2)}% of that month's postings`,
+              `${((buckets[d.k][d.s.key] || {}).count || 0).toLocaleString()}`
+                + ` of ${buckets[d.k].count.toLocaleString()}`,
+              `trend ${d.trend >= 0 ? '+' : ''}`
+                + `${(d.trend * 100).toFixed(1)}% a month, R² `
+                + `${d.fit.r2.toFixed(2)}`
+            ]
+          }))
       })
     }
 
@@ -433,47 +575,77 @@ export default {
       if (!gapSvg.value || !regions.length || buckets.length < 3) {
         return
       }
+      // On share of the month, for the same reason the trends are. Measured
+      // on raw counts every sector had negative growth -- collection winding
+      // down, not hiring -- so nothing anywhere qualified as an opening and
+      // this panel drew nothing at all, which read as a bug rather than as
+      // an answer.
       const growth = {}
       SECTORS.forEach((s) => {
-        growth[s.key] = growthRate(
-          buckets.map((b) => (b[s.key] && b[s.key].count) || 0))
+        growth[s.key] = growthRate(shareSeries(buckets, s.key))
       })
       const found = opportunities(regions, national, growth)
-      if (!found.length) {
-        return
-      }
       const names = regions
         .filter((r) => r.total >= MIN_REGION_POSTINGS)
         .map((r) => r.name)
-      const m = { top: 78, right: 16, bottom: 16, left: 150 }
-      const height = names.length * 24 + m.top + m.bottom
+
+      if (!found.length || !names.length) {
+        // Said rather than left blank. An empty panel is indistinguishable
+        // from a broken one.
+        const { sel, width } = frame(gapSvg.value, 76)
+        sel.append('text').attr('x', 8).attr('y', 26).attr('class', 'small')
+          .text('No openings found.')
+        sel.append('text').attr('x', 8).attr('y', 46).attr('class', 'tiny')
+          .text(names.length
+            ? 'Every sector that is growing is already well represented in '
+              + 'each of these regions.'
+            : `No region has the ${MIN_REGION_POSTINGS.toLocaleString()} `
+              + 'postings needed to read a shortfall from.')
+        sel.attr('width', width)
+        return
+      }
+
+      const m = { top: 88, right: 16, bottom: 16, left: 150 }
+      const height = names.length * 26 + m.top + m.bottom
       const { sel, width } = frame(gapSvg.value, height)
       const x = d3.scaleBand().domain(SECTORS.map((s) => s.key))
         .range([m.left, width - m.right]).padding(0.06)
       const y = d3.scaleBand().domain(names)
         .range([m.top, height - m.bottom]).padding(0.06)
-      const shade = d3.scaleSequential(d3.interpolateYlGnBu)
-        .domain([0, d3.max(found, (o) => o.score) || 1])
+      const top = d3.max(found, (o) => o.score) || 1
+      const shade = d3.scaleSequential(d3.interpolateYlGnBu).domain([0, top])
 
       const index = {}
       found.forEach((o) => { index[`${o.region}|${o.sector}`] = o })
 
+      const cells = []
       names.forEach((name) => {
         SECTORS.forEach((s) => {
-          const hit = index[`${name}|${s.key}`]
-          sel.append('rect')
-            .attr('x', x(s.key)).attr('y', y(name))
-            .attr('width', x.bandwidth()).attr('height', y.bandwidth())
-            .attr('fill', hit ? shade(hit.score) : '#f2f2f2')
-            .append('title')
-            .text(hit
-              ? `${name} · ${hit.label}\n`
-                + `here ${(hit.local * 100).toFixed(1)}% against `
-                + `${(hit.national * 100).toFixed(1)}% everywhere\n`
-                + `sector growth ${(hit.growth * 100).toFixed(1)}% a month`
-              : `${name} · ${s.label}\nno opening: already here, or not growing`)
+          cells.push({ name, sector: s, hit: index[`${name}|${s.key}`] })
         })
       })
+
+      hoverable(
+        sel.append('g').selectAll('rect').data(cells).join('rect')
+          .attr('x', (c) => x(c.sector.key)).attr('y', (c) => y(c.name))
+          .attr('width', x.bandwidth()).attr('height', y.bandwidth())
+          .attr('fill', (c) => (c.hit ? shade(c.hit.score) : '#f1f3f5'))
+          .attr('stroke', '#fff').attr('stroke-width', 1),
+        (c) => ({
+          title: `${c.name} · ${c.sector.label}`,
+          lines: c.hit
+            ? [
+              `here ${(c.hit.local * 100).toFixed(1)}%, `
+                + `everywhere ${(c.hit.national * 100).toFixed(1)}%`,
+              `shortfall ${(c.hit.gap * 100).toFixed(1)} points`,
+              `sector trend +${(c.hit.growth * 100).toFixed(1)}% a month`,
+              `score ${(c.hit.score * 1000).toFixed(2)}`
+            ]
+            : [growth[c.sector.key] > 0
+              ? 'already well represented here'
+              : 'this sector is not growing across the corpus']
+        }))
+
       sel.append('g').attr('transform', `translate(${m.left},0)`)
         .call(d3.axisLeft(y))
       sel.append('g').attr('transform', `translate(0,${m.top})`)
@@ -482,8 +654,25 @@ export default {
           return s ? s.label : k
         }))
         .selectAll('text')
-        .attr('transform', 'rotate(-38)')
+        .attr('transform', 'rotate(-32)')
         .style('text-anchor', 'start')
+
+      // The colour ramp, so a dark cell can be read as a number.
+      const rampW = 120
+      const rampX = width - m.right - rampW
+      const ramp = sel.append('g').attr('transform', `translate(${rampX},8)`)
+      const id = 'gapramp'
+      const grad = ramp.append('defs').append('linearGradient').attr('id', id)
+      d3.range(0, 1.01, 0.1).forEach((t) => {
+        grad.append('stop').attr('offset', `${t * 100}%`)
+          .attr('stop-color', shade(t * top))
+      })
+      ramp.append('rect').attr('width', rampW).attr('height', 9).attr('rx', 2)
+        .attr('fill', `url(#${id})`)
+      ramp.append('text').attr('x', 0).attr('y', 22).attr('class', 'tiny')
+        .text('no opening')
+      ramp.append('text').attr('x', rampW).attr('y', 22).attr('class', 'tiny')
+        .attr('text-anchor', 'end').text('strongest')
     }
 
     onMounted(() => {
@@ -515,7 +704,7 @@ export default {
     })
 
     return {
-      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg,
+      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, tip,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion
     }
   }
@@ -537,6 +726,14 @@ export default {
 .chart { display: block; width: 100%; overflow: visible; }
 .note { margin: 10px 0 0; font-size: 0.86rem; color: #55606b; max-width: 82ch; }
 .loading { color: #7a8691; }
+.analytics { position: relative; }
+.tip { position: absolute; z-index: 20; pointer-events: none;
+       background: #1f2933; color: #f5f7fa; border-radius: 4px;
+       padding: 7px 9px; font-size: 0.78rem; line-height: 1.35;
+       box-shadow: 0 3px 12px rgba(0,0,0,0.22); max-width: 300px;
+       display: flex; flex-direction: column; gap: 1px; }
+.tip strong { font-size: 0.82rem; }
+.tip span { color: #c6d0da; }
 .banner { background: #fdecea; border: 1px solid #f5c2bd; border-radius: 4px;
           padding: 8px 10px; }
 :deep(.leg), :deep(.val) { font-size: 11px; fill: #3d464f; }

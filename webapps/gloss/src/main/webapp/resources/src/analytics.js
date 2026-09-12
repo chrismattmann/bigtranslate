@@ -207,6 +207,29 @@ export function project(series, ahead) {
 }
 
 /**
+ * A sector's share of each month, rather than its count.
+ *
+ * The count is the wrong quantity and it is wrong in a way that looks like
+ * an answer. Collection wound down over this corpus: postings per month fall
+ * at about 7% a month across the whole of it, so every sector's raw count
+ * falls too, and every sector reads as declining. Measured that way all nine
+ * had negative growth, which is the scraper stopping rather than the job
+ * market doing anything, and it left the openings panel with nothing to draw
+ * and no way to say why.
+ *
+ * A share is what the month's postings were about, whatever number of them
+ * were collected, and it is comparable between months and between sectors.
+ */
+export function shareSeries(buckets, key) {
+  return (buckets || []).map((b) => {
+    const total = b && typeof b.count === 'number' ? b.count : 0
+    const hit = b && b[key] && typeof b[key].count === 'number'
+      ? b[key].count : 0
+    return total > 0 ? hit / total : 0
+  })
+}
+
+/**
  * Growth as the fitted slope over the mean, so sectors of different sizes
  * compare. A sector averaging a thousand postings a month and gaining fifty
  * is growing as fast as one averaging a hundred thousand and gaining five

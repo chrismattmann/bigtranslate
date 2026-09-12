@@ -137,6 +137,58 @@ class TestTheTabIsWired:
         assert "width === drawnAt" in observer, (
             "the observer does not compare against the last drawn width")
 
+    def test_growth_is_measured_on_share_not_count(self):
+        """Collection wound down; counts fall with it.
+
+        Postings per month drop about 7% a month across this corpus, so every
+        sector's raw count drops too and every sector reads as declining.
+        Measured that way all nine had negative growth, no region qualified
+        for an opening anywhere, and the panel drew nothing at all -- which
+        reads as a broken chart rather than as an answer.
+        """
+        panel = PANEL.read_text()
+        gaps = panel[panel.index("function drawGaps"):]
+        gaps = gaps[:gaps.index("onMounted")]
+        assert "shareSeries(buckets" in gaps, (
+            "growth is computed from raw counts, which measures the scraper")
+        trends = panel[panel.index("function drawTrends"):]
+        trends = trends[:trends.index("function drawGaps")]
+        assert "shareSeries(buckets" in trends, (
+            "the sparklines plot raw counts, so every sector slopes down")
+
+    def test_an_empty_result_says_so(self):
+        # An empty panel is indistinguishable from a broken one, which is how
+        # the openings panel was first reported.
+        panel = PANEL.read_text()
+        assert "No openings found." in panel
+
+    def test_every_chart_can_be_hovered(self):
+        panel = PANEL.read_text()
+        assert panel.count("hoverable(") >= 6, (
+            "not every chart attaches a tooltip")
+        for fn in ("drawHours", "drawLifetimes", "drawZones", "drawTrends",
+                   "drawGaps"):
+            body = panel[panel.index("function %s" % fn):]
+            body = body[:body.index("\n    }", body.index("{"))]
+            assert "hoverable(" in body, "%s has no hover" % fn
+
+    def test_every_chart_carries_a_key(self):
+        # "Office and admin +3" against nine colours is not readable without
+        # one.
+        panel = PANEL.read_text()
+        assert "function legend(" in panel
+        assert "function sectorKey(" in panel
+        hours = panel[panel.index("function drawHours"):]
+        hours = hours[:hours.index("function drawLifetimes")]
+        assert "legend(sel" in hours, "the hours chart has no key"
+        zones = panel[panel.index("function drawZones"):]
+        zones = zones[:zones.index("function drawTrends")]
+        assert "sectorKey(sel" in zones, "the zoning chart has no key"
+        gaps = panel[panel.index("function drawGaps"):]
+        gaps = gaps[:gaps.index("onMounted")]
+        assert "no opening" in gaps and "strongest" in gaps, (
+            "the heatmap has no colour ramp to read a shade against")
+
     def test_the_arithmetic_is_separable_from_the_drawing(self):
         # analytics.js is unit tested by npm test; a chart that computed its
         # own numbers inline would not be.

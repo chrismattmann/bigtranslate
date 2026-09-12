@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   MIN_REGION_POSTINGS, SECTORS, SECTOR_FIELDS, growthRate, linearFit,
   monthLabel, opportunities, project, sectorCounts, sectorFacet, sectorQuery,
-  sectorShares, wholeMonths, zone
+  sectorShares, shareSeries, wholeMonths, zone
 } from './analytics.js'
 
 test('a sector asks Solr for any of its words', () => {
@@ -215,4 +215,35 @@ test('sector words are English, because the pipeline translated them', () => {
   assert.ok(words.includes('Driver'))
   assert.ok(words.length > 40, 'too few words to catch a long tail')
   words.forEach((w) => assert.match(w, /^[A-Z][A-Za-z]+$/, w))
+})
+
+
+test('a sector series is its share of each month, not its count', () => {
+  // Collection wound down over this corpus: postings per month fall about 7%
+  // a month, so every sector's raw count falls with it and every sector reads
+  // as declining. Measured that way all nine were negative, which is the
+  // scraper stopping rather than the job market doing anything.
+  const buckets = [
+    { count: 1000, it: { count: 100 } },
+    { count: 500, it: { count: 75 } }
+  ]
+  assert.deepEqual(shareSeries(buckets, 'it'), [0.1, 0.15])
+})
+
+test('a sector holding its share through a collapse in collection is flat', () => {
+  const buckets = [
+    { count: 4000, it: { count: 400 } },
+    { count: 2000, it: { count: 200 } },
+    { count: 1000, it: { count: 100 } }
+  ]
+  assert.equal(growthRate(shareSeries(buckets, 'it')), 0,
+    'a constant share must not read as decline')
+  assert.ok(growthRate([400, 200, 100]) < 0,
+    'the raw counts do read as decline, which is the bug')
+})
+
+test('a month with nothing in it contributes no share', () => {
+  assert.deepEqual(shareSeries([{ count: 0 }], 'it'), [0])
+  assert.deepEqual(shareSeries([{ count: 10 }], 'it'), [0])
+  assert.deepEqual(shareSeries(null, 'it'), [])
 })
