@@ -18,9 +18,6 @@
 # Stop on first error.
 set -e
 
-# Hostname where OODT services are deployed
-OODT_HOST=localhost
-
 # Print out usage information for this script.
 function print_help {
     echo "Usage: bigtranslate [translate, reset, help] to machine-translate a TSV corpus."
@@ -33,7 +30,7 @@ function print_help {
 }
 
 function print_ui_info {
-    echo "Navigate to http://${OODT_HOST}:${TOMCAT_PORT}/gloss/ for Gloss, http://${OODT_HOST}:${TOMCAT_PORT}/opsui/ for the OODT browser, and http://${OODT_HOST}:${SOLR_PORT}/solr for the Solr catalog."
+    echo "Navigate to http://${BIGTRANSLATE_HOST}:${TOMCAT_PORT}/gloss/ for Gloss, http://${BIGTRANSLATE_HOST}:${TOMCAT_PORT}/opsui/ for the OODT browser, and ${SOLR_URL%/*} for the Solr catalog."
 }
 
 # Read from setenv.sh, which is what the services themselves were started
@@ -45,14 +42,30 @@ function print_ui_info {
 if [ -f "$(dirname "$0")/setenv.sh" ]; then
     . "$(dirname "$0")/setenv.sh"
 fi
+# Defaults for a tree without setenv.sh, in the shape setenv.sh uses, so the
+# two cannot disagree about how a url is built. Every one is ${VAR:-...}, so
+# anything setenv.sh exported wins and nothing here overrides it.
+#
+# This script used to keep its own OODT_HOST=localhost and rebuild
+# FILEMGR_URL and SOLR_URL from it -- after sourcing setenv.sh, so it
+# overwrote what setenv.sh had worked out from BIGTRANSLATE_HOST. That is
+# the second derivation setenv.sh's own comment warns about, and the one
+# that put SOLR_URL somewhere Solr does not listen. The values happened to
+# agree on a single machine deployment, which is what kept it quiet: the
+# manager is localhost to itself.
+BIGTRANSLATE_HOST=${BIGTRANSLATE_HOST:-localhost}
 FILEMGR_PORT=${FILEMGR_PORT:-9000}
 WORKFLOW_PORT=${WORKFLOW_PORT:-9001}
 RESMGR_PORT=${RESMGR_PORT:-9002}
 SOLR_PORT=${SOLR_PORT:-8983}
 TOMCAT_PORT=${TOMCAT_PORT:-8080}
 
-FILEMGR_URL=http://${OODT_HOST}:${FILEMGR_PORT}
-SOLR_URL=http://${OODT_HOST}:${SOLR_PORT}/solr/bigtranslate
+FILEMGR_URL=${FILEMGR_URL:-http://$BIGTRANSLATE_HOST:$FILEMGR_PORT}
+WORKFLOW_URL=${WORKFLOW_URL:-http://$BIGTRANSLATE_HOST:$WORKFLOW_PORT}
+# Localhost even when the managers are on a LAN address. Solr binds loopback
+# unless told otherwise and nothing off this machine reads it; see the note
+# in setenv.sh, which is where this belongs and where it is decided.
+SOLR_URL=${SOLR_URL:-http://localhost:$SOLR_PORT/solr/bigtranslate}
 
 # This script is not started through env.sh, so pick the virtual environment up
 # the same way env.sh does before looking for anything in it.
@@ -85,8 +98,9 @@ function check_python_tools {
         exit 1
     fi
 }
-CLIENT_URL=http://${OODT_HOST}:${WORKFLOW_PORT}
-OPSUI_URL=http://${OODT_HOST}:${TOMCAT_PORT}/opsui
+# The workflow manager, by the one name the deployment knows it by.
+CLIENT_URL=$WORKFLOW_URL
+OPSUI_URL=http://$BIGTRANSLATE_HOST:$TOMCAT_PORT/opsui
 
 # Crawl and translate the given TSV dataset.
 # Expects one or three argument(s) -- the file path of the TSV files to be crawled and
@@ -502,7 +516,7 @@ function check_port {
 #   Commented 'lsof' - Using 'nc' which helps to check port on Remote server as well 
 #   lsof -i tcp:$1
 
-    nc -z ${OODT_HOST} $1 &> /dev/null
+    nc -z ${BIGTRANSLATE_HOST} $1 &> /dev/null
     if [ $? == 0 ]; then
 	echo 0
     else
