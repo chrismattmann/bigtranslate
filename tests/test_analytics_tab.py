@@ -325,3 +325,17 @@ class TestTheHindsightPanel:
         fn = logic[logic.index("export function verdictLine"):]
         assert "counts.held" in fn and "counts.missed" in fn
         assert "Nothing here can be checked" in fn
+
+    def test_the_ranking_is_taken_from_one_list(self):
+        # opportunities() builds fresh objects each call, so ranking by
+        # indexOf against a second call never matched and every check
+        # reported "ranked 0 of the openings".
+        panel = PANEL.read_text()
+        body = panel[panel.index("function measure(check)"):]
+        body = body[:body.index("function buildChecks")]
+        calls = [l for l in body.splitlines()
+                 if "opportunities(" in l and not l.lstrip().startswith("//")]
+        assert len(calls) == 1, (
+            "opportunities() is called more than once, so a rank taken "
+            "across the two calls cannot match: %s" % calls)
+        assert "findIndex" in body
