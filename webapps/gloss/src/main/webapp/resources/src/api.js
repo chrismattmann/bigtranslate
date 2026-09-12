@@ -84,9 +84,9 @@ export function solrFacet(facet, params) {
   query.set('q', (params && params.q) || '*:*')
   query.set('rows', '0')
   query.set('wt', 'json')
-  if (params && params.fq) {
-    query.append('fq', params.fq)
-  }
+  ;((params && params.fq) ? [].concat(params.fq) : []).forEach((fq) => {
+    query.append('fq', fq)
+  })
   query.set('json.facet', JSON.stringify(facet))
   return fetch(`${services()}/solr/bigtranslate/select?${query.toString()}`)
     .then(readJson)

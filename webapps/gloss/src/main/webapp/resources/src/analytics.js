@@ -292,7 +292,14 @@ export function opportunities(regions, nationalShares, nationalGrowth) {
   return out.sort((a, b) => b.score - a.score)
 }
 
-/** A month bucket's label, from the ISO instant Solr returns. */
+/**
+ * A month bucket's label, from the ISO instant Solr returns.
+ *
+ * The year in full. "Aug 12 to Nov 13" was read as a day and a month by the
+ * first person to see it, which is a fair reading: this corpus runs across a
+ * year boundary and every panel is about change over time, so the one thing
+ * the axis has to be unambiguous about is which year a point is in.
+ */
 export function monthLabel(iso) {
   if (typeof iso !== 'string' || iso.length < 7) {
     return ''
@@ -303,7 +310,7 @@ export function monthLabel(iso) {
   if (!(month >= 1 && month <= 12)) {
     return iso.slice(0, 7)
   }
-  return `${months[month - 1]} ${iso.slice(2, 4)}`
+  return `${months[month - 1]} ${iso.slice(0, 4)}`
 }
 
 /**

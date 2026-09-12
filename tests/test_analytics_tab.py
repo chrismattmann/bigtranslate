@@ -137,6 +137,22 @@ class TestTheTabIsWired:
         assert "width === drawnAt" in observer, (
             "the observer does not compare against the last drawn width")
 
+    def test_the_lifetime_panel_counts_jobs_not_rows(self):
+        """119 million rows are 2.1 million jobs seen once a day each.
+
+        Averaging days-up over rows weights every posting by its own length:
+        a job up for two hundred days contributes two hundred rows each
+        saying two hundred days. It answered about 100 days. One row per url
+        answers about 13, and the difference is the whole result.
+        """
+        panel = PANEL.read_text()
+        assert "{!collapse field=url}" in panel, (
+            "the lifetime average is taken over rows, which is length biased")
+        note = panel[panel.index("Mean days between first and last seen"):]
+        note = note[:note.index("</p>")]
+        assert "distinct jobs" in note
+        assert "rows" in note, "the note does not say which was counted"
+
     def test_growth_is_measured_on_share_not_count(self):
         """Collection wound down; counts fall with it.
 
@@ -155,6 +171,28 @@ class TestTheTabIsWired:
         trends = trends[:trends.index("function drawGaps")]
         assert "shareSeries(buckets" in trends, (
             "the sparklines plot raw counts, so every sector slopes down")
+
+    def test_the_intro_describes_the_dataset(self):
+        # The panels are about a specific corpus with specific quirks, and a
+        # reader who does not know them cannot read the charts: that a job is
+        # recorded once per day it was up is why two panels count different
+        # things, and that the scrape wound down is why two others use shares.
+        panel = PANEL.read_text()
+        intro = panel[:panel.index('<p v-if="error"')]
+        assert "computrabajo" in intro, "the source is not named"
+        for country in ("Mexico", "Argentina", "Colombia", "Peru"):
+            assert country in intro, "%s is not named" % country
+        assert "Spanish" in intro, "why any of this needed translating"
+        assert "once a day" in intro, (
+            "the daily re-observation is not explained, and it is why the "
+            "row count and the job count differ")
+        assert "challenge questions" in intro
+
+    def test_the_intro_gives_both_counts(self):
+        panel = PANEL.read_text()
+        intro = panel[:panel.index('<p v-if="error"')]
+        assert "totalLabel" in intro and "jobLabel" in intro, (
+            "the reader is given one number where the corpus has two")
 
     def test_an_empty_result_says_so(self):
         # An empty panel is indistinguishable from a broken one, which is how

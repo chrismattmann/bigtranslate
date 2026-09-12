@@ -3,9 +3,28 @@
     <header class="intro">
       <h2>Analytics</h2>
       <p>
-        The XDATA employment dataset ships with a list of challenge questions.
-        These are the ones this index can answer, each panel named for its
-        question and drawn from the corpus rather than a sample.
+        Job postings from <strong>computrabajo.com</strong> affiliate sites,
+        which serve Mexico and South America: Argentina, Colombia, the
+        Dominican Republic, Honduras, Mexico, Peru and Venezuela. Postings are
+        temporary and come down without notice, so the corpus is an attempt at
+        persisting them long enough to be analysed. Almost all of it was
+        written in Spanish; the columns below are readable because the
+        pipeline translated them.
+      </p>
+      <p>
+        <strong>{{ totalLabel }}</strong> rows over
+        <strong>{{ jobLabel }}</strong> distinct jobs, {{ monthRange }}. Every
+        page of every affiliate site was parsed once a day: a posting's first
+        and last seen dates are set when it first appears, and the last seen
+        date is updated on each day it is still there. So a job appears once
+        per day it was up, about 57 times on average, and the two numbers
+        above are not the same question. Panels say which one they counted.
+      </p>
+      <p>
+        The dataset ships with a list of challenge questions. These are the
+        ones this index can answer on its own; the others need data we do not
+        have here, such as joining posting URLs against the WDC hyperlink
+        graph or correlating against Twitter.
       </p>
       <p v-if="sectorField === 'text'" class="caveat">
         Sectors are matched against the catch-all <code>text</code> field,
@@ -31,10 +50,13 @@
         <p class="q">Challenge 12 · trends in full time vs part time employment</p>
         <svg ref="hoursSvg" class="chart"></svg>
         <p class="note">
-          Share of each month's postings. <strong>{{ months.length }}</strong>
-          whole months, {{ monthRange }}. The job type is a controlled
-          vocabulary the pipeline translated, so this is a count rather than
-          an inference.
+          Share of each month's postings across
+          <strong>{{ months.length }}</strong> whole months,
+          {{ monthRange }}. The job type is a controlled vocabulary the
+          pipeline translated, so this is a count rather than an inference.
+          Partial months at either end are left out: the scrape began on
+          31 July 2012 and stopped on 13 December 2013, so those buckets hold
+          one day and thirteen.
         </p>
       </article>
 
@@ -44,10 +66,14 @@
         <p class="q">Challenge 2 and 10 · how long postings last, and how quickly jobs fill</p>
         <svg ref="lifeSvg" class="chart"></svg>
         <p class="note">
-          Mean days between first and last seen, per job type, across all
-          {{ totalLabel }} postings. A posting stops being re-seen when it
-          comes down, so this is how long it was up rather than how long the
-          job took to fill.
+          Mean days between first and last seen, per job type, over
+          <strong>{{ jobLabel }} distinct jobs</strong> rather than over the
+          {{ totalLabel }} rows. Those are very different numbers: a job is
+          recorded once per day it was up, so averaging over rows weights
+          every posting by its own length and answered about 100 days. One
+          row per job answers about 13. A posting stops being re-seen when it
+          comes down, so this is how long it stayed up, which is the nearest
+          thing the data holds to how quickly it was filled.
         </p>
       </article>
 
@@ -70,9 +96,11 @@
         <p class="q">Challenge 1 · which areas will have which job types</p>
         <svg ref="trendSvg" class="chart"></svg>
         <p class="note">
-          Monthly postings per sector, with a
+          Each sector's share of the month, {{ monthRange }}, with a
           <strong>straight line through {{ months.length }} points</strong>
-          continued three months dashed. It is a projection, not a forecast:
+          continued three months dashed. Share rather than count, because the
+          scrape wound down: counts fall for every sector at once and would
+          draw nine lines sloping into the floor. It is a projection, not a forecast:
           no seasonality, no saturation, and no notion that a job market can
           turn. R² is printed against each so a bad fit looks like one.
         </p>
@@ -85,7 +113,10 @@
         <svg ref="gapSvg" class="chart"></svg>
         <p class="note">
           A cell is dark where a sector is growing across the corpus and is
-          under-represented in that region. Score is the shortfall against the
+          under-represented in that region. Growth is measured on each
+          sector's <em>share</em> of its month, not its count: the scrape
+          wound down over the period, so raw counts fall about 7% a month for
+          every sector at once and would show nothing growing anywhere. Score is the shortfall against the
           corpus-wide share multiplied by that sector's growth, so a sector
           that is booming and already saturated locally scores nothing, and so
           does one that is absent and going nowhere. Regions under
@@ -126,6 +157,7 @@ export default {
     const months = ref([])
     const monthRange = ref('')
     const totalLabel = ref('')
+    const jobLabel = ref('')
     const sectorField = ref(SECTOR_FIELDS.broad)
     const tip = ref(null)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
@@ -180,12 +212,7 @@ export default {
             }, {}))
         }
 
-        const lifetime = {
-          type: 'terms',
-          field: 'jobtype',
-          limit: 6,
-          facet: { days: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }
-        }
+
 
         const byRegion = {
           type: 'terms',
@@ -194,14 +221,33 @@ export default {
           facet: sectorFacet(field)
         }
 
-        const answer = await solrFacet({
-          months: byMonth,
-          life: lifetime,
-          regions: byRegion,
-          national: { type: 'query', q: '*:*', facet: sectorFacet(field) }
-        })
+        // Two requests, because one of them has to see a different set of
+        // rows. The corpus holds one row per day a posting was up -- 119
+        // million rows over 2.1 million jobs, about 57 rows each -- so an
+        // average over rows is weighted by how long each posting lasted:
+        // a job up for two hundred days contributes two hundred rows each
+        // saying two hundred days. Collapsing to one row per url answers the
+        // question that was asked, and it costs two seconds.
+        const [answer, lives] = await Promise.all([
+          solrFacet({
+            months: byMonth,
+            regions: byRegion,
+            national: { type: 'query', q: '*:*', facet: sectorFacet(field) }
+          }),
+          solrFacet({
+            jobs: 'unique(url)',
+            life: {
+              type: 'terms',
+              field: 'jobtype',
+              limit: 6,
+              facet: { days: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }
+            }
+          }, { fq: '{!collapse field=url}' })
+        ])
 
         const f = answer.facets || {}
+        const lf = lives.facets || {}
+        jobLabel.value = (lf.jobs || 0).toLocaleString()
         months.value = wholeMonths((f.months && f.months.buckets) || [])
         if (months.value.length) {
           monthRange.value = `${monthLabel(months.value[0].val)} to `
@@ -210,7 +256,7 @@ export default {
 
         data = {
           months: months.value,
-          life: (f.life && f.life.buckets) || [],
+          life: (lf.life && lf.life.buckets) || [],
           regions: ((f.regions && f.regions.buckets) || []).map((b) => ({
             name: b.val,
             total: b.count,
@@ -412,7 +458,8 @@ export default {
           title: r.label,
           lines: [
             `${r.days.toFixed(1)} days up, on average`,
-            `${r.n.toLocaleString()} postings`
+            `${r.n.toLocaleString()} distinct jobs`,
+            'one row per job, not per day seen'
           ]
         }))
       sel.append('g').selectAll('text').data(rows).join('text')
@@ -704,7 +751,7 @@ export default {
     })
 
     return {
-      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, tip,
+      root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, tip, jobLabel,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion
     }
   }

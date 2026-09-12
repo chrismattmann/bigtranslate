@@ -164,9 +164,11 @@ test('Q5: the strongest opening is first', () => {
   assert.ok(found[0].score >= found[found.length - 1].score)
 })
 
-test('months are labelled for people', () => {
-  assert.equal(monthLabel('2012-07-01T00:00:00Z'), 'Jul 12')
-  assert.equal(monthLabel('2013-12-01T00:00:00Z'), 'Dec 13')
+test('months are labelled with the year in full', () => {
+  // "Aug 12 to Nov 13" reads as a day and a month, and this corpus runs
+  // across a year boundary.
+  assert.equal(monthLabel('2012-07-01T00:00:00Z'), 'Jul 2012')
+  assert.equal(monthLabel('2013-12-01T00:00:00Z'), 'Dec 2013')
   assert.equal(monthLabel(''), '')
   assert.equal(monthLabel(null), '')
 })
