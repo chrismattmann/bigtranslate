@@ -49,6 +49,15 @@ public class SolrSupport {
 
   private final String coreUrl;
 
+  /**
+   * How many locations the map asks for.
+   *
+   * The corpus has 80,110 distinct ones and a long tail: the top 500 are 71%
+   * of the postings, 2000 are 86% and 5000 are 92%. Two thousand costs about
+   * six seconds against 119 million documents and is drawn once.
+   */
+  static final int MAP_LOCATIONS = 2000;
+
   public SolrSupport() {
     this(FileConstants.solrCoreUrl());
   }
@@ -361,7 +370,8 @@ public class SolrSupport {
   public Map<String, Object> map(LocationGeocoder geocoder) throws IOException {
     String body = get(coreUrl
         + "/select?q=*:*&rows=0&wt=json&facet=true&facet.field=location"
-        + "&facet.mincount=1&facet.limit=500&facet.missing=true");
+        + "&facet.mincount=1&facet.limit=" + MAP_LOCATIONS
+        + "&facet.missing=true");
     JsonNode root = MAPPER.readTree(body);
     long total = root.path("response").path("numFound").asLong(0L);
     JsonNode fields = root.path("facet_counts").path("facet_fields").path("location");
@@ -459,30 +469,55 @@ public class SolrSupport {
     }
   }
 
+  /**
+   * One coordinate pair per location, from the index.
+   *
+   * This used to read the first thousand documents the index happened to
+   * return: no sort, no grouping, just rows=1000. Documents come back in
+   * index order and the corpus is loaded a file at a time, so that thousand
+   * was one or two TSV files, which is one or two cities. It found twenty
+   * distinct locations, and the map re-geocoded the other three hundred and
+   * thirty six from their names -- names like "Monterrey, NL, Mexico", which
+   * a general purpose geocoder is welcome to place anywhere.
+   *
+   * The corpus carries coordinates for 79 million of its documents, produced
+   * by the geo-fixing service the dataset describes. Asking for them per
+   * location rather than per document is one facet query, and every location
+   * the map draws then sits where the data says it sits.
+   */
   private Map<String, SampleCoord> sampleCoords() {
     Map<String, SampleCoord> samples = new LinkedHashMap<String, SampleCoord>();
     try {
-      String body = get(coreUrl
-          + "/select?q=*:*&fq=latitude:[*+TO+*]&fq=-latitude:\"\"&fl=location,latitude,longitude"
-          + "&rows=1000&wt=json");
-      JsonNode docs = MAPPER.readTree(body).path("response").path("docs");
-      if (!docs.isArray()) {
+      String facet = "{loc:{type:terms,field:location,limit:" + MAP_LOCATIONS
+          + ",facet:{la:{type:terms,field:latitude,limit:1},"
+          + "lo:{type:terms,field:longitude,limit:1}}}}";
+      String body = get(coreUrl + "/select?q=*:*&rows=0&wt=json&json.facet="
+          + encode(facet));
+      JsonNode buckets = MAPPER.readTree(body).path("facets").path("loc")
+          .path("buckets");
+      if (!buckets.isArray()) {
         return samples;
       }
-      for (int i = 0; i < docs.size(); i++) {
-        JsonNode doc = docs.get(i);
-        String location = text(doc, "location");
-        Double lat = LocationGeocoder.parseDouble(text(doc, "latitude"));
-        Double lng = LocationGeocoder.parseDouble(text(doc, "longitude"));
+      for (int i = 0; i < buckets.size(); i++) {
+        JsonNode bucket = buckets.get(i);
+        String location = bucket.path("val").asText(null);
+        Double lat = LocationGeocoder.parseDouble(
+            bucket.path("la").path("buckets").path(0).path("val").asText(null));
+        Double lng = LocationGeocoder.parseDouble(
+            bucket.path("lo").path("buckets").path(0).path("val").asText(null));
         if (location == null || lat == null || lng == null) {
           continue;
         }
-        if (!samples.containsKey(location)) {
-          samples.put(location, new SampleCoord(lat.doubleValue(), lng.doubleValue()));
+        // A location whose only coordinate is the origin was never
+        // geo-fixed; the geocoder gets a turn at it rather than the map
+        // gaining a bubble in the Atlantic.
+        if (lat.doubleValue() == 0.0 && lng.doubleValue() == 0.0) {
+          continue;
         }
+        samples.put(location, new SampleCoord(lat.doubleValue(), lng.doubleValue()));
       }
     } catch (Exception e) {
-      LOG.fine("Could not sample lat/lng from Solr: " + e.getLocalizedMessage());
+      LOG.fine("Could not read lat/lng per location: " + e.getLocalizedMessage());
     }
     return samples;
   }
