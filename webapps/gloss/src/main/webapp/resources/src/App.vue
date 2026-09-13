@@ -54,7 +54,10 @@
       :loading="recordLoading"
       @back="go('table')"
     />
-    <AnalyticsPanel v-else-if="view === 'analytics'" />
+    <template v-else-if="view === 'analytics'">
+      <AnalyticsPanel />
+      <ChallengePanels />
+    </template>
     <FacetPanel
       v-else
       :payload="facetPayload"
@@ -78,11 +81,12 @@ import PostingTable from './components/PostingTable.vue'
 import RecordView from './components/RecordView.vue'
 import FacetPanel from './components/FacetPanel.vue'
 import AnalyticsPanel from './components/AnalyticsPanel.vue'
+import ChallengePanels from './components/ChallengePanels.vue'
 import { getFacets, getLog, getMap, getOodtStatus, getProgress, getRecord, getStatus, getSummary, getTable } from './api.js'
 
 export default {
   name: 'App',
-  components: { ControlBar, SummaryBar, ProgressPane, PostingMap, PostingTable, FacetPanel, AnalyticsPanel, RecordView },
+  components: { ControlBar, SummaryBar, ProgressPane, PostingMap, PostingTable, FacetPanel, AnalyticsPanel, ChallengePanels, RecordView },
   setup() {
     const parsed = parseHash()
     const view = ref(parsed.view)
