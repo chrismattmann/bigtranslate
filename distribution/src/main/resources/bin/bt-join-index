@@ -35,6 +35,7 @@ import sys
 import sqlite3
 import subprocess
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -327,6 +328,28 @@ def add_numeric_salary(document):
         document["salary_d"] = value
 
 
+def canonical_country(text):
+    """One spelling per country.
+
+    The corpus writes each of them several ways, and a facet believes every
+    one of them. Over eight sampled days:
+
+      Mexico     'Mexico' 99,064   'mexico' 11,814   unaccented 8,634
+      Peru       'Peru'   61,781   'peru'   10,845   unaccented 1,006
+      Colombia   'Colombia' 66,302 'colombia' 9,489
+      Argentina  'Argentina' 27,730 'argentina' 3,707
+
+    Left alone, the country facet spends three of its buckets on Mexico and
+    the salary panel draws it as three countries with three different
+    medians -- which is a confident chart of nothing. Accents stripped and
+    title cased, so the accented and unaccented spellings land together and
+    the case variants with them.
+    """
+    folded = unicodedata.normalize("NFKD", text)
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    return folded.title()
+
+
 def add_country(document):
     """The country, which the corpus only records inside the location string.
 
@@ -336,6 +359,11 @@ def add_country(document):
     every question about a country is a question about 161 departments whose
     names a reader is expected to already know -- and the salary figures
     cannot be grouped by the currency they are quoted in.
+
+    About 54% of records carry one. The other 46% have only a city in that
+    cell, which is the same records the geo-fixing never reached -- so
+    country:[* TO *] is "was geo-fixed", and a panel grouping by country is
+    answering over half the corpus rather than all of it.
     """
     raw = document.get("location")
     if raw is None:
@@ -349,7 +377,7 @@ def add_country(document):
     # not shaped the way this assumes.
     if len(country) > 40 or any(ch.isdigit() for ch in country):
         return
-    document["country"] = country
+    document["country"] = canonical_country(country)
 
 
 def add_numeric_coordinates(document):

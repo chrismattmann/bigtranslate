@@ -159,3 +159,54 @@ class TestTheSchemaCarriesThem:
         # apart. An average over the whole corpus measures the country mix.
         schema = SCHEMA.read_text()
         assert "NOT COMPARABLE ACROSS COUNTRIES" in schema
+
+
+class TestOneSpellingPerCountry:
+    """The corpus writes each country several ways and a facet believes all.
+
+    Over eight sampled days of the corpus:
+
+        Mexico     'Mexico' 99,064   'mexico' 11,814   unaccented 8,634
+        Peru       'Peru'   61,781   'peru'   10,845   unaccented 1,006
+        Colombia   'Colombia' 66,302 'colombia' 9,489
+        Argentina  'Argentina' 27,730 'argentina' 3,707
+
+    Left alone the country facet spends three of its six buckets on Mexico,
+    and the salary panel draws it as three countries with three different
+    medians.
+    """
+
+    def test_accents_are_stripped(self):
+        assert _join().canonical_country("México") == "Mexico"
+        assert _join().canonical_country("Perú") == "Peru"
+
+    def test_case_is_normalised(self):
+        j = _join()
+        assert j.canonical_country("colombia") == "Colombia"
+        assert j.canonical_country("ARGENTINA") == "Argentina"
+
+    def test_every_spelling_of_mexico_lands_together(self):
+        j = _join()
+        spellings = {j.canonical_country(s)
+                     for s in ("México", "méxico", "Mexico", "mexico",
+                               "MEXICO")}
+        assert spellings == {"Mexico"}, spellings
+
+    def test_two_word_countries_survive(self):
+        j = _join()
+        assert j.canonical_country("Puerto Rico") == "Puerto Rico"
+        assert j.canonical_country("puerto rico") == "Puerto Rico"
+
+    def test_the_document_gets_the_canonical_form(self):
+        j = _join()
+        document = {"location": "Lima, Perú"}
+        j.add_country(document)
+        assert document["country"] == "Peru"
+
+    def test_a_city_only_location_gets_no_country(self):
+        # 46% of records have only a city in that cell -- the same records
+        # the geo-fixing never reached. Absent, not guessed.
+        j = _join()
+        document = {"location": "Bogota"}
+        j.add_country(document)
+        assert "country" not in document
