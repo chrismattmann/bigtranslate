@@ -158,7 +158,7 @@
       <!-- The rest of the challenges: same list, same page, no seam. They
            are a separate component only because this file is long, not
            because they are a separate subject. -->
-      <ChallengePanels />
+      <ChallengePanels @measured="onChallengeMeasures" />
 
       <!-- Hindsight -->
       <article class="card">
@@ -234,6 +234,8 @@ export default {
     const sectorField = ref(SECTOR_FIELDS.broad)
     const tip = ref(null)
     const checks = ref([])
+    // What the panels below measured, handed up for the card.
+    const challenge = ref(null)
     const verdict = ref('')
     const scoreSvg = ref(null)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
@@ -377,10 +379,43 @@ export default {
      * what the panel says it claimed.
      */
     function measure(check) {
+      const m = check.measure || {}
+      // The four checks below are measured by the panels further down, which
+      // ask their own questions of Solr. They hand the numbers up rather than
+      // this file asking again -- and rather than anybody writing them down,
+      // which is the thing this card exists not to do.
+      if (m.kind === 'worstRegion') {
+        const w = challenge.value && challenge.value.worstRegion
+        return w
+          ? `${w.region}, ${(w.perMonth * 100).toFixed(1)}% of its own share a month`
+          : ''
+      }
+      if (m.kind === 'salaryTrend') {
+        const rows = (challenge.value && challenge.value.salary) || []
+        const top = rows.slice().sort((a, b) => b.perMonth - a.perMonth)[0]
+        return top
+          ? `${top.country} +${top.perMonth.toFixed(1)} index points a month, `
+            + `R² ${top.r2.toFixed(2)}`
+          : ''
+      }
+      if (m.kind === 'concentration') {
+        const c = challenge.value
+        return c && c.hhi
+          ? `HHI ${Math.round(c.hhi.hhi)} over ${c.companies.toLocaleString()} `
+            + `employers; the largest holds `
+            + `${((c.topFirm && c.topFirm.share) * 100 || 0).toFixed(2)}%`
+          : ''
+      }
+      if (m.kind === 'anomalyCount') {
+        const a = (challenge.value && challenge.value.anomalies) || []
+        return a.length
+          ? `${a.length} month${a.length === 1 ? '' : 's'} past ±2σ, worst `
+            + `${a[0].region} in ${a[0].month} at ${a[0].z.toFixed(1)}σ`
+          : ''
+      }
       if (!data) {
         return ''
       }
-      const m = check.measure || {}
       if (m.kind === 'sectorTrend') {
         const rate = growthRate(shareSeries(data.months, m.sector))
         return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}% a month`
@@ -434,6 +469,14 @@ export default {
         citations: citations(c)
       }))
       verdict.value = verdictLine(tally(CHECKS))
+    }
+
+    function onChallengeMeasures(answer) {
+      challenge.value = answer
+      // The card is already drawn by the time those panels finish, so the
+      // four checks they feed would otherwise sit blank until a resize.
+      buildChecks()
+      nextTick().then(drawScorecard)
     }
 
     function drawScorecard() {
@@ -939,6 +982,7 @@ export default {
     })
 
     return {
+      onChallengeMeasures,
       root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, scoreSvg, tip,
       jobLabel, checks, verdict,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion

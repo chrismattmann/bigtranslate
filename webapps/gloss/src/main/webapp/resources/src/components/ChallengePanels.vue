@@ -252,7 +252,11 @@ const UNKNOWN_COUNTRY = 'not geo-fixed'
 
 export default {
   name: 'ChallengePanels',
-  setup() {
+  // What the hindsight card checks these panels against. Emitted rather
+  // than written down there, for the same reason the panels above are
+  // measured live: a claim about the index should move when the index does.
+  emits: ['measured'],
+  setup(props, { emit }) {
     const root = ref(null)
     const firmsSvg = ref(null)
     const firmTrendSvg = ref(null)
@@ -318,6 +322,34 @@ export default {
           }
         })
         .on('mouseleave', () => { tip.value = null })
+    }
+
+    /**
+     * How tall a legend laid across the bottom will be.
+     *
+     * Wanted before the frame exists, because the svg has to be tall enough
+     * to hold it. It was not: drawFirms reserved thirty pixels for five rows
+     * of seventeen, so the key ran off the bottom of the chart and landed on
+     * the paragraph underneath it.
+     */
+    function legendRowHeight(width, left, items) {
+      const perRow = Math.max(1, Math.floor((width - left) / 168))
+      return Math.ceil(items.length / perRow) * 17 + 12
+    }
+
+    /** The key, across the bottom, wrapping rather than running off it. */
+    function legendAcross(sel, x, y, width, items) {
+      const perRow = Math.max(1, Math.floor((width - x) / 168))
+      items.forEach((item, i) => {
+        const col = i % perRow
+        const row = Math.floor(i / perRow)
+        const g = sel.append('g')
+          .attr('transform', `translate(${x + col * 168},${y + row * 17})`)
+        g.append('rect').attr('width', 11).attr('height', 11).attr('rx', 2)
+          .attr('fill', item.colour)
+        g.append('text').attr('x', 16).attr('y', 10)
+          .attr('class', 'leg').text(item.label)
+      })
     }
 
     function legend(sel, x, y, items) {
@@ -588,6 +620,23 @@ export default {
         })
         salarySeries.value = built
 
+        const down = trendByRegion(data.regionSeries, MIN_REGION_POSTINGS)
+        const firmHhi = concentration(companies, corpus)
+        emit('measured', {
+          worstRegion: down[0] || null,
+          bestRegion: down[down.length - 1] || null,
+          salary: built.map((b) => ({
+            country: b.country, perMonth: b.trend.perMonth, r2: b.trend.r2
+          })),
+          hhi: firmHhi,
+          companies: Number(f.distinctCompanies || 0),
+          topFirm: companies[0]
+            ? { name: companies[0].val, share: (companies[0].count || 0) / corpus }
+            : null,
+          anomalies: notable,
+          months: months.length
+        })
+
         loading.value = false
         await nextTick()
         redraw()
@@ -623,15 +672,23 @@ export default {
       const right = 150
       const top = 14
       const barH = 22
+      // The countries on the key, worked out before the frame so the svg is
+      // tall enough to hold it.
+      const countryNames = Array.from(new Set(rows.flatMap(
+        (r) => ((r.country || {}).buckets || []).map((b) => b.val)))).slice(0, 8)
+      const keyItems = countryNames.slice(0, 6)
+        .map((c) => ({ label: c, colour: countryColour(c) }))
+        .concat([{ label: UNKNOWN_COUNTRY, colour: '#d7dde3' }])
+      const probe = Math.max(360,
+        (firmsSvg.value.parentNode || {}).clientWidth || 720)
+      const keyH = legendRowHeight(probe, 190, keyItems)
       const { sel, width } = frame(
-        firmsSvg.value, top + rows.length * barH + 30)
+        firmsSvg.value, top + rows.length * barH + keyH + 8)
       const max = d3.max(rows, (r) => r.count) || 1
       const x = d3.scaleLinear().domain([0, max])
         .range([left, Math.max(left + 40, width - right)])
 
-      const countries = Array.from(new Set(rows.flatMap(
-        (r) => ((r.country || {}).buckets || []).map((b) => b.val)))).slice(0, 8)
-      countryColour.domain(countries)
+      countryColour.domain(countryNames)
 
       rows.forEach((row, i) => {
         const y = top + i * barH
@@ -671,9 +728,7 @@ export default {
           .text(`${(row.count / 1000).toFixed(0)}k · territory `
             + `${t.share.toFixed(2)}`)
       })
-      legend(sel, left, top + rows.length * barH + 6,
-        countries.slice(0, 4).map((c) => ({ label: c, colour: countryColour(c) }))
-          .concat([{ label: UNKNOWN_COUNTRY, colour: '#d7dde3' }]))
+      legendAcross(sel, left, top + rows.length * barH + 10, width, keyItems)
     }
 
     /** Multi-line: each big employer's share of the month, with its fit. */
@@ -850,8 +905,13 @@ export default {
       const left = 140
       const top = 14
       const barH = 30
+      const keyItems = SKILL_TIERS.map(
+        (t) => ({ label: t.label, colour: tierColour(t.key) }))
+      const probe = Math.max(360,
+        (skillSvg.value.parentNode || {}).clientWidth || 720)
+      const keyH = legendRowHeight(probe, 140, keyItems)
       const { sel, width } = frame(
-        skillSvg.value, top + rows.length * barH + 44)
+        skillSvg.value, top + rows.length * barH + keyH + 8)
       const right = Math.max(left + 80, width - 40)
 
       rows.forEach((row, i) => {
@@ -880,8 +940,7 @@ export default {
           cursor += w
         })
       })
-      legend(sel, left, top + rows.length * barH + 8,
-        SKILL_TIERS.map((t) => ({ label: t.label, colour: tierColour(t.key) })))
+      legendAcross(sel, left, top + rows.length * barH + 12, width, keyItems)
     }
 
     /** Lollipops: mean posting life per region, against the corpus mean. */
