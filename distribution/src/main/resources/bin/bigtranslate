@@ -371,10 +371,41 @@ EOF
 #
 # Counted from the workflow manager rather than from a timer: a run is over
 # when its instances are, and how long that takes is the thing we do not know.
+# Whether a stage of this run is still working, whatever the workflow
+# manager thinks.
+#
+# A PGE job script is started by the batch stub and detaches from it, so the
+# task is marked Success when the script is handed off rather than when its
+# work is done. The join is where that shows: four bt-join-index shards run
+# for an hour behind a JoinIndexWorkflow instance that already reads
+#
+#   Instance: [id=3, status=Success, currentTask=urn:bigtranslate:Join_Index_Task]
+#
+# With nothing else running the wait loop then sees a quiet workflow manager,
+# announces "Workflow finished", and clears the run marker -- while the index
+# is a third written. Gloss drops the progress pane and shows IDLE for the
+# rest of the join, and the log it displays says the run is over. The index
+# does finish correctly; what is wrong is every report about it.
+#
+# Only the stages that run on this machine: translate chunks run on whichever
+# node took them, and those are covered by the instance count. Extract and
+# join are on the managers queue and so are always here, and they are the two
+# that outlive their instances.
+stage_processes_running() {
+    local name
+    for name in bt-extract-strings bt-build-translation-db bt-join-index; do
+        if pgrep -f "$BIGTRANSLATE_HOME/bin/$name" > /dev/null 2>&1; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 wait_for_workflow() {
     local waited=0
     local quiet=0
     local running
+    local said_waiting_on_stages=no
 
     while [ "$waited" -lt "$TRANSLATE_TIMEOUT" ]; do
         running=$(running_instance_count)
@@ -405,8 +436,20 @@ wait_for_workflow() {
             # ended there is a run reported finished with nothing indexed.
             quiet=$((quiet + TRANSLATE_POLL))
             if [ "$quiet" -ge "$TRANSLATE_SETTLE" ]; then
-                say "Workflow finished after ${waited}s."
-                return 0
+                # A quiet workflow manager is not an idle machine. See
+                # stage_processes_running: the join's instance is Success
+                # while four shards are still writing to Solr.
+                if stage_processes_running; then
+                    if [ "$said_waiting_on_stages" = no ]; then
+                        say "Workflow manager is quiet, but a stage is still" \
+                            "running. Waiting for it."
+                        said_waiting_on_stages=yes
+                    fi
+                    quiet=0
+                else
+                    say "Workflow finished after ${waited}s."
+                    return 0
+                fi
             fi
         else
             quiet=0
