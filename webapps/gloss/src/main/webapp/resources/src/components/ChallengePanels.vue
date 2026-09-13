@@ -260,6 +260,14 @@ const FIRM_LIMIT = 12
 const FIRM_TREND_LIMIT = 6
 const COUNTRY_LIMIT = 6
 const REGION_LIMIT = 14
+// The nested facets go deeper than the lists they feed. A terms facet inside
+// a month bucket returns that month's top N, which is not the same set as the
+// corpus-wide top N: a region that is fourteenth overall can be twentieth in
+// a quiet month, come back absent, and be read as a month of zero postings.
+// On the downtrend and anomaly panels that is a fabricated collapse. Deep
+// enough that the regions being plotted are present in every month.
+const NESTED_REGION_LIMIT = 60
+const NESTED_COUNTRY_LIMIT = 20
 const TRANSPORT = 'transport'
 
 export default {
@@ -378,15 +386,23 @@ export default {
       return names.map((name) => {
         const shares = []
         let total = 0
+        let missing = 0
         buckets.forEach((b) => {
           const found = ((b[key] || {}).buckets || [])
             .find((x) => x.val === name)
+          if (!found) {
+            missing += 1
+          }
           const count = found ? found.count : 0
           total += count
           shares.push(b.count ? count / b.count : 0)
         })
-        return { region: name, total, shares }
-      })
+        // A name absent from a month's nested facet is a name that fell below
+        // the nested limit, not a month with no postings. Reading it as zero
+        // is a collapse that never happened, so a series with holes in it is
+        // dropped rather than plotted.
+        return { region: name, total, shares, missing }
+      }).filter((row) => row.missing === 0)
     }
 
     async function load() {
@@ -408,8 +424,10 @@ export default {
             gap: '+1MONTH',
             mincount: 1,
             facet: {
-              region: { type: 'terms', field: 'department', limit: REGION_LIMIT },
-              country: { type: 'terms', field: 'country', limit: COUNTRY_LIMIT },
+              region: { type: 'terms', field: 'department',
+                        limit: NESTED_REGION_LIMIT },
+              country: { type: 'terms', field: 'country',
+                         limit: NESTED_COUNTRY_LIMIT },
               transport: {
                 type: 'query',
                 q: sectorQuery(SECTORS.find((s) => s.key === TRANSPORT), field)

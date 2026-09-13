@@ -237,3 +237,36 @@ test('a quiet index reports nothing rather than its loudest noise', () => {
   const rows = [{ region: 'r', total: 1, z: [0.1, -0.4, 0.2] }]
   assert.equal(notableAnomalies(rows, ['a', 'b', 'c']).length, 0)
 })
+
+// --------------------------------------------------- nested facet depth
+//
+// A terms facet nested inside a month bucket returns that month's top N,
+// which is not the corpus-wide top N. A region fourteenth overall can be
+// twentieth in a quiet month, come back absent, and be read as a month of
+// zero postings -- a collapse that never happened, on exactly the two
+// panels whose job is to find collapses.
+
+test('a series with a hole in it is not a collapse', () => {
+  // What it looks like when the nested limit cut a region off: present,
+  // present, absent, present. Read as zero that is a 100% crash and a
+  // recovery, and the anomaly panel will report it as five sigma.
+  const holed = [
+    { region: 'patchy', total: 99999, shares: [0.2, 0.2, 0, 0.2], missing: 1 }
+  ]
+  const rows = anomalies(holed.filter((r) => r.missing === 0), 5000)
+  assert.equal(rows.length, 0, 'a holed series reached the anomaly panel')
+})
+
+test('a complete series is kept', () => {
+  const whole = [
+    { region: 'complete', total: 99999, shares: [0.2, 0.21, 0.19, 0.2], missing: 0 }
+  ]
+  assert.equal(anomalies(whole.filter((r) => r.missing === 0), 5000).length, 1)
+})
+
+test('the downtrend panel drops holed series too', () => {
+  const holed = [
+    { region: 'patchy', total: 99999, shares: [0.2, 0, 0.2], missing: 1 }
+  ]
+  assert.equal(trendByRegion(holed.filter((r) => r.missing === 0), 5000).length, 0)
+})
