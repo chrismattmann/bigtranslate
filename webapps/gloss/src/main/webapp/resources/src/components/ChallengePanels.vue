@@ -29,6 +29,12 @@
 
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-else-if="loading" class="loading">Asking Solr…</p>
+    <p v-else-if="failed.length" class="caveat partial">
+      Solr did not answer for {{ failed.join(', ') }}, so
+      {{ failed.length === 1 ? 'that panel is' : 'those panels are' }} empty
+      below. The rest of the page is unaffected — each question is asked on
+      its own.
+    </p>
 
     <template v-else>
       <!-- A15, V3 -->
@@ -283,6 +289,7 @@ export default {
     const lifeOverRows = ref('')
     const lifeCollapsed = ref('')
     const anomalyLine = ref('')
+    const failed = ref([])
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
     const minSalary = MIN_SALARY_RECORDS.toLocaleString()
     const threshold = ANOMALY_THRESHOLD
@@ -348,6 +355,24 @@ export default {
       }
     }
 
+    /**
+     * One question, and a note rather than a blank page when it fails.
+     *
+     * load() used to be a single try/catch around every query. Any one of
+     * them failing -- a slow facet over 119 million documents, a field not
+     * indexed yet -- took all nine panels with it and left the reader a
+     * sentence about an exception. The panels do not depend on each other,
+     * so a failure should cost one of them.
+     */
+    async function attempt(what, run, fallback) {
+      try {
+        return await run()
+      } catch (e) {
+        failed.value = failed.value.concat(what)
+        return fallback
+      }
+    }
+
     /** Region and country series, from one month-by-month answer. */
     function series(buckets, key, names) {
       return names.map((name) => {
@@ -374,7 +399,7 @@ export default {
         // One pass over the months carries four panels: downtrend,
         // anomalies, transport and seasonality. Eighteen range buckets is
         // cheap; asking four times over 119 million documents is not.
-        const overall = await solrFacet({
+        const overall = await attempt('the corpus overview', () => solrFacet({
           months: {
             type: 'range',
             field: 'postedDate',
@@ -397,7 +422,7 @@ export default {
                        facet: { country: { type: 'terms', field: 'country',
                                            limit: COUNTRY_LIMIT } } },
           distinctCompanies: 'unique(company)'
-        })
+        }), { facets: {}, response: { numFound: 0 } })
         const f = overall.facets || {}
         const months = wholeMonths((f.months || {}).buckets || [])
         const regionNames = ((f.regions || {}).buckets || []).map((b) => b.val)
@@ -424,7 +449,7 @@ export default {
 
         // The big names, month by month, as a share of the month.
         const named = companies.slice(0, FIRM_TREND_LIMIT)
-        const firmTrend = await solrFacet({
+        const firmTrend = await attempt('employers over time', () => solrFacet({
           months: {
             type: 'range',
             field: 'postedDate',
@@ -440,7 +465,7 @@ export default {
               return acc
             }, {})
           }
-        })
+        }), { facets: {} })
 
         // Salaries. fq rather than a filter inside the facet, so a bucket's
         // count is the number of postings that state a figure -- which is
@@ -473,25 +498,26 @@ export default {
           ? `${((stated / corpus) * 100).toFixed(1)}%`
           : '0%'
 
-        const skills = await solrFacet({
+        const skills = await attempt('skill levels', () => solrFacet({
           country: {
             type: 'terms', field: 'country', limit: COUNTRY_LIMIT,
             facet: skillFacet(field)
           }
-        })
+        }), { facets: {} })
 
         // One row per job rather than per posting-day. Collapsing is what
         // makes the answer about postings instead of about how long each one
         // happened to stay up.
-        const lives = await solrFacet({
+        const lives = await attempt('posting lifetimes', () => solrFacet({
           all: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))',
           region: {
             type: 'terms', field: 'department', limit: REGION_LIMIT,
             facet: { days: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }
           }
-        }, { fq: '{!collapse field=url}' })
-        const rows = await solrFacet(
-          { all: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' })
+        }, { fq: '{!collapse field=url}' }), { facets: {} })
+        const rows = await attempt('lifetime over rows', () => solrFacet(
+          { all: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }),
+        { facets: {} })
 
         lifeOverRows.value =
           ((rows.facets || {}).all || 0).toFixed(1)
@@ -1051,7 +1077,7 @@ export default {
       transportSvg, seasonSvg, anomalySvg,
       loading, error, tip, sectorField, firms, companyCount, hhi, territorial,
       salarySeries, salaryShare, lifeOverRows, lifeCollapsed, anomalyLine,
-      minRegion, minSalary, threshold
+      minRegion, minSalary, threshold, failed
     }
   }
 }
