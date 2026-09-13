@@ -41,6 +41,13 @@
           sitting in its single largest region: 1 is one region only.
           {{ territorial }}
         </p>
+        <p class="note">
+          Bars are split by country, and the grey segment is the
+          <strong>{{ 100 - Number(countryShare.replace('%', '')) }}%</strong>
+          of postings the geo-fixing never reached — the corpus records the
+          country only inside the location text. Territory is computed over
+          regions, which every posting has.
+        </p>
       </article>
 
       <!-- V2 -->
@@ -83,6 +90,13 @@
             at all. The other 91% say <em>To be agreed</em>, <em>In an
             interview</em> or <em>Negotiable</em>. Months with fewer than
             {{ minSalary }} stated salaries are dropped rather than drawn.
+          </p>
+          <p class="note">
+            And only where the country is known, which is
+            <strong>{{ countryShare }}</strong> of postings: the corpus
+            records it inside the location text, and the records without one
+            are the records the geo-fixing never reached. So this is a chart
+            over the intersection of two partial columns, not over the corpus.
           </p>
         </template>
       </article>
@@ -222,6 +236,9 @@ const REGION_LIMIT = 14
 const NESTED_REGION_LIMIT = 60
 const NESTED_COUNTRY_LIMIT = 20
 const TRANSPORT = 'transport'
+// Nearly half the corpus was never geo-fixed and so carries no country. It
+// is a segment on the bar rather than a missing piece of one.
+const UNKNOWN_COUNTRY = 'not geo-fixed'
 
 export default {
   name: 'ChallengePanels',
@@ -251,6 +268,7 @@ export default {
     const lifeCollapsed = ref('')
     const anomalyLine = ref('')
     const failed = ref([])
+    const countryShare = ref('')
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
     const minSalary = MIN_SALARY_RECORDS.toLocaleString()
     const threshold = ANOMALY_THRESHOLD
@@ -392,7 +410,10 @@ export default {
           companies: { type: 'terms', field: 'company', limit: FIRM_LIMIT,
                        facet: { country: { type: 'terms', field: 'country',
                                            limit: COUNTRY_LIMIT } } },
-          distinctCompanies: 'unique(company)'
+          distinctCompanies: 'unique(company)',
+          // Not every posting has one. The panels that group by country
+          // have to say how much of the corpus they are answering over.
+          withCountry: { type: 'query', q: 'country:[* TO *]' }
         }), { facets: {}, response: { numFound: 0 } })
         const f = overall.facets || {}
         const months = wholeMonths((f.months || {}).buckets || [])
@@ -401,6 +422,10 @@ export default {
         const companies = ((f.companies || {}).buckets || [])
         const corpus = overall.response ? overall.response.numFound : 0
 
+        const located = ((f.withCountry || {}).count) || 0
+        countryShare.value = corpus
+          ? `${((located / corpus) * 100).toFixed(0)}%`
+          : '0%'
         companyCount.value = Number(f.distinctCompanies || 0).toLocaleString()
         hhi.value = concentration(companies, corpus)
         firms.value = companies
@@ -591,14 +616,23 @@ export default {
           .text(String(row.val).length > 26
             ? String(row.val).slice(0, 25) + '…' : row.val)
         let cursor = left
-        const parts = ((row.country || {}).buckets || [])
-        const t = territory(parts)
+        const known = ((row.country || {}).buckets || [])
+        const t = territory(known)
+        // The records with no country are the records the geo-fixing never
+        // reached, and they are nearly half the corpus. Without a segment for
+        // them the bar is shorter than the number printed at the end of it,
+        // and the reader is left to wonder which is wrong.
+        const accounted = known.reduce((a, b) => a + (b.count || 0), 0)
+        const parts = accounted < row.count
+          ? known.concat([{ val: UNKNOWN_COUNTRY, count: row.count - accounted }])
+          : known
         parts.forEach((part) => {
           const w = x(part.count) - x(0)
           const rect = sel.append('rect')
             .attr('x', cursor).attr('y', y + 2)
             .attr('width', Math.max(0, w)).attr('height', barH - 7)
-            .attr('fill', countryColour(part.val))
+            .attr('fill', part.val === UNKNOWN_COUNTRY
+              ? '#d7dde3' : countryColour(part.val))
           hoverable(rect, () => ({
             title: row.val,
             lines: [
@@ -614,7 +648,8 @@ export default {
             + `${t.share.toFixed(2)}`)
       })
       legend(sel, left, top + rows.length * barH + 6,
-        countries.slice(0, 4).map((c) => ({ label: c, colour: countryColour(c) })))
+        countries.slice(0, 4).map((c) => ({ label: c, colour: countryColour(c) }))
+          .concat([{ label: UNKNOWN_COUNTRY, colour: '#d7dde3' }]))
     }
 
     /** Multi-line: each big employer's share of the month, with its fit. */
@@ -1048,7 +1083,7 @@ export default {
       transportSvg, seasonSvg, anomalySvg,
       loading, error, tip, sectorField, firms, companyCount, hhi, territorial,
       salarySeries, salaryShare, lifeOverRows, lifeCollapsed, anomalyLine,
-      minRegion, minSalary, threshold, failed
+      minRegion, minSalary, threshold, failed, countryShare
     }
   }
 }
