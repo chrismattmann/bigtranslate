@@ -92,6 +92,16 @@
             {{ minSalary }} stated salaries are dropped rather than drawn.
           </p>
           <p class="note">
+            <strong>These are nominal, and two of these countries had serious
+            inflation.</strong> Argentina rises about 6.5 index points a month
+            here and Venezuela 7.5, which over the collection is a doubling —
+            but Argentine consumer prices rose roughly 25% in 2013 and
+            Venezuela's over 40%, and the corpus cannot deflate itself. Read
+            the steep lines as currency, not as pay. Colombia and Peru, whose
+            inflation ran near 2–3%, are the two where the slope is closer to
+            a real change.
+          </p>
+          <p class="note">
             And only where the country is known, which is
             <strong>{{ countryShare }}</strong> of postings: the corpus
             records it inside the location text, and the records without one
@@ -444,8 +454,15 @@ export default {
           : ''
 
         // The big names, month by month, as a share of the month.
+        //
+        // Everything from here is independent of everything else, so it is
+        // asked at once. Awaited in turn these took about forty seconds over
+        // 119 million documents -- the salary facet alone is fourteen, the
+        // overview thirteen -- and a page that takes forty seconds to draw
+        // is a page nobody scrolls to the bottom of. In parallel the wait is
+        // the slowest one rather than the sum of all of them.
         const named = companies.slice(0, FIRM_TREND_LIMIT)
-        const firmTrend = await attempt('employers over time', () => solrFacet({
+        const firmTrendP = attempt('employers over time', () => solrFacet({
           months: {
             type: 'range',
             field: 'postedDate',
@@ -466,13 +483,14 @@ export default {
         // Salaries. fq rather than a filter inside the facet, so a bucket's
         // count is the number of postings that state a figure -- which is
         // the number the panel has to be able to show and drop on.
-        let salary = { facets: {} }
-        let stated = 0
-        try {
-          const probe = await solrFacet({ n: { type: 'query', q: 'salary_d:[* TO *]' } })
-          stated = ((probe.facets || {}).n || {}).count || 0
-          if (stated > 0) {
-            salary = await solrFacet({
+        const salaryP = (async () => {
+          let salary = { facets: {} }
+          let stated = 0
+          try {
+            const p = await solrFacet({ n: { type: 'query', q: 'salary_d:[* TO *]' } })
+            stated = ((p.facets || {}).n || {}).count || 0
+            if (stated > 0) {
+              salary = await solrFacet({
               country: {
                 type: 'terms', field: 'country', limit: COUNTRY_LIMIT,
                 facet: {
@@ -485,16 +503,15 @@ export default {
                   }
                 }
               }
-            }, { fq: 'salary_d:[* TO *]' })
+              }, { fq: 'salary_d:[* TO *]' })
+            }
+          } catch (e) {
+            stated = 0
           }
-        } catch (e) {
-          stated = 0
-        }
-        salaryShare.value = corpus
-          ? `${((stated / corpus) * 100).toFixed(1)}%`
-          : '0%'
+          return { salary, stated }
+        })()
 
-        const skills = await attempt('skill levels', () => solrFacet({
+        const skillsP = attempt('skill levels', () => solrFacet({
           country: {
             type: 'terms', field: 'country', limit: COUNTRY_LIMIT,
             facet: skillFacet(field)
@@ -504,16 +521,23 @@ export default {
         // One row per job rather than per posting-day. Collapsing is what
         // makes the answer about postings instead of about how long each one
         // happened to stay up.
-        const lives = await attempt('posting lifetimes', () => solrFacet({
+        const livesP = attempt('posting lifetimes', () => solrFacet({
           all: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))',
           region: {
             type: 'terms', field: 'department', limit: REGION_LIMIT,
             facet: { days: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }
           }
         }, { fq: '{!collapse field=url}' }), { facets: {} })
-        const rows = await attempt('lifetime over rows', () => solrFacet(
+        const rowsP = attempt('lifetime over rows', () => solrFacet(
           { all: 'avg(div(ms(lastSeenDate,firstSeenDate),86400000))' }),
         { facets: {} })
+
+        const [firmTrend, salaryAnswer, skills, lives, rows] = await Promise.all(
+          [firmTrendP, salaryP, skillsP, livesP, rowsP])
+        const { salary, stated } = salaryAnswer
+        salaryShare.value = corpus
+          ? `${((stated / corpus) * 100).toFixed(1)}%`
+          : '0%'
 
         lifeOverRows.value =
           ((rows.facets || {}).all || 0).toFixed(1)
