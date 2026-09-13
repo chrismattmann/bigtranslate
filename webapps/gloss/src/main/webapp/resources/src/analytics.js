@@ -42,16 +42,47 @@
  * colour ramp. The full label stays on the key and in the tooltip, where
  * there is room for it.
  */
+/*
+ * Sector vocabularies, in English and in the Spanish that survived.
+ *
+ * The pipeline translates the title, and where it fails or mangles a word
+ * the original survives in the index -- so the most common job in a sector
+ * can be the one an English-only word list never sees. Measured against
+ * data/translations.sqlite, over 2,286,244 distinct translated strings:
+ *
+ *   chofer      7,339   against Driver   7,068   half of all drivers
+ *   mesero/-s/-a 1,551  against Waiter     109   fourteen waiters in fifteen
+ *   cajero      2,216   against Cashier  5,894
+ *   vendedor/-a 2,051   against Seller   8,971
+ *   obra          896   against Builder    438
+ *
+ * Two words were measured and left out, because a word list is only worth
+ * having if it is right:
+ *
+ *   worker   1,939 hits, 58% of them "Social Worker" -- Trabajador Social,
+ *            and "Prestaciones Sociales" mistranslated the same way.
+ *   executive (see SKILL_TIERS) 48% "Ejecutivo de Ventas", a sales rep.
+ *
+ * And one that cannot be recovered here at all: albanil, the commonest
+ * building trade in the region, is translated as "Blue" -- 113 of the 503
+ * strings containing it. Bricklayers are missing from the construction
+ * sector and no word list fixes that; the glossary does, on the next
+ * translate run.
+ */
 export const SECTORS = [
   { key: 'office', label: 'Office and admin', short: 'Office',
     words: ['Assistant', 'Secretary', 'Administrative', 'Accountant',
-            'Analyst', 'Receptionist', 'Clerk', 'Auxiliary'] },
+            'Analyst', 'Receptionist', 'Clerk', 'Auxiliary',
+            'auxiliar'] },
   { key: 'retail', label: 'Retail and sales', short: 'Retail',
     words: ['Sales', 'Seller', 'Vendor', 'Cashier', 'Commercial', 'Store',
-            'Shop', 'Promoter'] },
+            'Shop', 'Promoter',
+            'vendedor', 'vendedora', 'mercaderista', 'impulsadora',
+            'cajero'] },
   { key: 'industrial', label: 'Industry and trades', short: 'Industry',
     words: ['Operator', 'Mechanic', 'Welder', 'Production', 'Maintenance',
-            'Electrician', 'Machinist'] },
+            'Electrician', 'Machinist',
+            'operario', 'operarios', 'soldador'] },
   { key: 'it', label: 'Software and IT', short: 'IT',
     words: ['Developer', 'Programmer', 'Software', 'Systems', 'Web',
             'Database'] },
@@ -60,14 +91,17 @@ export const SECTORS = [
             'Therapist'] },
   { key: 'transport', label: 'Transport and logistics', short: 'Transport',
     words: ['Driver', 'Logistics', 'Delivery', 'Courier', 'Warehouse',
-            'Transport'] },
+            'Transport',
+            'chofer', 'conductor', 'repartidor', 'motorizado'] },
   { key: 'teaching', label: 'Education', short: 'Education',
     words: ['Teacher', 'Professor', 'Instructor', 'Tutor', 'Trainer'] },
   { key: 'hospitality', label: 'Food and hospitality', short: 'Hospitality',
-    words: ['Waiter', 'Chef', 'Cook', 'Kitchen', 'Bartender', 'Hotel'] },
+    words: ['Waiter', 'Chef', 'Cook', 'Kitchen', 'Bartender', 'Hotel',
+            'mesero', 'meseros', 'mesera', 'camarero', 'garzon'] },
   { key: 'construction', label: 'Construction', short: 'Construction',
     words: ['Construction', 'Builder', 'Architect', 'Plumber', 'Mason',
-            'Painter'] }
+            'Painter',
+            'obra'] }
 ]
 
 /**

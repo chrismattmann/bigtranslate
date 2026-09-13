@@ -41,6 +41,21 @@
         </p>
       </div>
 
+      <p class="caveat">
+        Sectors are matched on words in the translated title, and the
+        translation is not perfect. Where it failed the Spanish survives, so
+        the word lists carry both — <code>chofer</code> is 7,339 strings
+        against <code>Driver</code>'s 7,068, and the Spanish forms of
+        <em>waiter</em> outnumber the English fourteen to one. Two words were
+        measured and left out for being wrong about half the time:
+        <code>worker</code> is usually <em>Trabajador Social</em>, and
+        <code>executive</code> is usually <em>Ejecutivo de Ventas</em>, a
+        sales representative. One cannot be recovered at all:
+        <em>albañil</em>, the commonest building trade in the region, was
+        translated as <em>Blue</em>, so bricklayers are missing from
+        construction.
+      </p>
+
       <p v-if="sectorField === 'text'" class="caveat">
         Sectors are matched against the catch-all <code>text</code> field,
         which copies every column, so a match may have come from a company
