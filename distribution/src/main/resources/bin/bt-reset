@@ -75,7 +75,9 @@ for dir in data/strings data/translated data/translated-catalog data/jobs \
   rm -rf "${BIGTRANSLATE_HOME:?}/$dir"
   mkdir -p "$BIGTRANSLATE_HOME/$dir"
 done
-rm -f "$BIGTRANSLATE_HOME/data/run"
+# The marker and the record that the last run ended. A start removes the
+# latter anyway, but a reset is meant to leave nothing derived behind.
+rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"
 
 # The instance repository is a database when it is not a Lucene index, and
 # an empty directory is not a schema. Rebuilt through the same tool bin/oodt
