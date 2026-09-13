@@ -1002,7 +1002,19 @@ export default {
         // eventually breaks with "ResizeObserver loop completed with
         // undelivered notifications". Redrawing at a width already drawn at
         // produces the same charts, so the guard also makes it free.
-        observer = new ResizeObserver(onResize)
+        observer = new ResizeObserver(() => {
+          // clientWidth, because that is what redraw() records in drawnAt.
+          // This compared entries[0].contentRect.width against it, which is
+          // the content box against content plus padding: never equal, so it
+          // redrew on every callback it got. Harmless until nine charts
+          // started changing heights inside this section, and then it was a
+          // loop that took the browser down.
+          const width = root.value ? Math.round(root.value.clientWidth) : 0
+          if (loading.value || redrawing || width === drawnAt) {
+            return
+          }
+          redraw()
+        })
         observer.observe(root.value || document.body)
       }
     })

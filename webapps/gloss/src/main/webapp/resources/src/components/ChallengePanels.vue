@@ -287,7 +287,6 @@ export default {
     const minSalary = MIN_SALARY_RECORDS.toLocaleString()
     const threshold = ANOMALY_THRESHOLD
 
-    let observer = null
     let data = null
     let drawnAt = 0
 
@@ -1179,15 +1178,21 @@ export default {
 
     onMounted(() => {
       load()
-      if (typeof ResizeObserver !== 'undefined' && root.value) {
-        observer = new ResizeObserver(onResize)
-        observer.observe(root.value)
-      }
+      // Deliberately not a ResizeObserver. Drawing nine charts changes the
+      // height of the box a ResizeObserver would be watching, which changes
+      // the page height, which can add a scrollbar, which changes the width
+      // -- and that is the thing it would redraw on. Guards slowed that loop
+      // down and did not stop it; it took two browsers down.
+      //
+      // The window resize event cannot feed back, because nothing here
+      // resizes the window.
+      window.addEventListener('resize', onResize)
     })
     onUnmounted(() => {
-      if (observer) {
-        observer.disconnect()
-        observer = null
+      window.removeEventListener('resize', onResize)
+      if (pending) {
+        cancelAnimationFrame(pending)
+        pending = 0
       }
     })
 
