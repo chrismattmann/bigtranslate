@@ -87,8 +87,8 @@
           <p class="note">
             Medians, not means, over the
             <strong>{{ salaryShare }}</strong> of postings that state a figure
-            at all. The other 91% say <em>To be agreed</em>, <em>In an
-            interview</em> or <em>Negotiable</em>. Months with fewer than
+            at all. The rest say <em>To be agreed</em> — 15,276,117 of them —
+            or <em>In an interview</em> or <em>Negotiable</em>. Months with fewer than
             {{ minSalary }} stated salaries are dropped rather than drawn.
           </p>
           <p class="note">

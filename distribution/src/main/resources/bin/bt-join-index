@@ -249,8 +249,16 @@ def build_document(parts, columns, translate_at, table, required, dates,
 # hundred; "10,000" is ten thousand. A dot and a comma are both thousands
 # separators here, never a decimal point: these are monthly salaries in whole
 # currency units, and nobody advertises 1.5 pesos.
-_SALARY_JUNK = re.compile(r"[^0-9.,\-]")
-_SALARY_NUMBER = re.compile(r"\d+(?:[.,]\d{3})*")
+#
+# The apostrophe is a separator too, and a Colombian one: $1'700,000 is one
+# million seven hundred thousand pesos. Read as two numbers it becomes 1 and
+# 700,000, the 1 falls below the floor as noise, and the salary is stored as
+# 700,000 -- understated by a factor of two and a half, silently, on 403,182
+# postings. Folded in with the dot and the comma so the whole figure survives.
+_SALARY_JUNK = re.compile(r"[^0-9.,'\u2019\-]")
+_SALARY_NUMBER = re.compile(r"\d+(?:[.,'\u2019]\d{3})*")
+_SALARY_APOSTROPHE = re.compile(r"\d\s*['\u2019]\s*\d")
+_SALARY_RUN = re.compile(r"\d[\d.,'\u2019 ]*\d")
 
 # Above this nothing is a monthly salary in any of the four currencies, and
 # below it nothing is either. The corpus reaches into the millions because a
@@ -282,14 +290,28 @@ def parse_salary(raw):
     """
     if raw is None:
         return None
-    text = _SALARY_JUNK.sub(" ", str(raw))
+    text = str(raw)
+    # Colombian notation is written loosely: "$1'700,000", "$ 1' 000.000",
+    # "$1 '700,000" and "$ 1'000 000" all appear, and all of them mean one
+    # point something million pesos. Close the gaps around the separators
+    # before anything tries to read the number, or the leading digit comes
+    # off as its own value, falls below the floor as noise, and the salary is
+    # stored as the remainder -- 700,000 for 1,700,000, on 403,182 postings.
+    if _SALARY_APOSTROPHE.search(text):
+        # One figure, however it was spaced. Only the run of digits and
+        # separators around the apostrophe is collapsed, so a range like
+        # "12000 - 13000" elsewhere in the cell is untouched: the dash is
+        # not in the class and stops the match.
+        text = _SALARY_RUN.sub(
+            lambda m: re.sub(r"[^0-9]", "", m.group(0)), text)
+    text = _SALARY_JUNK.sub(" ", text)
     found = _SALARY_NUMBER.findall(text)
     if not found:
         return None
     values = []
     for each in found:
         try:
-            values.append(float(each.replace(".", "").replace(",", "")))
+            values.append(float(re.sub(r"[.,'\u2019\s]", "", each)))
         except ValueError:
             continue
     values = [v for v in values if SALARY_FLOOR <= v <= SALARY_CEILING]

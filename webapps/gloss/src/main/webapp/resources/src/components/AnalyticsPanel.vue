@@ -33,8 +33,8 @@
         <p>
           Two of the answers exist only because the index stopped throwing two
           columns away. <code>salary</code> was a string, so it could not be
-          averaged or ranged over, and about 8.9% of postings state a figure —
-          10.6 million records. <code>country</code> was nowhere at all: the
+          averaged or ranged over, and <strong>40%</strong> of postings state
+          a figure the join can read — 48 million records. <code>country</code> was nowhere at all: the
           corpus records it only inside the location text, which left 161
           departments and no countries, and no way to group salaries by the
           currency they are quoted in.

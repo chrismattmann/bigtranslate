@@ -210,3 +210,42 @@ class TestOneSpellingPerCountry:
         document = {"location": "Bogota"}
         j.add_country(document)
         assert "country" not in document
+
+
+class TestTheApostropheIsAMillionsSeparator:
+    """$1'700,000 is one point seven million Colombian pesos.
+
+    Found by reading what the index actually stored, after the join:
+
+        salary   "$1 '700,000 Colombian pesos + Extr"
+        salary_d 700,000
+
+    The leading 1 came off as a number of its own, fell below the floor as
+    noise, and the salary was stored as the remainder -- understated two and
+    a half times, silently, on 403,182 postings. All of them Colombian,
+    because the apostrophe is a Colombian convention.
+    """
+
+    def test_the_whole_figure_survives(self):
+        assert _join().parse_salary("$1'700,000") == 1700000.0
+
+    def test_however_it_is_spaced(self):
+        j = _join()
+        for text in ("$1 '700,000 Colombian pesos + Extras",
+                     "$ 1' 700.000", "$1' 700,000"):
+            assert j.parse_salary(text) == 1700000.0, text
+
+    def test_a_space_inside_the_figure_does_not_split_it(self):
+        assert _join().parse_salary("$ 1'000 000") == 1000000.0
+
+    def test_a_range_written_that_way_still_averages(self):
+        assert _join().parse_salary("$1'200,000 - $1'500,000") == 1350000.0
+
+    def test_a_range_without_apostrophes_is_untouched(self):
+        # The collapse is gated on the apostrophe and stops at the dash, so
+        # an ordinary range does not become one enormous number.
+        assert _join().parse_salary("$ 12000 - $ 13000") == 12500.0
+
+    def test_a_sentence_with_figures_is_still_refused(self):
+        assert _join().parse_salary(
+            "12000 a 13000 pesos mensuales 2013") is None
