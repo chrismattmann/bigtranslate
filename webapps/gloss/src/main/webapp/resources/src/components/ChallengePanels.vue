@@ -1,34 +1,15 @@
 <template>
   <section class="challenges" ref="root">
-    <header class="intro">
-      <h2>The rest of the challenges</h2>
-      <div class="intro-text">
-        <p>
-          The employment set ships <strong>twenty</strong> challenge
-          questions: fifteen analytic and five visual. The panels above answer
-          six. These are the rest of the ones this index can answer on its
-          own. Four cannot be answered by anything: they need the WDC
-          hyperlink graph, Akamai CIDR data, Net Scan, or Twitter, and none of
-          those datasets still exist.
-        </p>
-        <p>
-          Two columns the index used to throw away are behind most of this.
-          <code>salary</code> was a string, so it could not be averaged or
-          ranged over; <code>country</code> was nowhere at all, because the
-          corpus records it only inside the location text. Both are indexed
-          now, which is what makes compensation and corporate territory
-          answerable.
-        </p>
-      </div>
-    </header>
 
     <div v-if="tip" class="tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">
       <strong>{{ tip.title }}</strong>
       <span v-for="(line, i) in tip.lines" :key="i">{{ line }}</span>
     </div>
 
-    <p v-if="error" class="banner">{{ error }}</p>
-    <p v-else-if="loading" class="loading">Asking Solr…</p>
+    <article v-if="error" class="card banner">{{ error }}</article>
+    <article v-else-if="loading" class="card">
+      <p class="loading">Asking Solr…</p>
+    </article>
     <p v-else-if="failed.length" class="caveat partial">
       Solr did not answer for {{ failed.join(', ') }}, so
       {{ failed.length === 1 ? 'that panel is' : 'those panels are' }} empty
@@ -1102,69 +1083,46 @@ export default {
 </script>
 
 <style scoped>
-.challenges { padding: 0 1.25rem 3rem; }
-.intro { max-width: 62rem; margin: 0 auto 1.5rem; }
-.intro h2 { margin: 2rem 0 0.75rem; font-size: 1.4rem; }
-.intro-text p { margin: 0 0 0.75rem; line-height: 1.6; max-width: 62rem; }
-.card {
-  max-width: 62rem;
-  margin: 0 auto 2rem;
-  padding: 1.1rem 1.25rem 1.25rem;
-  border: 1px solid rgba(127, 127, 127, 0.22);
-  border-radius: 4px;
-}
-.card h3 { margin: 0 0 0.2rem; font-size: 1.08rem; }
-.q {
-  margin: 0 0 0.9rem;
-  font-size: 0.8rem;
-  letter-spacing: 0.02em;
-  opacity: 0.65;
-  text-transform: none;
-}
+/* The same card as the panels above, because it is the same list. These
+   were a second design -- currentColor on a transparent ground, a 62rem
+   measure, their own margins -- which on the paper coloured page read as
+   nine panels that had lost their background. The values here are copied
+   from AnalyticsPanel deliberately: one look, one list. */
+.challenges { display: flex; flex-direction: column; gap: 18px;
+              position: relative; }
+.card { background: #fff; border: 1px solid #e2e6ea; border-radius: 6px;
+        padding: 14px 16px; }
+.card h3 { margin: 0 0 2px; font-size: 1.02rem; }
+.q { margin: 0 0 10px; font-size: 0.8rem; color: #7a8691;
+     text-transform: uppercase; letter-spacing: 0.03em; }
 .chart { display: block; width: 100%; overflow: visible; }
-.note {
-  margin: 0.8rem 0 0;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  opacity: 0.85;
-}
-.caveat {
-  margin: 0 0 0.5rem;
-  padding: 0.6rem 0.8rem;
-  font-size: 0.85rem;
-  background: rgba(225, 160, 60, 0.12);
-  border-left: 3px solid #e1a03c;
-  border-radius: 2px;
-}
-.notanswerable ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
-.notanswerable li { margin: 0 0 0.6rem; font-size: 0.88rem; line-height: 1.55; }
-.banner, .loading { max-width: 62rem; margin: 1rem auto; }
-.tip {
-  position: absolute;
-  z-index: 20;
-  pointer-events: none;
-  padding: 0.45rem 0.6rem;
-  border-radius: 3px;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  background: rgba(26, 20, 16, 0.93);
-  color: #fff;
-  max-width: 22rem;
-}
-.tip strong { display: block; margin-bottom: 0.15rem; }
+.note { margin: 10px 0 0; font-size: 0.86rem; color: #55606b; }
+.loading { color: #7a8691; margin: 0; }
+.caveat { margin: 0 0 10px; padding: 8px 10px; font-size: 0.84rem;
+          color: #6b4b12; background: #fdf3e0; border-left: 3px solid #e1a03c;
+          border-radius: 3px; }
+.caveat.partial { background: #fff; border: 1px solid #e2e6ea;
+                  border-left: 3px solid #e1a03c; border-radius: 6px;
+                  padding: 14px 16px; color: #55606b; }
+.notanswerable ul { margin: 8px 0 0; padding-left: 18px; }
+.notanswerable li { margin: 0 0 8px; font-size: 0.86rem; color: #55606b; }
+.banner { background: #fdecea; border-color: #f5c6c0; color: #8a2c22; }
+.tip { position: absolute; z-index: 20; pointer-events: none;
+       background: #1f2933; color: #f5f7fa; border-radius: 4px;
+       padding: 7px 9px; font-size: 0.78rem; line-height: 1.35;
+       box-shadow: 0 3px 12px rgba(0,0,0,0.22); max-width: 300px; }
+.tip strong { display: block; margin-bottom: 2px; }
 .tip span { display: block; opacity: 0.85; }
-.challenges { position: relative; }
 </style>
 
 <style>
 /* Not scoped: these land on nodes d3 appends, which carry no scope id. */
-.challenges .lbl { font-size: 11.5px; fill: currentColor; opacity: 0.85; }
-.challenges .val { font-size: 11px; fill: currentColor; opacity: 0.6;
+.challenges .lbl { font-size: 11.5px; fill: #55606b; }
+.challenges .val { font-size: 11px; fill: #7a8691;
                    font-variant-numeric: tabular-nums; }
-.challenges .tick { font-size: 10.5px; fill: currentColor; opacity: 0.55; }
-.challenges .leg { font-size: 11px; fill: currentColor; opacity: 0.8; }
+.challenges .tick { font-size: 10.5px; fill: #7a8691; }
+.challenges .leg { font-size: 11px; fill: #55606b; }
 .challenges .inbar { font-size: 10.5px; fill: #fff; font-weight: 600; }
-.challenges .axis text { font-size: 10.5px; fill: currentColor; opacity: 0.55; }
-.challenges .axis path, .challenges .axis line { stroke: currentColor;
-                                                 opacity: 0.25; }
+.challenges .axis text { font-size: 10.5px; fill: #7a8691; }
+.challenges .axis path, .challenges .axis line { stroke: #d7dde3; }
 </style>

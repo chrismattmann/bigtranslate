@@ -22,10 +22,20 @@
           above are not the same question. Panels say which one they counted.
         </p>
         <p>
-          The dataset ships with a list of challenge questions. These are the
-          ones this index can answer on its own; the others need data we do not
-          have here, such as joining posting URLs against the WDC hyperlink
-          graph or correlating against Twitter.
+          The dataset ships with <strong>twenty</strong> challenge questions,
+          fifteen analytic and five visual. Sixteen of them can be answered
+          from this index alone and are answered below. The other four need
+          data that no longer exists: the WDC hyperlink graph, Akamai CIDR
+          traffic, Net Scan, and Twitter. The last panel says which, and why.
+        </p>
+        <p>
+          Two of the answers exist only because the index stopped throwing two
+          columns away. <code>salary</code> was a string, so it could not be
+          averaged or ranged over, and about 8.9% of postings state a figure —
+          10.6 million records. <code>country</code> was nowhere at all: the
+          corpus records it only inside the location text, which left 161
+          departments and no countries, and no way to group salaries by the
+          currency they are quoted in.
         </p>
       </div>
 
@@ -127,6 +137,12 @@
           is a shortfall in every sector at once.
         </p>
       </article>
+
+      <!-- The rest of the challenges: same list, same page, no seam. They
+           are a separate component only because this file is long, not
+           because they are a separate subject. -->
+      <ChallengePanels />
+
       <!-- Hindsight -->
       <article class="card">
         <h3>How well did it do?</h3>
@@ -166,6 +182,7 @@
 <script>
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as d3 from 'd3'
+import ChallengePanels from './ChallengePanels.vue'
 import { solrFacet } from '../api.js'
 import {
   CHECKS, VERDICTS, citations, tally, verdictLine
@@ -183,6 +200,7 @@ const HOUR_TYPES = ['Full Time', 'Part Time', 'Hourly', 'Temporary',
 
 export default {
   name: 'AnalyticsPanel',
+  components: { ChallengePanels },
   setup() {
     const root = ref(null)
     const hoursSvg = ref(null)
