@@ -270,3 +270,39 @@ test('the downtrend panel drops holed series too', () => {
   ]
   assert.equal(trendByRegion(holed.filter((r) => r.missing === 0), 5000).length, 0)
 })
+
+// ------------------------------------------------------- tier vocabulary
+//
+// Checked against the translation database rather than guessed. "Ejecutivo"
+// is the word that mattered: 33,223 distinct translated strings contain
+// "executive", and on a sample of four thousand, 48% are "Ejecutivo de
+// Ventas" or "Ejecutivo de Cobranza" -- sales reps and collections agents.
+
+test('executive is not a management title in this corpus', () => {
+  const senior = SKILL_TIERS.find((t) => t.key === 'senior')
+  assert.ok(!senior.terms.includes('executive'),
+    'Ejecutivo de Ventas is a sales rep; counting it as management puts a '
+    + 'tenth of the corpus in the wrong tier')
+})
+
+test('head is kept, because it is Jefe', () => {
+  const senior = SKILL_TIERS.find((t) => t.key === 'senior')
+  assert.ok(senior.terms.includes('head'))
+})
+
+test('practitioner is in the entry tier', () => {
+  // Practicante is an intern. It is the most common entry-tier word in the
+  // corpus by a wide margin -- 14,143 strings against 947 for trainee.
+  const entry = SKILL_TIERS.find((t) => t.key === 'entry')
+  assert.ok(entry.terms.includes('practitioner'))
+})
+
+test('no term appears in two tiers', () => {
+  const seen = new Set()
+  for (const tier of SKILL_TIERS) {
+    for (const term of tier.terms) {
+      assert.ok(!seen.has(term), `${term} is in two tiers`)
+      seen.add(term)
+    }
+  }
+})

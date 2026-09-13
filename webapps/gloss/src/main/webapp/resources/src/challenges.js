@@ -214,8 +214,20 @@ export const SKILL_TIERS = [
     key: 'senior',
     label: 'Management and senior',
     short: 'Senior',
+    // No 'executive'. It is the third most common word in this tier's
+    // vocabulary -- 33,223 distinct translated strings -- and on a sample of
+    // four thousand of them 48% are "Ejecutivo de Ventas", "Ejecutivo de
+    // Cobranza" and the like: sales representatives and collections agents,
+    // which in Latin America is what Ejecutivo usually means. Counting them
+    // as management would have put a tenth of the corpus in the wrong tier
+    // and made every country look top heavy. Dropped rather than guessed:
+    // this panel is already an inference, and an inference that is wrong
+    // half the time is not one worth making.
+    //
+    // 'head' stays. It is Jefe -- Jefe de Planta, Jefe de Produccion, Jefe
+    // de Enfermeria -- and on the same sample it is supervisory throughout.
     terms: ['manager', 'director', 'head', 'chief', 'supervisor',
-            'coordinator', 'executive', 'president']
+            'coordinator', 'president']
   }
 ]
 
