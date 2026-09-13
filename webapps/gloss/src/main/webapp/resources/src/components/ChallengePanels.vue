@@ -1140,17 +1140,47 @@ export default {
       })
     }
 
+    // Redrawing changes the height of nine charts, which changes the height
+    // of the page, which can add or remove a scrollbar, which changes the
+    // width -- and a width change is what this observer redraws on. That is
+    // a loop with nothing to stop it, and it does not merely spin: it took
+    // the browser down.
+    //
+    // Three things hold it. A re-entrancy flag, so a redraw cannot schedule
+    // itself. requestAnimationFrame, so a burst of callbacks is one redraw.
+    // And a settling window afterwards, because the layout the redraw caused
+    // arrives a frame or two later and would otherwise look like new news.
+    let redrawing = false
+    let pending = 0
+    function onResize() {
+      if (loading.value || redrawing) {
+        return
+      }
+      const now = root.value ? Math.round(root.value.clientWidth) : 0
+      // Compared against the same measurement redraw() records. Comparing
+      // contentRect.width with a clientWidth costs a pixel of padding and
+      // makes every callback look like a change.
+      if (!now || Math.abs(now - drawnAt) < 2) {
+        return
+      }
+      if (pending) {
+        cancelAnimationFrame(pending)
+      }
+      pending = requestAnimationFrame(() => {
+        pending = 0
+        redrawing = true
+        try {
+          redraw()
+        } finally {
+          setTimeout(() => { redrawing = false }, 250)
+        }
+      })
+    }
+
     onMounted(() => {
       load()
       if (typeof ResizeObserver !== 'undefined' && root.value) {
-        observer = new ResizeObserver(() => {
-          // Only on a real width change. A ResizeObserver that redraws on
-          // every callback feeds its own next callback.
-          const now = root.value ? Math.round(root.value.clientWidth) : 0
-          if (!loading.value && now && Math.abs(now - drawnAt) > 8) {
-            redraw()
-          }
-        })
+        observer = new ResizeObserver(onResize)
         observer.observe(root.value)
       }
     })
