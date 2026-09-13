@@ -78,14 +78,24 @@ public class ServicesRestResource {
   public Map<String, Object> progress() {
     Map<String, Object> progress = new LinkedHashMap<String, Object>();
     progress.putAll(ProcessBtWrapper.getInstance().snapshot());
-    // Whatever the marker did not carry. Through the translate pass the only
-    // writer of the marker is the wait loop in bin/bigtranslate, which has no
-    // counts to write, so without this the panel spends the longest stage of
-    // the run showing a tail of the log instead of the bar.
-    for (Map.Entry<String, Object> each : ProcessBtWrapper.countChunks()
-        .entrySet()) {
-      if (progress.get(each.getKey()) == null) {
-        progress.put(each.getKey(), each.getValue());
+    // Whatever the marker did not carry, but only while something is
+    // running. Through the translate pass the only writer of the marker is
+    // the wait loop in bin/bigtranslate, which has no counts to write, so
+    // without this the panel spends the longest stage of the run showing a
+    // tail of the log instead of the bar.
+    //
+    // Not when nothing is running. The counts come from directories a
+    // finished run leaves full, so an idle deployment reported
+    // "stage": "joining", 458 of 458 -- last week's run described as though
+    // it were happening. Nothing renders it today, because Gloss only draws
+    // the pane while it is busy, but an endpoint that answers a question it
+    // was not asked is how the next reader is misled.
+    if (!ProcessBtWrapper.IDLE.equals(progress.get("status"))) {
+      for (Map.Entry<String, Object> each : ProcessBtWrapper.countChunks()
+          .entrySet()) {
+        if (progress.get(each.getKey()) == null) {
+          progress.put(each.getKey(), each.getValue());
+        }
       }
     }
     progress.put("jobDirs", Long.valueOf(ProcessBtWrapper.countJobDirs()));
