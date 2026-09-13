@@ -227,7 +227,10 @@ test('sector words are mostly English, and the Spanish ones are deliberate', () 
   assert.ok(words.length > 40, 'too few words to catch a long tail')
   const spanish = words.filter((w) => !/^[A-Z][A-Za-z]+$/.test(w))
   spanish.forEach((w) => {
-    assert.match(w, /^[a-z]+$/, `${w} is neither English nor a survivor`)
+    // Accents allowed, and required: the index folds neither accents nor
+    // plurals, so garzon and garzon-with-an-accent are separate tokens and
+    // both have to be listed.
+    assert.match(w, /^[a-záéíóúüñ]+$/, `${w} is neither English nor a survivor`)
     assert.ok(SECTORS_SOURCE.includes(w),
       `${w} is not accounted for in the comment above SECTORS`)
   })

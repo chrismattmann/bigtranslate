@@ -62,6 +62,18 @@
  *   worker   1,939 hits, 58% of them "Social Worker" -- Trabajador Social,
  *            and "Prestaciones Sociales" mistranslated the same way.
  *   executive (see SKILL_TIERS) 48% "Ejecutivo de Ventas", a sales rep.
+ *   asesor   2,063 hits. 46% are Asesor Comercial or de Ventas and another
+ *            12% are inmobiliario, financiero, seguros or credito, which
+ *            sell things too -- but the rest are Asesor de Imagen, de
+ *            Servicio, de Calidad. A coin flip with a lean is still a coin
+ *            flip, and the bar has to be the same one that excluded the
+ *            other two.
+ *
+ * Neither accents nor plurals are folded by the index: text_general here is
+ * standard tokenizer, stop, lowercase, and nothing else. So garzon does not
+ * match garzon-with-an-accent and chofer does not match choferes, and both
+ * forms have to be listed. That is how cajera was nearly missed -- 1,901
+ * strings of feminine singular, against 2,216 for the masculine.
  *
  * And one that cannot be recovered here at all: albanil, the commonest
  * building trade in the region, is translated as "Blue" -- 113 of the 503
@@ -73,16 +85,19 @@ export const SECTORS = [
   { key: 'office', label: 'Office and admin', short: 'Office',
     words: ['Assistant', 'Secretary', 'Administrative', 'Accountant',
             'Analyst', 'Receptionist', 'Clerk', 'Auxiliary',
-            'auxiliar'] },
+            'auxiliar',
+            'secretaria'] },
   { key: 'retail', label: 'Retail and sales', short: 'Retail',
     words: ['Sales', 'Seller', 'Vendor', 'Cashier', 'Commercial', 'Store',
             'Shop', 'Promoter',
             'vendedor', 'vendedora', 'mercaderista', 'impulsadora',
-            'cajero'] },
+            'cajero',
+            'cajera', 'cajeros', 'cajeras', 'vendedores', 'promotor', 'promotora', 'promotores'] },
   { key: 'industrial', label: 'Industry and trades', short: 'Industry',
     words: ['Operator', 'Mechanic', 'Welder', 'Production', 'Maintenance',
             'Electrician', 'Machinist',
-            'operario', 'operarios', 'soldador'] },
+            'operario', 'operarios', 'soldador',
+            'operaria'] },
   { key: 'it', label: 'Software and IT', short: 'IT',
     words: ['Developer', 'Programmer', 'Software', 'Systems', 'Web',
             'Database'] },
@@ -92,12 +107,14 @@ export const SECTORS = [
   { key: 'transport', label: 'Transport and logistics', short: 'Transport',
     words: ['Driver', 'Logistics', 'Delivery', 'Courier', 'Warehouse',
             'Transport',
-            'chofer', 'conductor', 'repartidor', 'motorizado'] },
+            'chofer', 'conductor', 'repartidor', 'motorizado',
+            'choferes', 'almacenista', 'bodeguero'] },
   { key: 'teaching', label: 'Education', short: 'Education',
     words: ['Teacher', 'Professor', 'Instructor', 'Tutor', 'Trainer'] },
   { key: 'hospitality', label: 'Food and hospitality', short: 'Hospitality',
     words: ['Waiter', 'Chef', 'Cook', 'Kitchen', 'Bartender', 'Hotel',
-            'mesero', 'meseros', 'mesera', 'camarero', 'garzon'] },
+            'mesero', 'meseros', 'mesera', 'camarero', 'garzon',
+            'cocinero', 'garzón'] },
   { key: 'construction', label: 'Construction', short: 'Construction',
     words: ['Construction', 'Builder', 'Architect', 'Plumber', 'Mason',
             'Painter',
