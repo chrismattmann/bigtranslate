@@ -53,6 +53,14 @@ export const SOURCES = {
     label: 'Foreign investment in the Mexican automotive sector',
     url: 'https://www.tecma.com/foreign-investment-in-the-mexican-automotive-sector/'
   },
+  bcvInflation: {
+    label: 'Venezuela consumer prices, 2013',
+    url: 'https://www.reuters.com/article/venezuela-economy-inflation-idUSL1N0KI0XO20140108'
+  },
+  indecInflation: {
+    label: 'Argentina, the disputed inflation figures of 2013',
+    url: 'https://www.economist.com/finance-and-economics/2014/02/15/the-price-of-cooking-the-books'
+  },
   ilo: {
     label: 'ILO, employment and informality in Latin America',
     url: 'https://www.ilo.org/sites/default/files/wcmsp5/groups/public/@americas/@ro-lima/@sro-port_of_spain/documents/genericdocument/wcms_819029.pdf'
@@ -155,6 +163,65 @@ export const CHECKS = [
       + 'this labour market that actually changes.',
     verdict: 'held',
     sources: ['ilo']
+  },
+  {
+    key: 'buenos-aires-falling',
+    question: 'Q7',
+    claim: 'Buenos Aires lost share faster than any other region.',
+    measure: { kind: 'worstRegion' },
+    happened: 'It kept falling. The peso was devalued about 20% in January '
+      + '2014, private consumption fell 1.2% in the first quarter and '
+      + 'Argentina entered recession. The downtrend panel found the right '
+      + 'region for what was coming, which the openings panel — looking at '
+      + 'the same place and calling it a gap in the market — did not.',
+    verdict: 'held',
+    sources: ['bloombergPeso', 'brookingsPeso']
+  },
+  {
+    key: 'salary-inflation',
+    question: 'Q8',
+    claim: 'Stated salaries rose fastest in Argentina and Venezuela.',
+    measure: { kind: 'salaryTrend' },
+    happened: 'Both were inflating, not paying more. Venezuelan consumer '
+      + 'prices rose about 56% in 2013 and Argentina\u2019s official figure '
+      + 'of 10.9% was disputed to the point that the IMF censured the '
+      + 'country, with private estimates near 25%. A nominal salary series '
+      + 'in a currency losing half its value a year measures the currency. '
+      + 'The corpus has no deflator and cannot grow one.',
+    verdict: 'missed',
+    sources: ['bcvInflation', 'indecInflation']
+  },
+  {
+    key: 'fragmented',
+    question: 'Q15',
+    claim: 'No employer holds a meaningful share; the market is a long tail '
+      + 'with staffing agencies at the head.',
+    measure: { kind: 'concentration' },
+    happened: 'Not something the record can confirm or deny, because the '
+      + 'measurement is not about the economy. The largest posters are '
+      + 'Manpower, Adecco and Activos — agencies posting on behalf of '
+      + 'employers rather than employers. So the figure describes who runs '
+      + 'the job board, and the question it was meant to answer, company '
+      + 'growth, is only answerable here for the agencies themselves. '
+      + 'Reported as a property of the corpus rather than a finding about '
+      + 'the labour market.',
+    verdict: 'untestable',
+    sources: []
+  },
+  {
+    key: 'biggest-anomaly',
+    question: 'Q3',
+    claim: 'The anomalies the panel finds are regional, not national.',
+    measure: { kind: 'anomalyCount' },
+    happened: 'The largest movement in the corpus is not on that panel at '
+      + 'all. October 2012 holds 23.9 million postings against 2.6 million '
+      + 'in September and 14.5 million in November — a ninefold jump and '
+      + 'back. Nothing in the labour market did that; the collection changed. '
+      + 'The panel measures each region against its own trend, which is what '
+      + 'keeps a scraper artefact from being reported as an economic event, '
+      + 'and is also why the biggest number in the data never appears on it.',
+    verdict: 'untestable',
+    sources: []
   },
   {
     key: 'lifetime',

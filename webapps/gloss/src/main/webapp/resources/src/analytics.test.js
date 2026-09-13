@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
@@ -212,11 +213,28 @@ test('the field a sector is matched against is named, not assumed', () => {
   assert.equal(SECTOR_FIELDS.broad, 'text')
 })
 
-test('sector words are English, because the pipeline translated them', () => {
+test('sector words are mostly English, and the Spanish ones are deliberate', () => {
+  // This used to assert every word was Capitalised English, on the reasoning
+  // that the pipeline translated the titles. It does -- except where it
+  // fails, and then the Spanish survives in the index. An English-only list
+  // misses "chofer" (7,339 strings, against Driver's 7,068) and almost every
+  // waiter in the corpus.
+  //
+  // So the rule is not "English"; it is that a lower case word is a Spanish
+  // survivor and has to be one somebody measured, not a typo.
   const words = SECTORS.flatMap((s) => s.words)
   assert.ok(words.includes('Driver'))
   assert.ok(words.length > 40, 'too few words to catch a long tail')
-  words.forEach((w) => assert.match(w, /^[A-Z][A-Za-z]+$/, w))
+  const spanish = words.filter((w) => !/^[A-Z][A-Za-z]+$/.test(w))
+  spanish.forEach((w) => {
+    // Accents allowed, and required: the index folds neither accents nor
+    // plurals, so garzon and garzon-with-an-accent are separate tokens and
+    // both have to be listed.
+    assert.match(w, /^[a-záéíóúüñ]+$/, `${w} is neither English nor a survivor`)
+    assert.ok(SECTORS_SOURCE.includes(w),
+      `${w} is not accounted for in the comment above SECTORS`)
+  })
+  assert.ok(spanish.includes('chofer'))
 })
 
 
@@ -260,4 +278,56 @@ test('every sector has a short form for a crowded axis', () => {
       s.short + ' is too long to sit flat on the axis')
     assert.ok(s.label.length >= s.short.length)
   })
+})
+
+// ------------------------------------------------- vocabulary, measured
+//
+// Checked against data/translations.sqlite rather than guessed, after
+// "executive" turned out to be Ejecutivo de Ventas half the time. The
+// pipeline translates the title and where it fails the Spanish survives, so
+// an English-only word list can miss a sector's commonest job entirely.
+
+const SECTORS_SOURCE = readFileSync(new URL('./analytics.js', import.meta.url), 'utf8')
+
+test('the surviving Spanish is matched too', () => {
+  const bySector = Object.fromEntries(
+    SECTORS.map((s) => [s.key, s.words.map((w) => w.toLowerCase())]))
+  // chofer 7,339 against Driver 7,068: half of all drivers.
+  assert.ok(bySector.transport.includes('chofer'))
+  // mesero forms 1,551 against Waiter 109.
+  assert.ok(bySector.hospitality.includes('mesero'))
+  assert.ok(bySector.hospitality.includes('meseros'))
+  // cajero 2,216, and Cashier is already in retail.
+  assert.ok(bySector.retail.includes('cajero'))
+})
+
+test('worker is not a sector word', () => {
+  // 1,939 hits, 58% of them "Social Worker" -- Trabajador Social, and
+  // "Prestaciones Sociales" mistranslated the same way.
+  for (const sector of SECTORS) {
+    const words = sector.words.map((w) => w.toLowerCase())
+    assert.ok(!words.includes('worker'), `${sector.key} claims "worker"`)
+    assert.ok(!words.includes('workers'), `${sector.key} claims "workers"`)
+  }
+})
+
+test('no word belongs to two sectors', () => {
+  const seen = new Map()
+  for (const sector of SECTORS) {
+    for (const word of sector.words) {
+      const key = word.toLowerCase()
+      assert.ok(!seen.has(key),
+        `"${word}" is in both ${seen.get(key)} and ${sector.key}`)
+      seen.set(key, sector.key)
+    }
+  }
+})
+
+test('the vocabularies say where they came from', () => {
+  // The counts are the reason the odd-looking entries are there. Without
+  // them the next reader deletes "chofer" as a typo.
+  const source = SECTORS_SOURCE
+  assert.ok(source.includes('chofer'))
+  assert.ok(source.includes('Social Worker'))
+  assert.ok(source.includes('Blue'), 'the albanil problem is not recorded')
 })

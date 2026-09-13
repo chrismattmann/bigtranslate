@@ -22,12 +22,39 @@
           above are not the same question. Panels say which one they counted.
         </p>
         <p>
-          The dataset ships with a list of challenge questions. These are the
-          ones this index can answer on its own; the others need data we do not
-          have here, such as joining posting URLs against the WDC hyperlink
-          graph or correlating against Twitter.
+          The dataset ships with <strong>twenty</strong> challenge questions,
+          fifteen analytic and five visual. Sixteen of them can be answered
+          from this index alone and are answered below. The other four need
+          data that no longer exists — the WDC hyperlink graph, Akamai CIDR
+          traffic, Net Scan and Twitter — and are listed on the
+          <a href="https://github.com/chrismattmann/bigtranslate/wiki/Analytics">
+          Analytics wiki page</a>.
+        </p>
+        <p>
+          Two of the answers exist only because the index stopped throwing two
+          columns away. <code>salary</code> was a string, so it could not be
+          averaged or ranged over, and <strong>40%</strong> of postings state
+          a figure the join can read — 48 million records. <code>country</code> was nowhere at all: the
+          corpus records it only inside the location text, which left 161
+          departments and no countries, and no way to group salaries by the
+          currency they are quoted in.
         </p>
       </div>
+
+      <p class="caveat">
+        Sectors are matched on words in the translated title, and the
+        translation is not perfect. Where it failed the Spanish survives, so
+        the word lists carry both — <code>chofer</code> is 7,339 strings
+        against <code>Driver</code>'s 7,068, and the Spanish forms of
+        <em>waiter</em> outnumber the English fourteen to one. Two words were
+        measured and left out for being wrong about half the time:
+        <code>worker</code> is usually <em>Trabajador Social</em>, and
+        <code>executive</code> is usually <em>Ejecutivo de Ventas</em>, a
+        sales representative. One cannot be recovered at all:
+        <em>albañil</em>, the commonest building trade in the region, was
+        translated as <em>Blue</em>, so bricklayers are missing from
+        construction.
+      </p>
 
       <p v-if="sectorField === 'text'" class="caveat">
         Sectors are matched against the catch-all <code>text</code> field,
@@ -127,6 +154,12 @@
           is a shortfall in every sector at once.
         </p>
       </article>
+
+      <!-- The rest of the challenges: same list, same page, no seam. They
+           are a separate component only because this file is long, not
+           because they are a separate subject. -->
+      <ChallengePanels @measured="onChallengeMeasures" />
+
       <!-- Hindsight -->
       <article class="card">
         <h3>How well did it do?</h3>
@@ -166,6 +199,7 @@
 <script>
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as d3 from 'd3'
+import ChallengePanels from './ChallengePanels.vue'
 import { solrFacet } from '../api.js'
 import {
   CHECKS, VERDICTS, citations, tally, verdictLine
@@ -183,6 +217,7 @@ const HOUR_TYPES = ['Full Time', 'Part Time', 'Hourly', 'Temporary',
 
 export default {
   name: 'AnalyticsPanel',
+  components: { ChallengePanels },
   setup() {
     const root = ref(null)
     const hoursSvg = ref(null)
@@ -199,6 +234,8 @@ export default {
     const sectorField = ref(SECTOR_FIELDS.broad)
     const tip = ref(null)
     const checks = ref([])
+    // What the panels below measured, handed up for the card.
+    const challenge = ref(null)
     const verdict = ref('')
     const scoreSvg = ref(null)
     const minRegion = MIN_REGION_POSTINGS.toLocaleString()
@@ -342,10 +379,43 @@ export default {
      * what the panel says it claimed.
      */
     function measure(check) {
+      const m = check.measure || {}
+      // The four checks below are measured by the panels further down, which
+      // ask their own questions of Solr. They hand the numbers up rather than
+      // this file asking again -- and rather than anybody writing them down,
+      // which is the thing this card exists not to do.
+      if (m.kind === 'worstRegion') {
+        const w = challenge.value && challenge.value.worstRegion
+        return w
+          ? `${w.region}, ${(w.perMonth * 100).toFixed(1)}% of its own share a month`
+          : ''
+      }
+      if (m.kind === 'salaryTrend') {
+        const rows = (challenge.value && challenge.value.salary) || []
+        const top = rows.slice().sort((a, b) => b.perMonth - a.perMonth)[0]
+        return top
+          ? `${top.country} +${top.perMonth.toFixed(1)} index points a month, `
+            + `R² ${top.r2.toFixed(2)}`
+          : ''
+      }
+      if (m.kind === 'concentration') {
+        const c = challenge.value
+        return c && c.hhi
+          ? `HHI ${Math.round(c.hhi.hhi)} over ${c.companies.toLocaleString()} `
+            + `employers; the largest holds `
+            + `${((c.topFirm && c.topFirm.share) * 100 || 0).toFixed(2)}%`
+          : ''
+      }
+      if (m.kind === 'anomalyCount') {
+        const a = (challenge.value && challenge.value.anomalies) || []
+        return a.length
+          ? `${a.length} month${a.length === 1 ? '' : 's'} past ±2σ, worst `
+            + `${a[0].region} in ${a[0].month} at ${a[0].z.toFixed(1)}σ`
+          : ''
+      }
       if (!data) {
         return ''
       }
-      const m = check.measure || {}
       if (m.kind === 'sectorTrend') {
         const rate = growthRate(shareSeries(data.months, m.sector))
         return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}% a month`
@@ -399,6 +469,14 @@ export default {
         citations: citations(c)
       }))
       verdict.value = verdictLine(tally(CHECKS))
+    }
+
+    function onChallengeMeasures(answer) {
+      challenge.value = answer
+      // The card is already drawn by the time those panels finish, so the
+      // four checks they feed would otherwise sit blank until a resize.
+      buildChecks()
+      nextTick().then(drawScorecard)
     }
 
     function drawScorecard() {
@@ -875,6 +953,43 @@ export default {
         .attr('text-anchor', 'end').text('strongest')
     }
 
+    // Redrawing changes the height of nine charts, which changes the height
+    // of the page, which can add or remove a scrollbar, which changes the
+    // width -- and a width change is what this observer redraws on. That is
+    // a loop with nothing to stop it, and it does not merely spin: it took
+    // the browser down.
+    //
+    // Three things hold it. A re-entrancy flag, so a redraw cannot schedule
+    // itself. requestAnimationFrame, so a burst of callbacks is one redraw.
+    // And a settling window afterwards, because the layout the redraw caused
+    // arrives a frame or two later and would otherwise look like new news.
+    let redrawing = false
+    let pending = 0
+    function onResize() {
+      if (loading.value || redrawing) {
+        return
+      }
+      const now = root.value ? Math.round(root.value.clientWidth) : 0
+      // Compared against the same measurement redraw() records. Comparing
+      // contentRect.width with a clientWidth costs a pixel of padding and
+      // makes every callback look like a change.
+      if (!now || Math.abs(now - drawnAt) < 2) {
+        return
+      }
+      if (pending) {
+        cancelAnimationFrame(pending)
+      }
+      pending = requestAnimationFrame(() => {
+        pending = 0
+        redrawing = true
+        try {
+          redraw()
+        } finally {
+          setTimeout(() => { redrawing = false }, 250)
+        }
+      })
+    }
+
     onMounted(() => {
       load()
       if (typeof ResizeObserver !== 'undefined') {
@@ -887,9 +1002,15 @@ export default {
         // eventually breaks with "ResizeObserver loop completed with
         // undelivered notifications". Redrawing at a width already drawn at
         // produces the same charts, so the guard also makes it free.
-        observer = new ResizeObserver((entries) => {
-          const width = Math.round(entries[0].contentRect.width)
-          if (loading.value || width === drawnAt) {
+        observer = new ResizeObserver(() => {
+          // clientWidth, because that is what redraw() records in drawnAt.
+          // This compared entries[0].contentRect.width against it, which is
+          // the content box against content plus padding: never equal, so it
+          // redrew on every callback it got. Harmless until nine charts
+          // started changing heights inside this section, and then it was a
+          // loop that took the browser down.
+          const width = root.value ? Math.round(root.value.clientWidth) : 0
+          if (loading.value || redrawing || width === drawnAt) {
             return
           }
           redraw()
@@ -904,6 +1025,7 @@ export default {
     })
 
     return {
+      onChallengeMeasures,
       root, hoursSvg, lifeSvg, zoneSvg, trendSvg, gapSvg, scoreSvg, tip,
       jobLabel, checks, verdict,
       loading, error, months, monthRange, totalLabel, sectorField, minRegion
