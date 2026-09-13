@@ -30,6 +30,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 import sqlite3
 import subprocess
@@ -236,8 +237,119 @@ def build_document(parts, columns, translate_at, table, required, dates,
         if name not in document and name not in dates:
             document[name] = ""
     add_numeric_coordinates(document)
+    add_country(document)
+    add_numeric_salary(document)
     missing = [name for name in required if name not in document]
     return document, missing
+
+
+# Salaries are written the way the country writes them, and the corpus spans
+# four of them. "800.000" is eight hundred thousand Colombian pesos, not eight
+# hundred; "10,000" is ten thousand. A dot and a comma are both thousands
+# separators here, never a decimal point: these are monthly salaries in whole
+# currency units, and nobody advertises 1.5 pesos.
+_SALARY_JUNK = re.compile(r"[^0-9.,\-]")
+_SALARY_NUMBER = re.compile(r"\d+(?:[.,]\d{3})*")
+
+# Above this nothing is a monthly salary in any of the four currencies, and
+# below it nothing is either. The corpus reaches into the millions because a
+# Colombian salary is quoted in pesos, so the ceiling has to be generous; the
+# floor exists because "0" is how this corpus writes "not stated" and is the
+# fourth most common value in the column, 417,082 records of it.
+# The floor is not cosmetic. "Table 1" is what the model made of a salary
+# cell in one country-day, and a bare "1" parsed out of it is a salary of one
+# peso; "2,5" parses to two numbers and, read as a range, to 3.5. Nothing in
+# any of these four currencies pays a monthly wage below three figures -- the
+# Peruvian minimum wage in 2013 was 750 soles -- so anything under a hundred
+# is a mistranslation, a count, or a footnote marker.
+SALARY_FLOOR = 100.0
+SALARY_CEILING = 100000000.0
+
+# What separates the two halves of a range. Without this, any cell holding
+# two numbers for unrelated reasons is averaged into one that means nothing.
+_SALARY_RANGE = re.compile(r"\d\s*(?:-|–|—|\bto\b|\ba\b|\by\b)\s*[$\s]*\d")
+
+
+def parse_salary(raw):
+    """A number from a salary cell, or None when there is not one in it.
+
+    Most of the column is not a number at all. "To be agreed" is 15,276,117
+    records, "In an interview" 3,682,013, "Negotiable" 908,564. About 8.9% of
+    the corpus states a figure, which is 10.6 million records -- enough to
+    answer the question, and only if the ones that do not are left out rather
+    than counted as zero.
+    """
+    if raw is None:
+        return None
+    text = _SALARY_JUNK.sub(" ", str(raw))
+    found = _SALARY_NUMBER.findall(text)
+    if not found:
+        return None
+    values = []
+    for each in found:
+        try:
+            values.append(float(each.replace(".", "").replace(",", "")))
+        except ValueError:
+            continue
+    values = [v for v in values if SALARY_FLOOR <= v <= SALARY_CEILING]
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2 and _SALARY_RANGE.search(str(raw)):
+        # A range: "$ 12000 - $ 13000". The midpoint is what a reader takes
+        # from it, and it is what a median over many of them should see.
+        #
+        # Only when something in the cell actually separates the two. "2,5"
+        # also parses to two numbers, and averaged as a range it becomes 3.5.
+        return (values[0] + values[1]) / 2.0
+    # Three or more numbers is not a salary, it is a sentence with figures in
+    # it. Guessing which one is the pay is how a column of noise becomes a
+    # confident chart.
+    return None
+
+
+def add_numeric_salary(document):
+    """The salary as a number, absent when the cell does not state one.
+
+    Absent rather than zero, for the same reason latitude_d is absent rather
+    than zero: indexed as zero, the fifteen million records that say "To be
+    agreed" would drag every average to the floor, and salary_d:[* TO *]
+    would stop meaning "states a salary".
+
+    Not comparable across countries. A Colombian peso and a Peruvian sol are
+    three orders of magnitude apart, so anything that averages this column
+    over the whole corpus is measuring the mix of countries in it. Group by
+    country, or index each country against its own baseline.
+    """
+    value = parse_salary(document.get("salary"))
+    if value is not None:
+        document["salary_d"] = value
+
+
+def add_country(document):
+    """The country, which the corpus only records inside the location string.
+
+    location reads "Chacarita - Buenos Aires, Ciudad Autonoma de Buenos
+    Aires, Argentina": the country is the last comma separated part. There
+    are 80,110 distinct locations and no country column, so without this
+    every question about a country is a question about 161 departments whose
+    names a reader is expected to already know -- and the salary figures
+    cannot be grouped by the currency they are quoted in.
+    """
+    raw = document.get("location")
+    if raw is None:
+        return
+    parts = [p.strip() for p in str(raw).split(",")]
+    parts = [p for p in parts if p]
+    if len(parts) < 2:
+        return
+    country = parts[-1]
+    # A country name, not a street. Long strings and digits mean the cell was
+    # not shaped the way this assumes.
+    if len(country) > 40 or any(ch.isdigit() for ch in country):
+        return
+    document["country"] = country
 
 
 def add_numeric_coordinates(document):

@@ -101,6 +101,38 @@
          required="false" multiValued="false"/>
   <field name="longitude_d" type="pdouble" indexed="true" stored="true"
          required="false" multiValued="false"/>
+
+  <!-- The salary as a number, and absent when the cell does not state one.
+
+       The salary column is mostly not a number: "To be agreed" is 15,276,117
+       records, "In an interview" 3,682,013, "Negotiable" 908,564, and "0",
+       which means unstated, another 417,082. About 8.9% of the corpus quotes
+       a figure. That is 10.6 million records, which is plenty to answer how
+       compensation moves, and only if the rest are left out rather than
+       counted as zero.
+
+       Absent rather than zero, for the reason latitude_d is: indexed as zero
+       the fifteen million "To be agreed" records drag every average to the
+       floor, and salary_d:[* TO *] stops meaning "states a salary".
+
+       NOT COMPARABLE ACROSS COUNTRIES. These are raw figures in whatever the
+       posting's country quotes: a Colombian peso and a Peruvian sol are three
+       orders of magnitude apart. Anything that averages this field over the
+       whole corpus is measuring the mix of countries in it, not pay. Group by
+       country, or index each country against its own baseline. -->
+  <field name="salary_d" type="pdouble" indexed="true" stored="true"
+         required="false" multiValued="false"/>
+
+  <!-- The country, which the corpus records only inside the location string.
+
+       location reads "Chacarita - Buenos Aires, Ciudad Autonoma de Buenos
+       Aires, Argentina" and the country is its last comma separated part.
+       There are 80,110 distinct locations and 161 departments, and without
+       this every question about a country is a question about department
+       names a reader is expected to already know. It is also what makes
+       salary_d answerable: the currency follows the country. -->
+  <field name="country" type="string" indexed="true" stored="true"
+         required="false" multiValued="false"/>
   <field name="firstSeenDate" type="pdate" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="url" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
   <field name="lastSeenDate" type="pdate" indexed="true" stored="true" required="true" multiValued="false"/>
