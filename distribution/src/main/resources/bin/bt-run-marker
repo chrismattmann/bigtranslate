@@ -39,6 +39,29 @@ def marker_path():
     return os.path.join(home, "data", "run")
 
 
+def cleared_path():
+    """Where "this run is over" is recorded.
+
+    A beat rebuilds a marker that has gone missing, which is right while a
+    run is going -- Gloss deletes the marker whenever the heartbeat goes
+    quiet, and the extract pass guarantees that on any corpus big enough to
+    take longer than the stale bound to read.
+
+    It is wrong once a run has ended. The join clears the marker as its last
+    act, and the wait loop in bin/bigtranslate, which is still up and still
+    beating, put it back fifteen seconds later: Gloss went on showing a
+    finished run as in progress -- 458 of 458 chunks and the full document
+    count sitting under a progress bar -- until the loop happened to notice
+    the workflow manager was quiet and exited. On run 6 that was two minutes
+    and forty seconds.
+
+    So a clear leaves this behind, and a beat will not rebuild across it. A
+    start removes it, because a new run supersedes the last one's ending.
+    """
+    path = marker_path()
+    return path + ".done" if path else None
+
+
 def read(path):
     try:
         with open(path, encoding="utf-8") as handle:
@@ -145,6 +168,15 @@ def main(argv=None):
             pass
         except OSError as e:
             sys.stderr.write("could not clear the run marker: %s\n" % e)
+        # Before anything else can beat. See cleared_path().
+        done = cleared_path()
+        if done:
+            try:
+                os.makedirs(os.path.dirname(done), exist_ok=True)
+                with open(done, "w", encoding="utf-8") as handle:
+                    json.dump({"clearedAt": int(time.time() * 1000)}, handle)
+            except OSError as e:
+                sys.stderr.write("could not record the end of the run: %s\n" % e)
         return 0
 
     now = int(time.time() * 1000)
@@ -160,6 +192,20 @@ def main(argv=None):
     # back, and the marker is lost routinely -- Gloss deletes it whenever
     # the heartbeat goes quiet, which the extract pass guarantees on any
     # corpus big enough to take longer than the stale bound to read.
+    done = cleared_path()
+    if args.action == "start":
+        # A new run supersedes the last one's ending.
+        try:
+            os.remove(done)
+        except (OSError, TypeError):
+            pass
+    elif done and not existing and os.path.exists(done):
+        # The run this would be rebuilding is over. Saying so is the whole
+        # point: without it the caller cannot tell "no marker yet" from
+        # "no marker any more".
+        sys.stderr.write("the run is over; not rebuilding the marker\n")
+        return 0
+
     rebuilt = args.action == "beat" and not existing
 
     record = {

@@ -104,3 +104,12 @@ def test_it_exports_oodt_home_for_the_schema_tool():
     assert "export OODT_HOME" in before, (
         "bt-reset runs the schema tool without exporting OODT_HOME, so "
         "[OODT_HOME] in the JDBC URL resolves to nothing")
+
+
+def test_it_clears_the_record_that_the_last_run_ended():
+    # data/run.done is what stops a beat resurrecting a marker the join
+    # cleared. A start removes it anyway, but a reset is meant to leave
+    # nothing derived behind.
+    body = RESET.read_text()
+    assert "data/run.done" in body, (
+        "bt-reset leaves the last run's ending behind")

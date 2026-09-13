@@ -408,3 +408,73 @@ class TestBothImplementationsCountTheSameThing:
         for stage in ("extracting", "translating", "joining"):
             assert '"%s"' % stage in python, stage
             assert '"%s"' % stage in java, stage
+
+
+class TestAClearedRunStaysCleared:
+    """A beat must not resurrect a marker that a stage deliberately cleared.
+
+    The join clears the marker as its last act. On run 6 the wait loop in
+    bin/bigtranslate was still up and still beating, and put it back fifteen
+    seconds later -- so Gloss showed a finished run as in progress, 458 of
+    458 chunks and the full 119,453,210 documents sitting under a progress
+    bar, for two minutes and forty seconds, until the loop noticed the
+    workflow manager was quiet and exited.
+
+    The rebuild itself is right while a run is going: Gloss deletes the
+    marker whenever the heartbeat goes quiet, which the extract pass
+    guarantees on a corpus big enough to take longer than the stale bound to
+    read. What was missing is any way to tell "no marker yet" from "no
+    marker any more".
+    """
+
+    def _home(self, tmp_path, monkeypatch, made=3, done=1):
+        home = home_with(tmp_path, made=made, done=done)
+        monkeypatch.setenv("BIGTRANSLATE_HOME", home.as_posix())
+        return load("bt-run-marker")
+
+    def test_a_clear_records_that_the_run_ended(self, tmp_path, monkeypatch):
+        run_marker = self._home(tmp_path, monkeypatch)
+        run_marker.main(["start", "--path", "/corpus"])
+        run_marker.main(["clear"])
+        assert (tmp_path / "data" / "run.done").exists()
+
+    def test_a_beat_after_a_clear_does_not_rebuild(self, tmp_path, monkeypatch):
+        run_marker = self._home(tmp_path, monkeypatch)
+        run_marker.main(["start", "--path", "/corpus"])
+        run_marker.main(["clear"])
+        run_marker.main(["beat", "--started-by", "cli"])
+        assert not (tmp_path / "data" / "run").exists(), (
+            "the wait loop put the marker back and Gloss went on showing a "
+            "finished run as in progress")
+
+    def test_a_stale_marker_mid_run_is_still_rebuilt(self, tmp_path,
+                                                     monkeypatch):
+        # The case the rebuild exists for, which must keep working.
+        run_marker = self._home(tmp_path, monkeypatch)
+        run_marker.main(["start", "--path", "/corpus"])
+        (tmp_path / "data" / "run").unlink()
+        run_marker.main(["beat", "--started-by", "workflow"])
+        assert (tmp_path / "data" / "run").exists()
+        assert marker(tmp_path)["chunksTotal"] == 3
+
+    def test_a_new_run_supersedes_the_last_one_ending(self, tmp_path,
+                                                      monkeypatch):
+        run_marker = self._home(tmp_path, monkeypatch)
+        run_marker.main(["start", "--path", "/corpus"])
+        run_marker.main(["clear"])
+        run_marker.main(["start", "--path", "/other"])
+        assert not (tmp_path / "data" / "run.done").exists(), (
+            "the tombstone outlived the run it belonged to; the next run's "
+            "marker can never be rebuilt")
+        (tmp_path / "data" / "run").unlink()
+        run_marker.main(["beat", "--started-by", "workflow"])
+        assert (tmp_path / "data" / "run").exists()
+
+    def test_it_says_why_it_did_not_rebuild(self, tmp_path, monkeypatch,
+                                            capsys):
+        run_marker = self._home(tmp_path, monkeypatch)
+        run_marker.main(["start", "--path", "/corpus"])
+        run_marker.main(["clear"])
+        capsys.readouterr()
+        run_marker.main(["beat", "--started-by", "cli"])
+        assert "run is over" in capsys.readouterr().err
