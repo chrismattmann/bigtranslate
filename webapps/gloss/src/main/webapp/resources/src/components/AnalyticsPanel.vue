@@ -25,8 +25,10 @@
           The dataset ships with <strong>twenty</strong> challenge questions,
           fifteen analytic and five visual. Sixteen of them can be answered
           from this index alone and are answered below. The other four need
-          data that no longer exists: the WDC hyperlink graph, Akamai CIDR
-          traffic, Net Scan, and Twitter. The last panel says which, and why.
+          data that no longer exists — the WDC hyperlink graph, Akamai CIDR
+          traffic, Net Scan and Twitter — and are listed on the
+          <a href="https://github.com/chrismattmann/bigtranslate/wiki/Analytics">
+          Analytics wiki page</a>.
         </p>
         <p>
           Two of the answers exist only because the index stopped throwing two

@@ -182,34 +182,6 @@
         <p class="note">{{ anomalyLine }}</p>
       </article>
 
-      <article class="card notanswerable">
-        <h3>What this index cannot answer</h3>
-        <p class="q">Challenges 4, 9, V5, and half of 15</p>
-        <ul>
-          <li>
-            <strong>4 · Join posting URLs with WDC Hyperlink, Akamai or Net
-            Scan data.</strong> The corpus keeps the URLs, so the join is
-            possible in principle. None of the three datasets is still
-            available.
-          </li>
-          <li>
-            <strong>9 · Correlate with Twitter for job satisfaction by
-            region.</strong> There is no Twitter data here, and the 2014
-            firehose is not something that can be reconstructed.
-          </li>
-          <li>
-            <strong>V5 · Akamai CIDR traffic against posting types.</strong>
-            Same missing dataset as 4.
-          </li>
-          <li>
-            <strong>15 · Correlate hiring to annual reports or stock
-            valuation.</strong> The hiring half is the first panel on this
-            page. The financial half needs company filings the corpus has no
-            link to — and most of these employers are private staffing
-            agencies with no stock at all.
-          </li>
-        </ul>
-      </article>
     </template>
   </section>
 </template>
@@ -1104,8 +1076,6 @@ export default {
 .caveat.partial { background: #fff; border: 1px solid #e2e6ea;
                   border-left: 3px solid #e1a03c; border-radius: 6px;
                   padding: 14px 16px; color: #55606b; }
-.notanswerable ul { margin: 8px 0 0; padding-left: 18px; }
-.notanswerable li { margin: 0 0 8px; font-size: 0.86rem; color: #55606b; }
 .banner { background: #fdecea; border-color: #f5c6c0; color: #8a2c22; }
 .tip { position: absolute; z-index: 20; pointer-events: none;
        background: #1f2933; color: #f5f7fa; border-radius: 4px;
