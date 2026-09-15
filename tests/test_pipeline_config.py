@@ -348,7 +348,22 @@ class TestBuild:
         # Mnemosyne is the continuation of Apache OODT, which the ASF retired
         # to the Attic in April 2023. A release, not a SNAPSHOT, so the
         # coordinate cannot resolve to different bytes on different machines.
-        assert "<oodt.version>1.11.0</oodt.version>" in root_pom
+        #
+        # 1.12.0 specifically: the join gate names
+        # org.apache.oodt.cas.pge.condition.ProductCountMatchesCondition, and
+        # published cas-pge 1.11.0 does not contain that class. Against 1.11.0
+        # the condition resolves only on a machine with a locally built
+        # Mnemosyne in ~/.m2, and fails in CI.
+        found = re.search(r"<oodt\.version>([^<]+)</oodt\.version>", root_pom)
+        assert found, "no oodt.version in the root pom"
+        version = found.group(1)
+        assert "SNAPSHOT" not in version, (
+            "oodt.version is %s; a SNAPSHOT can resolve to different bytes "
+            "on different machines" % version)
+        assert version == "1.12.0", (
+            "oodt.version is %s; the join gate needs ProductCountMatches"
+            "Condition, which first ships in published cas-pge 1.12.0"
+            % version)
 
     def test_no_apache_oodt_coordinates_remain(self):
         # Java packages stay org.apache.oodt.*; only the Maven coordinate moved.

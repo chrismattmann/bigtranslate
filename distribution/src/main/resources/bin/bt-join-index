@@ -160,13 +160,34 @@ def count_chunks(directory):
 
 
 def wait_for_chunks(directory, expected, timeout, poll=15):
-    """Block until every chunk has a translation, or give up saying so.
+    """A backstop. The workflow gate is what actually holds the join back.
+
+    `TranslationsSettled` (ProductCountMatchesCondition) will not let this
+    task start until catalogued EmploymentTranslatedChunk products equal
+    catalogued EmploymentStringChunk products, so by the time we run here
+    every chunk should already be on disk and the first count should be the
+    only count.
+
+    It is kept because it checks a different fact. The condition counts
+    products in the catalogue; this counts files in a directory. A chunk can
+    be catalogued on one node and not yet visible on the one running the
+    join, and indexing that gap produces the worst possible outcome: every
+    document present, some of them still in Spanish, and a run that reports
+    success.
+
+    So if this ever has to wait, the gate let the task through early. Say so
+    rather than absorbing it quietly.
 
     Chunks are written to a temporary name and renamed, so one that exists
     is one that is finished; counting them is enough.
     """
     started = time.time()
     seen = count_chunks(directory)
+    if seen < expected:
+        log("  WARNING: %d of %d translated chunks on disk. TranslationsSettled "
+            "should have held this task until all %d were catalogued, so the "
+            "gate passed early or the files have not landed on this node."
+            % (seen, expected, expected))
     while seen < expected and time.time() - started < timeout:
         log("  waiting: %d of %d chunks translated" % (seen, expected))
         time.sleep(poll)
@@ -504,8 +525,15 @@ def main(argv=None):
     # join ran on seven chunks of ten and indexed every record, reporting
     # success, with the longest strings left in Spanish.
     parser.add_argument("--expect", type=int, default=0,
-                        help="wait until this many translated chunks exist")
-    parser.add_argument("--expect-timeout", type=int, default=14400,
+                        help="backstop: refuse to index unless this many "
+                             "translated chunks are on disk. The workflow "
+                             "gate TranslationsSettled is the primary check")
+    # Four hours made sense when this flag was how the join waited for
+    # translation to finish. With TranslationsSettled gating the task, the
+    # counts already agree before we start and anything left to wait for is
+    # a file becoming visible, which is minutes. A backstop that can block
+    # for half a working day is not a backstop.
+    parser.add_argument("--expect-timeout", type=int, default=900,
                         help="give up waiting after this many seconds")
     args = parser.parse_args(argv)
 
@@ -537,7 +565,9 @@ def main(argv=None):
                 "only %d of %d translated chunks after %ds; refusing to "
                 "index a partial translation. The documents would all be "
                 "there and some of them would still be in the source "
-                "language."
+                "language. TranslationsSettled should have held this task "
+                "until the counts matched -- check the condition before "
+                "raising --expect-timeout."
                 % (waited, args.expect, args.expect_timeout))
 
     if not os.path.exists(args.translations_db):
