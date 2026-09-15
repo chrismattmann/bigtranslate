@@ -55,7 +55,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: distribution/target/solr-*.tgz
-          key: solr-${{ hashFiles('pom.xml') }}
+          # distribution/pom.xml, because that is where solr.version is
+          # declared. Hashing the root pom instead looks fine until the next
+          # Solr upgrade: the key would not change, so the stale tarball is
+          # restored, the build correctly re-downloads the new one, and the
+          # save is then skipped because the key already exists. The cache
+          # would quietly never hold the new version again.
+          key: solr-${{ hashFiles('distribution/pom.xml') }}
           restore-keys: solr-
 
       - name: Package BigTranslate
