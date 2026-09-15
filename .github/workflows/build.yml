@@ -26,7 +26,7 @@ jobs:
         run: python -m pytest tests/ -v
 
   # Packaging check. Mnemosyne resolves from Maven Central as
-  # ai.mattmann.mnemosyne:1.11.0, so there is nothing to build from source.
+  # ai.mattmann.mnemosyne:1.12.0, so there is nothing to build from source.
   package:
     name: Maven package (JDK 21)
     runs-on: ubuntu-latest
