@@ -84,7 +84,6 @@ rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"
 # runs at startup, which no-ops unless the configured repository is the JDBC
 # one and the tables are missing -- so this needs no opinion of its own about
 # which repository the deployment uses.
-schema="$BIGTRANSLATE_HOME/workflow/etc/workflow-instances.sql"
 props="$BIGTRANSLATE_HOME/workflow/etc/workflow.properties"
 if [ -f "$schema" ] && [ -f "$props" ]; then
   # The configured JDBC URL is jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst,
@@ -98,7 +97,7 @@ if [ -f "$schema" ] && [ -f "$props" ]; then
   OODT_BASE="$BIGTRANSLATE_HOME"
   export OODT_HOME OODT_BASE
   "${JAVA_HOME:-/usr}/bin/java" -cp "$BIGTRANSLATE_HOME/workflow/lib/*" \
-    org.bigtranslate.workflow.WorkflowInstanceSchema "$props" "$schema" || {
+    org.apache.oodt.cas.workflow.instrepo.WorkflowInstanceSchema "$props" || {
       echo "Could not rebuild the instance database; see above."
       exit 1
     }

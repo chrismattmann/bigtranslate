@@ -360,10 +360,15 @@ class TestBuild:
         assert "SNAPSHOT" not in version, (
             "oodt.version is %s; a SNAPSHOT can resolve to different bytes "
             "on different machines" % version)
-        assert version == "1.12.0", (
+        # A lower bound, not an equality. Pinning the literal meant every
+        # Mnemosyne release broke this test with a message that said nothing
+        # about why the version matters.
+        FIRST = (1, 12, 0)
+        parts = tuple(int(p) for p in version.split("."))
+        assert parts >= FIRST, (
             "oodt.version is %s; the join gate needs ProductCountMatches"
-            "Condition, which first ships in published cas-pge 1.12.0"
-            % version)
+            "Condition, which first ships in published cas-pge %s"
+            % (version, ".".join(map(str, FIRST))))
 
     def test_no_apache_oodt_coordinates_remain(self):
         # Java packages stay org.apache.oodt.*; only the Maven coordinate moved.
