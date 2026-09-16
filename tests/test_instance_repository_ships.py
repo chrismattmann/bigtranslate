@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROPS = ROOT / "workflow/src/main/resources/etc/workflow.properties"
-SCHEMA_SQL = ROOT / "workflow/src/main/resources/etc/workflow-instances.sql"
+POM = ROOT / "pom.xml"
 OODT = ROOT / "distribution/src/main/resources/bin/oodt"
 RESET = ROOT / "distribution/src/main/resources/bin/bt-reset"
 
@@ -56,18 +56,44 @@ def test_the_url_points_inside_the_deployment():
     assert "hsqldb:file:" in url
 
 
-def test_the_schema_ships_with_it():
-    # The repository needs its two tables and does not make them. An empty
-    # database directory is not a schema.
-    assert SCHEMA_SQL.is_file()
+def test_the_schema_comes_from_mnemosyne():
+    # The repository needs its tables and does not make them. The schema used
+    # to be a file here, copied from Mnemosyne and drifting from it -- this
+    # copy had lost the waiting_on column. It now lives in cas-workflow, and
+    # WorkflowInstanceSchema applies the copy bundled in that jar when no .sql
+    # is named.
+    assert not (ROOT / "workflow/src/main/resources/etc/workflow-instances.sql").exists(), (
+        "the schema is back as a local file; it belongs to cas-workflow")
+    import re as _re
+    version = _re.search(r"<oodt\.version>([^<]+)</oodt\.version>", POM.read_text()).group(1)
+    # The bundled-schema fallback first ships in 1.13.1. Against anything
+    # older, calling the tool without a path is an error rather than a default.
+    assert tuple(int(p) for p in version.split(".")) >= (1, 13, 1), (
+        "oodt.version is %s; the bundled schema fallback needs 1.13.1" % version)
+
+
+def test_the_tool_is_not_handed_a_schema_path():
+    # Passing one would override the bundled schema with a file that no longer
+    # exists, which is how this would fail at deployment start rather than here.
+    for script in (OODT, RESET):
+        body = script.read_text()
+        call = body.index("WorkflowInstanceSchema")
+        tail = body[call:call + 200]
+        assert ".sql" not in tail, (
+            "%s still passes a schema path to the tool" % script.name)
 
 
 def test_startup_builds_the_tables():
-    assert "WorkflowInstanceSchema" in OODT.read_text()
+    body = OODT.read_text()
+    assert "WorkflowInstanceSchema" in body
+    # The promoted class, not a copy of it in this repository.
+    assert "org.apache.oodt.cas.workflow.instrepo.WorkflowInstanceSchema" in body
 
 
 def test_a_reset_rebuilds_them():
-    assert "WorkflowInstanceSchema" in RESET.read_text()
+    body = RESET.read_text()
+    assert "WorkflowInstanceSchema" in body
+    assert "org.apache.oodt.cas.workflow.instrepo.WorkflowInstanceSchema" in body
 
 
 def test_lucene_is_not_still_selected():

@@ -479,9 +479,8 @@ ensure_resource_policy() {
 }
 
 ensure_workflow_instance_schema() {
-  schema_sql="$OODT_BASE/workflow/etc/workflow-instances.sql"
   schema_props="$OODT_BASE/workflow/etc/workflow.properties"
-  [ -f "$schema_sql" ] && [ -f "$schema_props" ] || return 0
+  [ -f "$schema_props" ] || return 0
   if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
     schema_java="$JAVA_HOME/bin/java"
   else
@@ -490,8 +489,8 @@ ensure_workflow_instance_schema() {
   # Before the Workflow Manager starts: HSQLDB in file mode is single process,
   # so this cannot be done once it holds the lock.
   "$schema_java" -cp "$OODT_BASE/workflow/lib/*" \
-    org.bigtranslate.workflow.WorkflowInstanceSchema \
-    "$schema_props" "$schema_sql" \
+    org.apache.oodt.cas.workflow.instrepo.WorkflowInstanceSchema \
+    "$schema_props" \
     || echo "Could not verify the workflow instance database; starting anyway."
 }
 
