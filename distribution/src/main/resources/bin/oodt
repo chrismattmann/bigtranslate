@@ -117,6 +117,55 @@ port_busy() {
   fi
 }
 
+# The pid files the managers write, so stop can check the processes and not
+# just the ports they were listening on.
+manager_pid_files() {
+  echo "$FILEMGR_HOME/run/cas.filemgr.pid"
+  echo "$WORKFLOW_HOME/run/cas.workflow.pid"
+  echo "$RESMGR_HOME/run/cas.resmgr.pid"
+}
+
+# End any manager still running after its port went quiet, and drop its pid
+# file.
+#
+# A free port is not a stopped process. A manager that has closed its
+# listener but not exited passes wait_for_stopped, leaves its pid file
+# behind, and the next start reads that file, finds the pid alive, and
+# refuses: "File Manager is already running (pid 60719). Start aborted."
+# Nothing is then listening on 9200 and nothing ever will be, because the
+# thing blocking the start is the corpse of the thing that should have
+# stopped. That cost a hundred minutes of a run requeueing work at a node
+# that could not come up.
+#
+# So the pid file is treated as a claim and the process table as the fact,
+# the same way bt-node already treats the batch stub's.
+stop_lingering_managers() {
+  for f in $(manager_pid_files); do
+    [ -f "$f" ] || continue
+    pid=$(cat "$f" 2>/dev/null)
+    case "$pid" in
+      ''|*[!0-9]*) rm -f "$f"; continue ;;
+    esac
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$f"
+      continue
+    fi
+    echo "$(basename "$f"): pid $pid is still running after its port went quiet; ending it"
+    kill "$pid" 2>/dev/null
+    waited=0
+    while [ "$waited" -lt 20 ] && kill -0 "$pid" 2>/dev/null; do
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "  it did not end in ${waited}s; forcing"
+      kill -9 "$pid" 2>/dev/null
+      sleep 1
+    fi
+    rm -f "$f"
+  done
+}
+
 # Wait until every port is free, or say which are not.
 #
 # stop used to return as soon as it had asked each service to stop, which is
@@ -632,6 +681,11 @@ stop_oodt() {
   # complete while science processes are still running.
   stop_pge_jobs
   wait_for_stopped
+  rc=$?
+  # After the ports, because a manager usually releases its port and exits,
+  # and this is for the one that does only the first.
+  stop_lingering_managers
+  return $rc
 }
 
 if [ "$1" = "start" ]; then
