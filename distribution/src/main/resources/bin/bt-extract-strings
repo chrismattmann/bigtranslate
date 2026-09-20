@@ -69,8 +69,8 @@ def column_indices(headers, wanted):
     return {i for i, name in enumerate(headers) if name in names}
 
 
-def run_marker_beat():
-    """Tell anything watching that this stage is still working.
+def run_marker_beat(done=None, total=None):
+    """Tell anything watching that this stage is still working, and how far.
 
     Reading the corpus is the longest stretch of a run in which nothing is
     written where a watcher can see it: no chunk exists until the read is
@@ -82,8 +82,15 @@ def run_marker_beat():
     """
     marker = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "bt-run-marker")
+    argv = [sys.executable, marker, "beat"]
+    # The position as well as the pulse. Reading the corpus is the longest
+    # stage and had no bar, because no chunk exists to count until it is
+    # over; the files it has read are the only progress there is, and they
+    # were going to the log and nowhere a pane could draw them.
+    if done is not None:
+        argv += ["--files-done", str(done), "--files-total", str(total or 0)]
     try:
-        subprocess.run([sys.executable, marker, "beat"],
+        subprocess.run(argv,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                        check=False, timeout=30)
     except Exception as e:
@@ -135,7 +142,7 @@ def distinct_strings(paths, indices, progress_every=200, beat=None):
                 % (number, len(paths), nbytes / 1024.0 ** 3, len(seen)))
             if beat is not None:
                 try:
-                    beat()
+                    beat(number, len(paths))
                 except Exception as e:
                     # Saying how far along we are is never worth losing a
                     # read of the corpus for.

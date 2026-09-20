@@ -174,11 +174,15 @@ class TestExtractBeatsWhileItReads:
             f.write_bytes(b"value\n")
             paths.append(f.as_posix())
 
+        # The beat carries the position now, so the bar for "Reading the
+        # corpus" has something to draw. It is still the only evidence the
+        # stage is alive.
         extract.distinct_strings(paths, {0}, progress_every=2,
-                                 beat=lambda: beats.append(1))
+                                 beat=lambda done, total: beats.append((done, total)))
         assert len(beats) == 3, (
             "the corpus read is the longest stretch of a run in which "
             "nothing is written where a watcher can see it")
+        assert beats == [(2, 6), (4, 6), (6, 6)], beats
 
     def test_the_read_still_works_without_a_beat(self, tmp_path):
         extract = load("bt-extract-strings")
@@ -192,7 +196,7 @@ class TestExtractBeatsWhileItReads:
         # Saying how far along we are is never worth losing the read for.
         extract = load("bt-extract-strings")
 
-        def explode():
+        def explode(done, total):
             raise RuntimeError("no marker for you")
 
         f = tmp_path / "part.tsv"
@@ -215,7 +219,7 @@ class TestTheGapThatWasLeftOpen:
         # roughly a minute.
         source = (BIN / "bt-extract-strings").read_text(encoding="utf-8")
         assert "progress_every=200" in source
-        assert "beat()" in source, (
+        assert "beat(number, len(paths))" in source, (
             "the beat has to be on the progress tick, not once at the start")
 
 

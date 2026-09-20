@@ -137,6 +137,27 @@ def progress(home):
     return {"stage": stage, "chunksTotal": made, "chunksDone": done}
 
 
+def with_file_progress(state, existing, done, total):
+    """Carry how far the read has got, while it is the read that is running.
+
+    Everything else here is counted off the disk, because a directory cannot
+    drift from itself. The extract has nothing to count: no chunk exists
+    until the whole corpus has been read, which is the longest stretch of a
+    run and the one with no bar. So this one number is reported rather than
+    derived, and only while it is true -- once a chunk exists the stage is
+    translating and the chunk counts take over.
+    """
+    if state.get("stage") != "extracting":
+        return state
+    if done is None:
+        done = existing.get("filesDone")
+        total = existing.get("filesTotal")
+    if done is not None:
+        state["filesDone"] = int(done)
+        state["filesTotal"] = int(total or 0)
+    return state
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bt-run-marker",
@@ -153,6 +174,10 @@ def main(argv=None):
     # beat found no marker, rebuilt one from scratch, and lost the corpus
     # path and the real start time with it. json.dump escapes it.
     parser.add_argument("--exclude", default=None)
+    # How far the corpus read has got. Only the extract passes these, and
+    # only so that "Reading the corpus" can show a bar rather than a log.
+    parser.add_argument("--files-done", type=int, default=None)
+    parser.add_argument("--files-total", type=int, default=None)
     args = parser.parse_args(argv)
 
     path = marker_path()
@@ -183,7 +208,8 @@ def main(argv=None):
     existing = read(path) if args.action == "beat" else {}
 
     home = os.environ["BIGTRANSLATE_HOME"]
-    seen = progress(home)
+    seen = with_file_progress(progress(home), existing,
+                              args.files_done, args.files_total)
 
     # A beat used to be refused when no marker was there to refresh, on the
     # grounds that a beat is not a reason to invent a run. It is exactly

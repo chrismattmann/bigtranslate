@@ -23,7 +23,7 @@
         <span :style="{ width: percent + '%' }"></span>
       </div>
       <dl>
-        <div><dt>Chunks</dt><dd>{{ progress.chunksDone }} of {{ progress.chunksTotal }}</dd></div>
+        <div><dt>{{ unitLabel }}</dt><dd>{{ measure.done }} of {{ measure.total }}</dd></div>
         <div><dt>Done</dt><dd>{{ percent }}%</dd></div>
         <div v-if="rate"><dt>Rate</dt><dd>{{ rate }}</dd></div>
         <div v-if="elapsed"><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
@@ -59,7 +59,7 @@
 // done and when it will end is the part worth being sure of, and it is
 // awkward to check through a rendered component.
 import {
-  stageLabel, percent, rateLabel, remainingLabel, elapsedLabel
+  stageLabel, percent, measure, rateLabel, remainingLabel, elapsedLabel
 } from '../progress.js'
 
 export default {
@@ -82,8 +82,19 @@ export default {
   },
   computed: {
     stageLabel () { return stageLabel(this.progress) },
-    hasCounts () { return Number(this.progress.chunksTotal) > 0 },
+    // Whether there is a bar to draw, and so whether the log tail is shown
+    // instead. It asked only about chunks, and reading the corpus makes no
+    // chunk until it has finished -- so the longest stage of the run always
+    // failed this test and always showed log text where the bar belongs.
+    hasCounts () { return this.measure.total > 0 },
     percent () { return percent(this.progress) },
+    // Reading the corpus counts files; everything after it counts chunks.
+    // The bar is drawn from whichever the stage actually has, so the longest
+    // stage of a run stops being the one with no bar.
+    measure () { return measure(this.progress) },
+    unitLabel () {
+      return this.measure.unit === 'files' ? 'Files' : 'Chunks'
+    },
     rate () { return rateLabel(this.progress, this.now) },
     elapsed () { return elapsedLabel(this.progress, this.now) },
     remaining () { return remainingLabel(this.progress, this.now) },

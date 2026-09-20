@@ -30,10 +30,30 @@ export function stageLabel (progress) {
   return STAGES[progress.stage] || progress.status || 'TRANSLATING'
 }
 
+// What the bar measures, which is not the same thing at every stage.
+//
+// Reading the corpus produces no chunk until it has finished, so a bar keyed
+// to chunks sits at zero for the longest stage of the run and the pane falls
+// back to showing log text. While the read is running the files it has got
+// through are the progress, and the extract reports them.
+export function measure (progress) {
+  if (progress.stage === 'extracting' && Number(progress.filesTotal) > 0) {
+    return {
+      done: Number(progress.filesDone) || 0,
+      total: Number(progress.filesTotal),
+      unit: 'files'
+    }
+  }
+  return {
+    done: Number(progress.chunksDone) || 0,
+    total: Number(progress.chunksTotal) || 0,
+    unit: 'chunks'
+  }
+}
+
 export function percent (progress) {
-  const total = Number(progress.chunksTotal)
+  const { done, total } = measure(progress)
   if (!total) return 0
-  const done = Number(progress.chunksDone) || 0
   return Math.min(100, Math.round((done / total) * 100))
 }
 
