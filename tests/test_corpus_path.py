@@ -343,7 +343,12 @@ def test_the_log_gloss_shows_says_what_is_happening():
         "pushd/popd still write the directory stack into the log: %s"
         % polluting)
 
-    for milestone in ("Crawling", "Crawl finished", "Translating:"):
+    # "Translating:" used to be here. It was a count of workflow instances,
+    # which is not a milestone and not progress -- it repeated unchanged
+    # through a hundred minute stall and through three hundred polls after a
+    # run had finished. The stage names Gloss uses replaced it.
+    for milestone in ("Crawling", "Crawl finished", "Reading the corpus",
+                      "Indexing"):
         assert milestone in text, "the log never says %r" % milestone
 
 

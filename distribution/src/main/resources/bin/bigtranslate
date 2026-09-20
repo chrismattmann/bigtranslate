@@ -406,18 +406,59 @@ wait_for_workflow() {
     local quiet=0
     local running
     local said_waiting_on_stages=no
+    local last_state=""
+    local stalled_for=0
+    local stage_now done_now total_now state_now
 
     while [ "$waited" -lt "$TRANSLATE_TIMEOUT" ]; do
         running=$(running_instance_count)
 
-        # Every couple of minutes, not every poll: the pane shows the tail of
-        # this file, and a line every fifteen seconds would push everything
-        # else off it.
-        if [ $((waited % 120)) -eq 0 ]; then
-            if [ "$running" = "unknown" ]; then
-                say "Translating: the workflow manager did not answer (${waited}s)"
-            else
-                say "Translating: $running workflow instances still running (${waited}s)"
+        # The pane tails this file, so what goes into it has to be worth
+        # reading, and a count of workflow instances is not.
+        #
+        # It held at "2 workflow instances still running" for a hundred
+        # minutes while the resource manager requeued the same extract job
+        # at a node that had never been started -- fifty identical lines
+        # while nothing happened at all. On an earlier run it printed "0
+        # workflow instances still running" three hundred times after the
+        # work had finished. Neither a stall nor a finish is visible in a
+        # number that does not move.
+        #
+        # So: say what moved, when it moves. Silence then means nothing
+        # moved, which is what makes the stall line below worth printing.
+        stage_now=$(run_marker_field stage)
+        done_now=$(run_marker_field chunksDone)
+        total_now=$(run_marker_field chunksTotal)
+        state_now="$stage_now ${done_now:-0}/${total_now:-0}"
+
+        if [ "$running" = "unknown" ]; then
+            # A real fault rather than a status: the manager is not
+            # answering, and that is worth a line every time it is true.
+            if [ $((waited % 120)) -eq 0 ]; then
+                say "The workflow manager did not answer (${waited}s)"
+            fi
+        elif [ "$state_now" != "$last_state" ]; then
+            case "$stage_now" in
+                extracting) say "Reading the corpus" ;;
+                translating)
+                    if [ "${total_now:-0}" -gt 0 ] 2>/dev/null; then
+                        say "Translated ${done_now:-0} of ${total_now} chunks"
+                    else
+                        say "Translating"
+                    fi
+                    ;;
+                joining) say "Indexing" ;;
+            esac
+            last_state="$state_now"
+            stalled_for=0
+        else
+            # Nothing moved. Say so every ten minutes, naming how long and
+            # what to check: a run that has stopped looks exactly like a run
+            # that is working, if the log only repeats a count.
+            stalled_for=$((stalled_for + TRANSLATE_POLL))
+            if [ "$stalled_for" -ge 600 ] \
+               && [ $((stalled_for % 600)) -lt "$TRANSLATE_POLL" ]; then
+                say "No progress for $((stalled_for / 60))m at ${state_now}; is a compute node up? (bin/bt-node start)"
             fi
         fi
 
@@ -502,6 +543,26 @@ start_the_pipeline() {
     say "EmploymentCorpusReady. Nothing will be translated."
     say "  $out"
     return 1
+}
+
+# One field out of the run marker that the stages already keep current.
+#
+# extract begins it, every translated chunk beats it and the join clears
+# it, so this is the same number Gloss draws its bar from -- the log and
+# the pane cannot disagree about how far along a run is.
+run_marker_field() {
+    "${PYTHON:-python3}" -c '
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        # `or ""` would turn a chunk count of 0 into an empty string,
+        # because zero is falsy: a run that has translated nothing would
+        # report nothing rather than none.
+        value = json.load(fh).get(sys.argv[2], "")
+        print("" if value is None else value)
+except Exception:
+    print("")
+' "$BIGTRANSLATE_HOME/data/run" "$1" 2>/dev/null
 }
 
 running_instance_count() {
