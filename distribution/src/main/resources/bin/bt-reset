@@ -58,6 +58,7 @@ echo "This will clear, under $BIGTRANSLATE_HOME:"
 echo "  data/strings, data/translated, data/translated-catalog"
 echo "  data/jobs, data/winstdb, data/run"
 echo "  filemgr/catalog"
+echo "  and rotates logs/batch-stub.log, bigtranslate.log, pantogloss-serve.log"
 [ "$keep_solr" = no ] && echo "  and every document in $SOLR_URL"
 echo
 echo "The corpus at ${BIGTRANSLATE_CORPUS:-unset} is not touched."
@@ -115,5 +116,26 @@ if [ "$keep_solr" = no ]; then
     echo "No Solr index at $index; nothing to clear."
   fi
 fi
+
+# The logs, too. "The next run starts from nothing" was not true of them:
+# batch-stub.log held five runs across eleven days and 18MB, with nothing
+# marking where one ended and the next began, and bigtranslate.log -- the
+# file Gloss tails and shows in its pane -- went back further still.
+#
+# That is not untidiness, it is a trap. A run that misbehaves sends you to
+# these files first, and a stale SEVERE from nine days ago reads exactly
+# like a live one: same text, same severity, and a timestamp nobody checks
+# because the file is supposed to be about now. It has already produced one
+# confident wrong diagnosis of a run that was working.
+#
+# Rotated rather than deleted, because the forensics are occasionally worth
+# having and a reset should not be the thing that destroys them.
+stamp=$(date +%Y%m%d-%H%M%S)
+for log in batch-stub.log bigtranslate.log pantogloss-serve.log; do
+  src="$BIGTRANSLATE_HOME/logs/$log"
+  [ -s "$src" ] || continue
+  mv "$src" "$BIGTRANSLATE_HOME/logs/${log%.log}-$stamp.log"
+  echo "Rotated logs/$log to ${log%.log}-$stamp.log"
+done
 
 echo "Reset. The next run starts from nothing."
