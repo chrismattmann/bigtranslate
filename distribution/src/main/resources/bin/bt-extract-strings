@@ -176,7 +176,13 @@ def write_chunks(strings, out_dir, chunk_size,
         # that is complete. A run interrupted midway leaves no half chunk
         # for the translate stage to pick up and silently truncate.
         os.rename(tmp, path)
+        # The characters in the chunk, which is what translating it costs.
+        # Chunks are equal in count and wildly unequal in work: the first
+        # holds 5,000 strings averaging four characters and the last holds
+        # paragraphs. An estimate that counts chunks says a run is half done
+        # when less than a third of the text has been through the model.
         written.append({"chunk": name, "count": len(piece),
+                        "chars": sum(len(value) for value in piece),
                         "min_length": len(piece[0]),
                         "max_length": len(piece[-1])})
     return written
