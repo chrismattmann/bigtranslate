@@ -61,6 +61,28 @@ def load_glossary(path):
     return glossary, module.is_untranslatable
 
 
+def older_than_chunks(db_path, translated_dir):
+    """The newest chunk the database predates, or None if it is current.
+
+    Staging rewrites every chunk, so an output older than its input belongs
+    to a previous run whatever its name says. The same rule guards
+    bt-translate-chunk.
+    """
+    try:
+        db_at = os.path.getmtime(db_path)
+    except OSError:
+        return None
+    newest, newest_at = None, db_at
+    for path in chunk_files(translated_dir):
+        try:
+            at = os.path.getmtime(path)
+        except OSError:
+            continue
+        if at > newest_at:
+            newest, newest_at = os.path.basename(path), at
+    return newest
+
+
 def chunk_files(directory):
     """Every translated chunk under directory, however it is laid out.
 
@@ -215,19 +237,37 @@ def main(argv=None):
         built_from = chunks_behind(args.out)
         have = len(chunk_files(args.translated))
         if built_from is not None and built_from >= have:
-            log("%s already holds %d chunks; leaving it alone"
-                % (args.out, built_from))
-            return 0
-        # Existence is not completeness. A database built before the last
-        # chunks were translated is reused silently otherwise, and the join
-        # indexes every document with a fraction of the translations. On a
-        # 458 chunk run the database was built at 16:16 from 442 chunks and
-        # the join began at 16:36 with all 458 present: 155,000 strings
-        # would have gone into the index in Spanish, and the join would have
-        # reported success.
-        log("%s was built from %s chunks and %d are now translated; rebuilding"
-            % (args.out, "an unknown number of" if built_from is None
-               else built_from, have))
+            # Counting chunks cannot tell this run's chunks from the last
+            # run's: 458 stale chunks are still 458. What separates them is
+            # time, because a reset restages every chunk -- so a database
+            # older than the chunks it claims to summarise was built from
+            # different ones.
+            #
+            # On 2026-09-21 that is exactly what happened. A database from
+            # the previous run held 458 chunks, this run had translated 458
+            # more, and the join loaded 1,853,614 translations while
+            # 2,286,244 sat unused in data/translated-catalog. It would have
+            # indexed the whole corpus against the wrong run's output and
+            # reported success -- the second time that number appeared.
+            stale = older_than_chunks(args.out, args.translated)
+            if stale is None:
+                log("%s already holds %d chunks; leaving it alone"
+                    % (args.out, built_from))
+                return 0
+            log("%s predates %s; it is from an earlier run. Rebuilding."
+                % (args.out, stale))
+        else:
+            # Existence is not completeness. A database built before the last
+            # chunks were translated is reused silently otherwise, and the
+            # join indexes every document with a fraction of the
+            # translations. On a 458 chunk run the database was built at
+            # 16:16 from 442 chunks and the join began at 16:36 with all 458
+            # present: 155,000 strings would have gone into the index in
+            # Spanish, and the join would have reported success.
+            log("%s was built from %s chunks and %d are now translated; "
+                "rebuilding"
+                % (args.out, "an unknown number of" if built_from is None
+                   else built_from, have))
 
     started = time.time()
     glossary, untranslatable = load_glossary(args.glossary)

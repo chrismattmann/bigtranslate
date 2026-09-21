@@ -79,6 +79,14 @@ for dir in data/strings data/translated data/translated-catalog data/jobs \
   rm -rf "${BIGTRANSLATE_HOME:?}/$dir"
   mkdir -p "$BIGTRANSLATE_HOME/$dir"
 done
+
+# The translation database is derived from data/translated-catalog and was
+# not in that list, so it survived every reset. The join's first step found
+# a database from the previous run holding as many chunks as this one had
+# translated, left it alone, and loaded 1,853,614 translations while
+# 2,286,244 sat unused -- a clean run that would have produced the same
+# index as the run it was meant to replace.
+rm -f "${BIGTRANSLATE_HOME:?}/data/translations.sqlite"
 # The marker and the record that the last run ended. A start removes the
 # latter anyway, but a reset is meant to leave nothing derived behind.
 rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"
