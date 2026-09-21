@@ -39,11 +39,13 @@ fi
 
 force=no
 keep_solr=no
+local_only=no
 for arg in "$@"; do
   case "$arg" in
     --force) force=yes ;;
+    --local-only) local_only=yes ;;
     --keep-solr) keep_solr=yes ;;
-    *) echo "usage: bt-reset [--force] [--keep-solr]"; exit 2 ;;
+    *) echo "usage: bt-reset [--force] [--keep-solr] [--local-only]"; exit 2 ;;
   esac
 done
 
@@ -59,6 +61,7 @@ echo "  data/strings, data/translated, data/translated-catalog"
 echo "  data/jobs, data/winstdb, data/run"
 echo "  filemgr/catalog"
 echo "  and rotates logs/batch-stub.log, bigtranslate.log, pantogloss-serve.log"
+[ "$local_only" = no ] && echo "  and each compute node's data/, moved aside"
 [ "$keep_solr" = no ] && echo "  and every document in $SOLR_URL"
 echo
 echo "The corpus at ${BIGTRANSLATE_CORPUS:-unset} is not touched."
@@ -86,7 +89,7 @@ rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"
 # one and the tables are missing -- so this needs no opinion of its own about
 # which repository the deployment uses.
 props="$BIGTRANSLATE_HOME/workflow/etc/workflow.properties"
-if [ -f "$schema" ] && [ -f "$props" ]; then
+if [ -f "$props" ]; then
   # The configured JDBC URL is jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst,
   # and [OODT_HOME] is resolved from the environment. bin/oodt exports it by
   # way of bin/env.sh; bin/setenv.sh, which is all this script sources, does
@@ -137,5 +140,32 @@ for log in batch-stub.log bigtranslate.log pantogloss-serve.log; do
   mv "$src" "$BIGTRANSLATE_HOME/logs/${log%.log}-$stamp.log"
   echo "Rotated logs/$log to ${log%.log}-$stamp.log"
 done
+
+# And the nodes. A reset that clears only the machine it runs on leaves
+# every compute node holding the last run's outputs, and a node cannot tell
+# a reset from an interruption: bt-translate-chunk skips a chunk whose
+# output already exists, which is right for resuming and wrong here.
+#
+# On 2026-09-20 that meant 308 of 458 chunks were never translated.
+# Translations from eight days earlier were catalogued as this run's, they
+# followed the previous run's chunk boundaries, 432,630 strings ended with
+# no translation at all -- and because skipped work is work not done, the
+# run appeared 2.3x faster than the one it was being compared against.
+#
+# --local-only for a single machine, or when the nodes are known to be
+# clean and the ssh would only be slow.
+if [ "$local_only" != yes ] \
+   && [ -x "$BIGTRANSLATE_HOME/bin/bt-cluster" ] \
+   && [ -f "${NODES_CONF:-$BIGTRANSLATE_HOME/conf/nodes.conf}" ]; then
+  echo
+  echo "Resetting the compute nodes:"
+  if ! "$BIGTRANSLATE_HOME"/bin/bt-cluster reset; then
+    echo
+    echo "Could not reset every node. Do not start a run until they are"
+    echo "clean: a node holding old translations skips those chunks and"
+    echo "reports a run that never translated them."
+    exit 1
+  fi
+fi
 
 echo "Reset. The next run starts from nothing."

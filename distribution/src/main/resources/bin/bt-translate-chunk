@@ -170,6 +170,25 @@ def main(argv=None):
     os.makedirs(args.out_dir, exist_ok=True)
     out_path = os.path.join(args.out_dir, name)
     if os.path.exists(out_path) and not args.force:
+        # Skipping is right for a run picking up where it was interrupted,
+        # and wrong for a run that has been reset -- and from here the two
+        # look identical. What tells them apart is the chunk: staging
+        # rewrites the inputs, so an output older than the input it claims
+        # to be a translation of belongs to a previous run.
+        #
+        # This is not hypothetical. On 2026-09-20 a node kept 308
+        # translations from eight days earlier, skipped those chunks, and
+        # they were catalogued as the new run's. They followed the old
+        # chunk boundaries, so 432,630 strings ended up with no translation
+        # anywhere, and the run looked faster for having done less.
+        try:
+            if os.path.getmtime(out_path) < os.path.getmtime(args.chunk):
+                log("%s: refusing to reuse a translation older than its "
+                    "chunk -- it is from an earlier run. Delete it, or pass "
+                    "--force to translate again." % name)
+                return 2
+        except OSError:
+            pass
         log("%s already translated, skipping" % name)
         return 0
 
