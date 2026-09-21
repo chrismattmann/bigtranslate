@@ -146,9 +146,16 @@ public final class RunMarker {
     // isStale never fired, because it reads heartbeatAt and heartbeatAt was
     // never parsed -- so the guard against reporting a dead run as live could
     // not have worked in any deployment since it was written.
+    // filesDone and filesTotal are how far the corpus read has got, which
+    // is the only progress an extract has: no chunk exists until it
+    // finishes, so the chunk counts are both zero for the whole stage. A
+    // field the stages write and this list does not name is dropped in
+    // silence, which is how the longest stage of a run came to have no bar
+    // and a log tail in its place.
     for (String name : new String[] {
         "startedAt", "heartbeatAt", "translatingSince",
-        "chunksTotal", "chunksDone"}) {
+        "chunksTotal", "chunksDone",
+        "filesTotal", "filesDone"}) {
       Long value = longField(body, name);
       if (value != null) {
         run.put(name, value);

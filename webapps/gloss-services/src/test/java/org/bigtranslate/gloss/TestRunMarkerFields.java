@@ -95,6 +95,27 @@ public class TestRunMarkerFields {
     assertEquals(Long.valueOf(1788765472909L), run.get("translatingSince"));
   }
 
+  /** A marker as bin/bt-run-marker writes it while reading the corpus. */
+  private static final String EXTRACTING =
+      "{\"status\": \"EXTRACTING\", \"startedBy\": \"command line\","
+      + " \"path\": \"/corpus\", \"exclude\": \"\","
+      + " \"startedAt\": 1788764908909, \"heartbeatAt\": 1788765108909,"
+      + " \"stage\": \"extracting\", \"chunksTotal\": 0,"
+      + " \"chunksDone\": 0, \"filesTotal\": 2806, \"filesDone\": 1465}";
+
+  @Test
+  public void testTheExtractCountsSurviveTheParser() throws Exception {
+    // The extract has no chunks to count -- none exists until it finishes --
+    // so without these two the longest stage of a run reports zero of zero
+    // and the panel has nothing to draw. A field the stages write and the
+    // parser does not name is dropped in silence.
+    writeMarker(EXTRACTING);
+    Map<String, Object> run = RunMarker.read();
+    assertNotNull(run);
+    assertEquals(Long.valueOf(2806L), run.get("filesTotal"));
+    assertEquals(Long.valueOf(1465L), run.get("filesDone"));
+  }
+
   @Test
   public void testTheHeartbeatSurvivesTheParser() throws Exception {
     // Without this, isStale reads a null and every dead run reports as live.
