@@ -69,7 +69,7 @@ public class ProcessBtWrapper {
   /** What the stages record about how far along they are. */
   private static final String[] PROGRESS_KEYS = {
       "stage", "chunksTotal", "chunksDone", "translatingSince",
-      "filesTotal", "filesDone"};
+      "filesTotal", "filesDone", "weightTotal", "weightDone"};
   public static final String RESETTING = "RESETTING";
   public static final String ERROR = "ERROR";
 
