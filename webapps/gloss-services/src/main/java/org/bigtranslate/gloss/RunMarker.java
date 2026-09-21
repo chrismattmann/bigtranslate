@@ -155,7 +155,8 @@ public final class RunMarker {
     for (String name : new String[] {
         "startedAt", "heartbeatAt", "translatingSince",
         "chunksTotal", "chunksDone",
-        "filesTotal", "filesDone"}) {
+        "filesTotal", "filesDone",
+        "weightTotal", "weightDone"}) {
       Long value = longField(body, name);
       if (value != null) {
         run.put(name, value);

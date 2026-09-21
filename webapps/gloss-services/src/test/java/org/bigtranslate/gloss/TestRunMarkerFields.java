@@ -82,7 +82,8 @@ public class TestRunMarkerFields {
       + " \"path\": \"/corpus\", \"exclude\": \"\","
       + " \"startedAt\": 1788764908909, \"heartbeatAt\": 1788816028909,"
       + " \"stage\": \"translating\", \"chunksTotal\": 458,"
-      + " \"chunksDone\": 401, \"translatingSince\": 1788765472909}";
+      + " \"chunksDone\": 401, \"translatingSince\": 1788765472909,"
+      + " \"weightTotal\": 2286244, \"weightDone\": 1912033}";
 
   @Test
   public void testTheProgressFieldsSurviveTheParser() throws Exception {
@@ -93,6 +94,11 @@ public class TestRunMarkerFields {
     assertEquals(Long.valueOf(458L), run.get("chunksTotal"));
     assertEquals(Long.valueOf(401L), run.get("chunksDone"));
     assertEquals(Long.valueOf(1788765472909L), run.get("translatingSince"));
+    // Chunks are sorted by length, so the count and the work are not the
+    // same fraction. Without these the panel falls back to counting chunks
+    // and the remaining time is drawn from the wrong ratio.
+    assertEquals(Long.valueOf(2286244L), run.get("weightTotal"));
+    assertEquals(Long.valueOf(1912033L), run.get("weightDone"));
   }
 
   /** A marker as bin/bt-run-marker writes it while reading the corpus. */

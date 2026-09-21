@@ -51,7 +51,25 @@ export function measure (progress) {
   }
 }
 
+// How much of the work is done, which is not the same as how many chunks
+// are ticked off.
+//
+// The extract sorts every distinct string by length before cutting chunks,
+// so they hold equal counts and wildly unequal work: the first averages
+// four characters a string, the last 254. Chunks happen to finish evenly
+// across that range -- the scheduler dispatches them as nodes free up, not
+// in order -- so counting them lands close to the truth by luck rather
+// than by construction. It stops being luck the moment anything makes
+// completion uneven: one slow node holding the long chunks, a resumed run
+// picking up where it left off, a node joining late.
+//
+// So when the weights are there, they are used.
 export function percent (progress) {
+  const weighted = Number(progress.weightTotal)
+  if (weighted > 0) {
+    const done = Number(progress.weightDone) || 0
+    return Math.min(100, Math.round((done / weighted) * 100))
+  }
   const { done, total } = measure(progress)
   if (!total) return 0
   return Math.min(100, Math.round((done / total) * 100))
