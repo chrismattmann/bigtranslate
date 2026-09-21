@@ -24,7 +24,10 @@ repeating it.
 """
 
 import os
+import socket
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -33,8 +36,65 @@ from conftest import BIN
 PREFLIGHT = BIN / "bt-preflight"
 
 
+class FakeCluster:
+    """Sockets on the manager ports and a service that answers /translate.
+
+    The first version of the clean-cluster test asserted exit 0 without
+    providing any of this. It passed on the machine it was written on
+    because a real cluster was running there, and failed on CI, which is
+    the right way round but only by luck: a test that depends on ambient
+    services proves nothing either way.
+    """
+
+    def __init__(self):
+        self.sockets = []
+        self.httpd = None
+        self.thread = None
+
+    def port(self):
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        self.sockets.append(s)
+        return s.getsockname()[1]
+
+    def service(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                body = b'{"translation": "Sales Manager", "count": 1}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        self.httpd = HTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever,
+                                       daemon=True)
+        self.thread.start()
+        return "http://127.0.0.1:%d" % self.httpd.server_address[1]
+
+    def close(self):
+        for s in self.sockets:
+            s.close()
+        if self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+
+
+@pytest.fixture
+def cluster():
+    c = FakeCluster()
+    yield c
+    c.close()
+
+
 def home(tmp_path, java="21", corpus_files=3, leftovers=(), db=None,
-         solr_docs=None, ports=()):
+         cluster=None):
     h = tmp_path / "home"
     (h / "bin").mkdir(parents=True)
     (h / "conf").mkdir(parents=True)
@@ -58,10 +118,19 @@ def home(tmp_path, java="21", corpus_files=3, leftovers=(), db=None,
             (h / "data" / name / "chunk-00000.json").write_text("{}")
     if db is not None:
         (h / "data" / "translations.sqlite").write_text(db)
-    (h / "bin" / "setenv.sh").write_text(
-        "BIGTRANSLATE_CORPUS=%s\n"
-        "JAVA_HOME=%s\n"
-        "export BIGTRANSLATE_CORPUS JAVA_HOME\n" % (corpus, tmp_path / "jdk"))
+    env_lines = ["BIGTRANSLATE_CORPUS=%s" % corpus,
+                 "JAVA_HOME=%s" % (tmp_path / "jdk")]
+    exports = ["BIGTRANSLATE_CORPUS", "JAVA_HOME"]
+    if cluster is not None:
+        for var in ("FILEMGR_PORT", "WORKFLOW_PORT", "RESMGR_PORT",
+                    "SOLR_PORT", "TOMCAT_PORT"):
+            env_lines.append("%s=%d" % (var, cluster.port()))
+            exports.append(var)
+        env_lines.append("BIGTRANSLATE_NODE_PORT=%d" % cluster.port())
+        env_lines.append("PANTOGLOSS_URL=%s" % cluster.service())
+        exports += ["BIGTRANSLATE_NODE_PORT", "PANTOGLOSS_URL"]
+    env_lines.append("export " + " ".join(exports))
+    (h / "bin" / "setenv.sh").write_text("\n".join(env_lines) + "\n")
     # No bt-cluster: the node section is skipped with --local-only anyway.
     return h
 
@@ -134,8 +203,10 @@ class TestTheTranslationDatabase:
 
 class TestItIsUsableAsAGate:
 
-    def test_a_clean_cluster_exits_zero(self, tmp_path):
-        done = run(home(tmp_path))
+    def test_a_clean_cluster_exits_zero(self, tmp_path, cluster):
+        # Every port listening, the service answering with a real
+        # translation, nothing left from a previous run.
+        done = run(home(tmp_path, cluster=cluster))
         assert done.returncode == 0, done.stdout
         assert "Ready" in done.stdout
 

@@ -130,10 +130,13 @@ for pair in "FILEMGR_PORT:file manager" "WORKFLOW_PORT:workflow manager" \
 done
 
 # The batch stub. Not a manager, which is exactly why it was missed.
-if [ -n "$(listening 2001)" ]; then
-  ok "batch stub" "2001"
+# bt-node reads BIGTRANSLATE_NODE_PORT, so this has to as well: hardcoding
+# 2001 reports a deployment that moved the port as broken when it is not.
+NODE_PORT=${BIGTRANSLATE_NODE_PORT:-2001}
+if [ -n "$(listening "$NODE_PORT")" ]; then
+  ok "batch stub" "$NODE_PORT"
 else
-  bad "batch stub" "nothing on 2001; translate jobs will requeue forever. bin/bt-node start"
+  bad "batch stub" "nothing on $NODE_PORT; translate jobs will requeue forever. bin/bt-node start"
 fi
 
 # The corpus.
@@ -276,10 +279,10 @@ else
         continue
       fi
       ok "$id" "reachable at $host"
-      if [ -z "$($SSH "$host" "command -v lsof >/dev/null 2>&1 && lsof -ti tcp:2001 | head -1 || (nc -z localhost 2001 && echo up)" 2>/dev/null)" ]; then
-        bad "$id batch stub" "nothing on 2001; this node will take no work"
+      if [ -z "$($SSH "$host" "command -v lsof >/dev/null 2>&1 && lsof -ti tcp:$NODE_PORT | head -1 || (nc -z localhost $NODE_PORT && echo up)" 2>/dev/null)" ]; then
+        bad "$id batch stub" "nothing on $NODE_PORT; this node will take no work"
       else
-        ok "$id batch stub" "2001"
+        ok "$id batch stub" "$NODE_PORT"
       fi
       left=$($SSH "$host" "ls -A '$BIGTRANSLATE_HOME/data/translated' 2>/dev/null | wc -l | tr -d ' '" 2>/dev/null)
       if [ "${left:-0}" -gt 0 ]; then
