@@ -26,6 +26,7 @@ marker is only evidence that something once started, and a run that died
 leaves Gloss reporting a translation in progress until somebody notices.
 """
 import argparse
+import glob
 import json
 import os
 import sys
@@ -108,6 +109,47 @@ def earliest(directory):
     return int(min(stamps) * 1000) if stamps else None
 
 
+def chunk_weights(home):
+    """What each chunk costs, keyed by name.
+
+    Chunks are equal in count and wildly unequal in work, because the
+    extract sorts every distinct string by length before cutting them up:
+    the first chunk holds 5,000 strings averaging four characters, the last
+    holds paragraphs averaging 254. Counting chunks therefore says a run is
+    half finished when less than a third of the text has been through the
+    model, and the estimate built on it was out by a factor of two and a
+    half on a measured run.
+
+    The extract writes the weights into its manifest. A run that started
+    before it did has none, so the midpoint of the length range stands in --
+    a chunk's strings are nearly all the same length, which is the whole
+    point of sorting them, so that is close enough to be worth having.
+    """
+    pattern = os.path.join(home, "data", "jobs", "extract", "*", "output",
+                           "manifest.json")
+    files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                chunks = json.load(handle).get("chunks") or []
+        except Exception:
+            continue
+        weights = {}
+        for entry in chunks:
+            name = entry.get("chunk")
+            if not name:
+                continue
+            chars = entry.get("chars")
+            if chars is None:
+                lo = entry.get("min_length") or 0
+                hi = entry.get("max_length") or lo
+                chars = int(entry.get("count") or 0) * (lo + hi) / 2.0
+            weights[name] = float(chars)
+        if weights:
+            return weights
+    return {}
+
+
 def progress(home):
     """What the run has done so far, for anything that wants to show it.
 
@@ -134,7 +176,17 @@ def progress(home):
         stage = "translating"
     else:
         stage = "extracting"
-    return {"stage": stage, "chunksTotal": made, "chunksDone": done}
+    state = {"stage": stage, "chunksTotal": made, "chunksDone": done}
+    # How much of the text has actually been through the model, as opposed
+    # to how many chunks have been ticked off.
+    weights = chunk_weights(home)
+    if weights:
+        finished = names(os.path.join(home, "data", "translated")) | names(
+            os.path.join(home, "data", "translated-catalog"))
+        state["weightTotal"] = round(sum(weights.values()))
+        state["weightDone"] = round(
+            sum(w for name, w in weights.items() if name in finished))
+    return state
 
 
 def with_file_progress(state, existing, done, total):
