@@ -86,7 +86,7 @@ rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"
 # one and the tables are missing -- so this needs no opinion of its own about
 # which repository the deployment uses.
 props="$BIGTRANSLATE_HOME/workflow/etc/workflow.properties"
-if [ -f "$schema" ] && [ -f "$props" ]; then
+if [ -f "$props" ]; then
   # The configured JDBC URL is jdbc:hsqldb:file:[OODT_HOME]/data/winstdb/winst,
   # and [OODT_HOME] is resolved from the environment. bin/oodt exports it by
   # way of bin/env.sh; bin/setenv.sh, which is all this script sources, does
