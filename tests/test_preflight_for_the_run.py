@@ -1,0 +1,240 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Is the cluster ready to start a run?
+
+Every check here exists because its absence cost a run, and every one of
+those failures was silent: the ports answered, the log scrolled, the
+document count came out right, and the index was wrong.
+
+bt-cluster preflight asks a different question -- whether the deployment is
+consistent across machines -- and this calls it for that part rather than
+repeating it.
+"""
+
+import os
+import socket
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import pytest
+
+from conftest import BIN
+
+PREFLIGHT = BIN / "bt-preflight"
+
+
+class FakeCluster:
+    """Sockets on the manager ports and a service that answers /translate.
+
+    The first version of the clean-cluster test asserted exit 0 without
+    providing any of this. It passed on the machine it was written on
+    because a real cluster was running there, and failed on CI, which is
+    the right way round but only by luck: a test that depends on ambient
+    services proves nothing either way.
+    """
+
+    def __init__(self):
+        self.sockets = []
+        self.httpd = None
+        self.thread = None
+
+    def port(self):
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        self.sockets.append(s)
+        return s.getsockname()[1]
+
+    def service(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                body = b'{"translation": "Sales Manager", "count": 1}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        self.httpd = HTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever,
+                                       daemon=True)
+        self.thread.start()
+        return "http://127.0.0.1:%d" % self.httpd.server_address[1]
+
+    def close(self):
+        for s in self.sockets:
+            s.close()
+        if self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+
+
+@pytest.fixture
+def cluster():
+    c = FakeCluster()
+    yield c
+    c.close()
+
+
+def home(tmp_path, java="21", corpus_files=3, leftovers=(), db=None,
+         cluster=None):
+    h = tmp_path / "home"
+    (h / "bin").mkdir(parents=True)
+    (h / "conf").mkdir(parents=True)
+    for d in ("strings", "translated", "translated-catalog"):
+        (h / "data" / d).mkdir(parents=True)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    for i in range(corpus_files):
+        (corpus / ("part-%03d.tsv" % i)).write_text("a\tb\n")
+    # A fake java that reports whatever version the test wants, behind the
+    # NOTE line the real JVM prints when JDK_JAVA_OPTIONS is set.
+    jdk = tmp_path / "jdk" / "bin"
+    jdk.mkdir(parents=True)
+    (jdk / "java").write_text(
+        '#!/bin/sh\n'
+        'echo "NOTE: Picked up JDK_JAVA_OPTIONS: -Dsomething=1" >&2\n'
+        'echo \'openjdk version "%s.0.1" 2026-01-01\' >&2\n' % java)
+    (jdk / "java").chmod(0o755)
+    for name in ("strings", "translated", "translated-catalog"):
+        if name in leftovers:
+            (h / "data" / name / "chunk-00000.json").write_text("{}")
+    if db is not None:
+        (h / "data" / "translations.sqlite").write_text(db)
+    env_lines = ["BIGTRANSLATE_CORPUS=%s" % corpus,
+                 "JAVA_HOME=%s" % (tmp_path / "jdk")]
+    exports = ["BIGTRANSLATE_CORPUS", "JAVA_HOME"]
+    if cluster is not None:
+        for var in ("FILEMGR_PORT", "WORKFLOW_PORT", "RESMGR_PORT",
+                    "SOLR_PORT", "TOMCAT_PORT"):
+            env_lines.append("%s=%d" % (var, cluster.port()))
+            exports.append(var)
+        env_lines.append("BIGTRANSLATE_NODE_PORT=%d" % cluster.port())
+        env_lines.append("PANTOGLOSS_URL=%s" % cluster.service())
+        exports += ["BIGTRANSLATE_NODE_PORT", "PANTOGLOSS_URL"]
+    env_lines.append("export " + " ".join(exports))
+    (h / "bin" / "setenv.sh").write_text("\n".join(env_lines) + "\n")
+    # No bt-cluster: the node section is skipped with --local-only anyway.
+    return h
+
+
+def run(h, *args):
+    env = dict(os.environ)
+    env.update(BIGTRANSLATE_HOME=str(h))
+    env.pop("SOLR_URL", None)
+    return subprocess.run(
+        ["sh", str(PREFLIGHT), "--local-only", "--no-jars", *args],
+        capture_output=True, text=True, env=env)
+
+
+class TestTheJavaVersion:
+
+    def test_java_11_fails_the_check(self, tmp_path):
+        # The managers start on 11, the ports answer, and every ingest
+        # fails with an NPE hours later. Lucene 10 is class file 65.
+        done = run(home(tmp_path, java="11"))
+        assert done.returncode == 1
+        assert "FAIL" in done.stdout
+        assert "11" in done.stdout and "21" in done.stdout
+
+    def test_java_21_passes(self, tmp_path):
+        done = run(home(tmp_path, java="21"))
+        assert "ok" in done.stdout
+        assert "Lucene" not in done.stdout
+
+    def test_the_note_line_does_not_break_the_parse(self, tmp_path):
+        # JDK_JAVA_OPTIONS makes the JVM print a NOTE to stderr ahead of the
+        # version. Taking the first line parses that and reports a good
+        # Java as unreadable.
+        done = run(home(tmp_path, java="21"))
+        assert "could not read the version" not in done.stdout
+
+
+class TestLeftoversFromTheLastRun:
+
+    def test_a_populated_data_dir_fails(self, tmp_path):
+        # This is the 2026-09-20 failure: chunks present, so the run skips
+        # them and indexes the previous run's output as its own.
+        done = run(home(tmp_path, leftovers=("translated",)))
+        assert done.returncode == 1
+        assert "data/translated" in done.stdout
+        assert "bt-reset" in done.stdout
+
+    def test_empty_data_dirs_pass(self, tmp_path):
+        done = run(home(tmp_path))
+        assert "left from a previous run" not in done.stdout
+
+
+class TestTheTranslationDatabase:
+
+    def test_a_database_older_than_the_chunks_fails(self, tmp_path):
+        # The 2026-09-21 failure: the join loads it instead of this run's
+        # translations, and reports success.
+        h = home(tmp_path, db="previous run")
+        chunk = h / "data" / "translated-catalog" / "chunk-00000.json"
+        chunk.write_text("{}")
+        db = h / "data" / "translations.sqlite"
+        os.utime(db, (1, 1))
+        done = run(h)
+        assert done.returncode == 1
+        assert "earlier run" in done.stdout
+
+    def test_no_database_is_the_clean_state(self, tmp_path):
+        done = run(home(tmp_path))
+        assert "absent" in done.stdout
+
+
+class TestItIsUsableAsAGate:
+
+    def test_a_clean_cluster_exits_zero(self, tmp_path, cluster):
+        # Every port listening, the service answering with a real
+        # translation, nothing left from a previous run.
+        done = run(home(tmp_path, cluster=cluster))
+        assert done.returncode == 0, done.stdout
+        assert "Ready" in done.stdout
+
+    def test_the_verdict_counts_the_problems(self, tmp_path):
+        done = run(home(tmp_path, java="11", leftovers=("translated",)))
+        assert "problem(s)" in done.stdout
+        assert "Not ready to run." in done.stdout
+
+    def test_quiet_prints_only_problems(self, tmp_path):
+        done = run(home(tmp_path, java="11"), "--quiet")
+        assert "FAIL" in done.stdout
+        assert "  ok " not in done.stdout
+
+    def test_a_missing_corpus_fails(self, tmp_path):
+        h = home(tmp_path)
+        (h / "bin" / "setenv.sh").write_text(
+            "BIGTRANSLATE_CORPUS=/nowhere/at/all\n"
+            "JAVA_HOME=%s\nexport BIGTRANSLATE_CORPUS JAVA_HOME\n"
+            % (tmp_path / "jdk"))
+        done = run(h)
+        assert done.returncode == 1
+        assert "not a directory" in done.stdout
+
+    def test_applefork_sidecars_are_not_counted_as_corpus(self, tmp_path):
+        # ._foo.tsv matches *.tsv and once doubled the apparent corpus.
+        h = home(tmp_path, corpus_files=3)
+        corpus = tmp_path / "corpus"
+        for i in range(3):
+            (corpus / ("._part-%03d.tsv" % i)).write_text("junk")
+        done = run(h)
+        assert "3 files" in done.stdout, done.stdout

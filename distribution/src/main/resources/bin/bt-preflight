@@ -1,0 +1,322 @@
+#!/bin/sh
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Is this cluster ready to start a run?
+#
+# Every one of these checks exists because its absence cost a run. A run is
+# five to six hours and the failures are silent: the ports answer, the log
+# scrolls, the document count comes out right, and the index is wrong. None
+# of them announced themselves, and each was found hours in.
+#
+#   JAVA_HOME on 11        /usr/libexec/java_home returns 11, Lucene 10.5.1
+#                          needs class file 65. The managers start, the
+#                          ports answer, and every ingest fails with an NPE.
+#   no batch stub          Six manager ports were checked and 2001 was not.
+#                          The run requeued for 100 minutes with nothing
+#                          running and no error anywhere.
+#   node not reset         bt-reset cleared one machine. A node holding old
+#                          translations skips those chunks: 432,630 strings
+#                          went unindexed and the run looked 2.3x faster.
+#   stale translation db   Cleared nothing, held 458 chunks from the last
+#                          run, and the join loaded it instead of this
+#                          run's 2,286,244 translations.
+#   jar drift              A deployment on OODT 1.11.0 against scripts built
+#                          for 1.13.1; bt-reset aborted half way through.
+#
+# This is deliberately separate from "bt-cluster preflight", which asks
+# whether the deployment is consistent across machines. This asks whether
+# the cluster is ready to start a run now, and calls that one for the part
+# it already answers.
+#
+# Reports and does not repair. Every fault here has more than one right
+# response and the operator knows which one they want.
+
+set -u
+
+if [ -z "${BIGTRANSLATE_HOME:-}" ]; then
+  _bt_bin=$(cd "$(dirname "$0")" && pwd)
+  BIGTRANSLATE_HOME=$(cd "$_bt_bin/.." && pwd)
+fi
+export BIGTRANSLATE_HOME
+[ -f "$BIGTRANSLATE_HOME/bin/setenv.sh" ] && . "$BIGTRANSLATE_HOME"/bin/setenv.sh
+
+SSH="${SSH:-${BT_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10}}"
+skip_nodes=no
+skip_jars=no
+quiet=no
+for arg in "$@"; do
+  case "$arg" in
+    --local-only) skip_nodes=yes ;;
+    --no-jars)    skip_jars=yes ;;
+    --quiet)      quiet=yes ;;
+    -h|--help)
+      echo "usage: bt-preflight [--local-only] [--no-jars] [--quiet]"
+      echo "  Checks whether the cluster is ready to start a run."
+      echo "  --local-only  skip every check that needs ssh"
+      echo "  --no-jars     skip the cross-machine jar comparison (slow)"
+      echo "  --quiet       print only problems"
+      exit 0 ;;
+    *) echo "bt-preflight: unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+FAILED=0
+WARNED=0
+
+ok()   { [ "$quiet" = yes ] || printf '  \033[32mok\033[0m    %-32s %s\n' "$1" "${2:-}"; }
+warn() { WARNED=$((WARNED+1)); printf '  \033[33mwarn\033[0m  %-32s %s\n' "$1" "${2:-}"; }
+bad()  { FAILED=$((FAILED+1)); printf '  \033[31mFAIL\033[0m  %-32s %s\n' "$1" "${2:-}"; }
+
+# Empty when nothing is listening, so callers can test it without caring
+# whether lsof exists.
+listening() {
+  lsof -ti tcp:"$1" 2>/dev/null | head -1
+}
+
+section() { [ "$quiet" = yes ] || printf '\n%s\n' "$1"; }
+
+# ------------------------------------------------------------- this machine ---
+section "This machine"
+
+# Java first: it is the one that lets everything else look healthy.
+java_bin="${JAVA_HOME:-}/bin/java"
+[ -x "$java_bin" ] || java_bin=$(command -v java 2>/dev/null)
+if [ -z "$java_bin" ] || [ ! -x "$java_bin" ]; then
+  bad "java" "not found; set JAVA_HOME to a Java 21 install"
+else
+  # Not head -1: JDK_JAVA_OPTIONS makes the JVM print a NOTE line to stderr
+  # ahead of the version, and taking the first line parses that instead and
+  # reports "could not read the version" on a perfectly good Java.
+  jv=$("$java_bin" -version 2>&1 | grep -i version | head -1 \
+       | sed -n 's/^[^"]*"\([0-9][0-9]*\).*/\1/p')
+  jv=${jv:-0}
+  case "$jv" in
+    0|*[!0-9]*) warn "java" "could not read the version from $java_bin" ;;
+    *) if [ "$jv" -lt 21 ]; then
+         bad "java" "$jv at $java_bin; Lucene 10 is class file 65 and fails at ingest, not at startup. export JAVA_HOME to a 21 install"
+       else
+         ok "java" "$jv at $java_bin"
+       fi ;;
+  esac
+fi
+
+# The managers. A missing one is obvious in hindsight and invisible at the
+# time, because the run starts anyway and waits.
+for pair in "FILEMGR_PORT:file manager" "WORKFLOW_PORT:workflow manager" \
+            "RESMGR_PORT:resource manager" "SOLR_PORT:solr" \
+            "TOMCAT_PORT:tomcat"; do
+  var=${pair%%:*}; label=${pair#*:}
+  eval "port=\${$var:-}"
+  if [ -z "$port" ]; then
+    warn "$label" "$var is not set"
+  elif [ -n "$(listening "$port")" ]; then
+    ok "$label" "$port"
+  else
+    bad "$label" "nothing listening on $port"
+  fi
+done
+
+# The batch stub. Not a manager, which is exactly why it was missed.
+# bt-node reads BIGTRANSLATE_NODE_PORT, so this has to as well: hardcoding
+# 2001 reports a deployment that moved the port as broken when it is not.
+NODE_PORT=${BIGTRANSLATE_NODE_PORT:-2001}
+if [ -n "$(listening "$NODE_PORT")" ]; then
+  ok "batch stub" "$NODE_PORT"
+else
+  bad "batch stub" "nothing on $NODE_PORT; translate jobs will requeue forever. bin/bt-node start"
+fi
+
+# The corpus.
+corpus="${BIGTRANSLATE_CORPUS:-}"
+if [ -z "$corpus" ]; then
+  bad "corpus" "BIGTRANSLATE_CORPUS is not set"
+elif [ ! -d "$corpus" ]; then
+  bad "corpus" "$corpus is not a directory (is the drive mounted?)"
+else
+  # Dotfile-matching sidecars are not corpus. AppleDouble forks match
+  # *.tsv and once doubled the apparent corpus size.
+  n=$(find "$corpus" -maxdepth 1 -name '*.tsv' -type f ! -name '._*' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${n:-0}" -eq 0 ]; then
+    bad "corpus" "no .tsv files under $corpus"
+  else
+    first=$(find "$corpus" -maxdepth 1 -name '*.tsv' -type f ! -name '._*' 2>/dev/null | head -1)
+    if head -c 1 "$first" >/dev/null 2>&1; then
+      ok "corpus" "$n files, readable"
+    else
+      bad "corpus" "$n files but $first cannot be read"
+    fi
+  fi
+fi
+
+# Nothing left from the last run. This is the check that would have saved
+# the 2026-09-20 run outright.
+for d in data/strings data/translated data/translated-catalog; do
+  path="$BIGTRANSLATE_HOME/$d"
+  if [ ! -d "$path" ]; then
+    warn "$d" "missing; bin/bt-reset creates it"
+  elif [ -n "$(ls -A "$path" 2>/dev/null)" ]; then
+    bad "$d" "$(ls -A "$path" 2>/dev/null | wc -l | tr -d ' ') entries left from a previous run; bin/bt-reset"
+  else
+    ok "$d" "empty"
+  fi
+done
+
+# The translation database. Present is fine only if it is newer than the
+# chunks it claims to summarise.
+db="$BIGTRANSLATE_HOME/data/translations.sqlite"
+if [ ! -f "$db" ]; then
+  ok "translation database" "absent; the join will build it"
+else
+  newer=$(find "$BIGTRANSLATE_HOME/data/translated-catalog" -name 'chunk-*' -newer "$db" 2>/dev/null | head -1)
+  if [ -n "$newer" ]; then
+    bad "translation database" "older than $(basename "$newer"); it is from an earlier run"
+  else
+    warn "translation database" "present; the join reuses it unless it predates the chunks"
+  fi
+fi
+
+# Solr.
+solr_url="${SOLR_URL:-}"
+if [ -z "$solr_url" ]; then
+  warn "solr" "SOLR_URL is not set"
+else
+  docs=$(curl -s --max-time 20 "$solr_url/select?q=*:*&rows=0&wt=json" 2>/dev/null \
+         | sed -n 's/.*"numFound":\([0-9]*\).*/\1/p')
+  if [ -z "$docs" ]; then
+    bad "solr" "no answer from $solr_url"
+  elif [ "$docs" = "0" ]; then
+    ok "solr" "0 documents"
+  else
+    warn "solr" "$docs documents; a run will add to them rather than replace"
+  fi
+fi
+
+# Room to put the output.
+for pair in "$BIGTRANSLATE_HOME:deployment disk" "${SOLR_DATA_DIR:-$BIGTRANSLATE_HOME/solr}:solr disk"; do
+  path=${pair%%:*}; label=${pair#*:}
+  [ -d "$path" ] || continue
+  avail=$(df -Pk "$path" 2>/dev/null | awk 'NR==2 {print $4}')
+  case "${avail:-}" in
+    ''|*[!0-9]*) warn "$label" "could not read free space for $path"; continue ;;
+  esac
+  gb=$((avail / 1048576))
+  if [ "$gb" -lt 50 ]; then
+    bad "$label" "${gb}G free at $path"
+  elif [ "$gb" -lt 150 ]; then
+    warn "$label" "${gb}G free at $path"
+  else
+    ok "$label" "${gb}G free"
+  fi
+done
+
+# Tomcat deploys any directory under webapps as a context, so a backup left
+# there is served, and the next one shadows a real app soon enough.
+strays=$(ls -d "$BIGTRANSLATE_HOME"/tomcat/webapps/*.bak "$BIGTRANSLATE_HOME"/tomcat/webapps/*.old 2>/dev/null | wc -l | tr -d ' ')
+if [ "${strays:-0}" -gt 0 ]; then
+  warn "tomcat webapps" "$strays backup directory/ies under webapps; tomcat deploys each as a context"
+else
+  ok "tomcat webapps" "no backups in place"
+fi
+
+# ---------------------------------------------------- the translation service ---
+section "Translation service"
+
+check_service() {
+  label=$1; url=$2; runner=$3
+  reply=$($runner "curl -s --max-time 30 -X POST '$url/translate' -H 'Content-Type: application/json' -d '{\"text\":\"Gerente de Ventas\"}'" 2>/dev/null)
+  case "$reply" in
+    *'"translation"'*)
+      got=$(printf '%s' "$reply" | sed -n 's/.*"translation":"\([^"]*\)".*/\1/p')
+      # It answering is not it working: a service that echoes the Spanish
+      # back translates nothing and reports success all run.
+      if [ "$got" = "Gerente de Ventas" ]; then
+        bad "$label" "returned the Spanish unchanged"
+      else
+        ok "$label" "$got"
+      fi ;;
+    "") bad "$label" "no answer from $url" ;;
+    *)  bad "$label" "unexpected reply from $url" ;;
+  esac
+}
+
+run_here() { sh -c "$1"; }
+check_service "manager" "${PANTOGLOSS_URL:-http://127.0.0.1:${PANTOGLOSS_PORT:-8766}}" run_here
+
+# ------------------------------------------------------------------- nodes ---
+if [ "$skip_nodes" = yes ]; then
+  section "Nodes"
+  [ "$quiet" = yes ] || echo "  skipped (--local-only)"
+else
+  nodes=$("$BIGTRANSLATE_HOME"/bin/bt-cluster nodes 2>/dev/null | tail -n +2)
+  if [ -z "$nodes" ]; then
+    section "Nodes"
+    [ "$quiet" = yes ] || echo "  none configured beyond this machine"
+  else
+    section "Nodes"
+    # Redirected from a file rather than piped. A `while read` on the right
+    # of a pipe runs in a subshell, so every FAIL counted inside it is
+    # discarded and the command exits 0 with failures on the screen --
+    # which is the same shape of bug this script exists to catch.
+    node_list="$BIGTRANSLATE_HOME/data/.bt-preflight-nodes.$$"
+    echo "$nodes" > "$node_list"
+    while read -r id host capacity; do
+      [ -n "$id" ] || continue
+      if [ "$($SSH "$host" 'echo ok' 2>/dev/null)" != "ok" ]; then
+        bad "$id" "unreachable at $host"
+        continue
+      fi
+      ok "$id" "reachable at $host"
+      if [ -z "$($SSH "$host" "command -v lsof >/dev/null 2>&1 && lsof -ti tcp:$NODE_PORT | head -1 || (nc -z localhost $NODE_PORT && echo up)" 2>/dev/null)" ]; then
+        bad "$id batch stub" "nothing on $NODE_PORT; this node will take no work"
+      else
+        ok "$id batch stub" "$NODE_PORT"
+      fi
+      left=$($SSH "$host" "ls -A '$BIGTRANSLATE_HOME/data/translated' 2>/dev/null | wc -l | tr -d ' '" 2>/dev/null)
+      if [ "${left:-0}" -gt 0 ]; then
+        bad "$id data/translated" "$left entries from a previous run; those chunks will be skipped"
+      else
+        ok "$id data/translated" "empty"
+      fi
+      check_service "$id service" "${PANTOGLOSS_URL:-http://127.0.0.1:${PANTOGLOSS_PORT:-8766}}" "$SSH $host"
+    done < "$node_list"
+    rm -f "$node_list"
+  fi
+
+  if [ "$skip_jars" = no ]; then
+    section "Deployment consistency"
+    jar_out="$BIGTRANSLATE_HOME/data/.bt-preflight-jars.$$"
+    if "$BIGTRANSLATE_HOME"/bin/bt-cluster preflight > "$jar_out" 2>&1; then
+      ok "jars" "every node matches the manager"
+    else
+      bad "jars" "see below; bin/bt-cluster deploy"
+      sed 's/^/      /' "$jar_out"
+    fi
+    rm -f "$jar_out"
+  fi
+fi
+
+# ----------------------------------------------------------------- verdict ---
+echo
+if [ "$FAILED" -gt 0 ]; then
+  echo "$FAILED problem(s), $WARNED warning(s). Not ready to run."
+  exit 1
+fi
+if [ "$WARNED" -gt 0 ]; then
+  echo "Ready, with $WARNED warning(s)."
+else
+  echo "Ready."
+fi
+exit 0
