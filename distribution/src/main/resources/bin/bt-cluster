@@ -372,6 +372,36 @@ cmd_stage() { for_each_remote stage_one; echo "staging complete"; }
 
 start_one() { echo "starting $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node start" || true; }
 stop_one()  { echo "stopping $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node stop" || true; }
+
+# Clear what a node carries between runs.
+#
+# bt-reset clears the machine it runs on. It did not reach the nodes, and a
+# node keeps its own data/translated: on 2026-09-20 spaghetti still held 308
+# translations from a run eight days earlier. Staging replaced its inputs, so
+# the chunks were right, and bt-translate-chunk skips a chunk whose output
+# already exists -- which is correct for resuming an interrupted run and
+# wrong after a reset, because the two are indistinguishable from the node.
+#
+# 308 of 458 chunks were therefore never translated. The stale files were
+# catalogued as if they were new, they follow the previous run's chunk
+# boundaries, and 432,630 strings ended up with no translation at all. The
+# run looked 2.3x faster because it did a third less work.
+#
+# Moved aside rather than deleted: this is the only copy of what a node
+# produced, and a reset should not be what destroys the evidence that
+# something went wrong.
+reset_one() {
+  echo "resetting $1 ($2)"
+  $SSH "$2" "cd '$BIGTRANSLATE_HOME' 2>/dev/null || exit 0
+    stamp=\$(date +%Y%m%d-%H%M%S)
+    for d in data/translated data/translated-catalog data/strings data/jobs; do
+      [ -d \"\$d\" ] || continue
+      [ -n \"\$(ls -A \"\$d\" 2>/dev/null)\" ] || continue
+      mv \"\$d\" \"\$d-superseded-\$stamp\"
+      mkdir -p \"\$d\"
+      echo \"  moved \$d aside as \$d-superseded-\$stamp\"
+    done" || true
+}
 status_one(){ printf '%-10s %-22s ' "$1" "$2"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node status" 2>&1 | tail -1; }
 
 # --node applies to this machine too. Asking about one node and being told
@@ -389,6 +419,13 @@ cmd_start() {
 cmd_stop() {
   for_each_remote stop_one
   manager_selected && "$BIGTRANSLATE_HOME"/bin/bt-node stop
+}
+
+# The nodes only. bin/bt-reset clears this machine and then calls this, so
+# that "reset" means the cluster rather than the machine the operator
+# happened to type it on.
+cmd_reset() {
+  for_each_remote reset_one
 }
 
 # --------------------------------------------------------------- preflight ---
@@ -702,11 +739,12 @@ case "${COMMAND:-}" in
   stage-chunks) cmd_stage_chunks ;;
   start)  cmd_start ;;
   stop)   cmd_stop ;;
+  reset)  cmd_reset ;;
   status) cmd_status ;;
   preflight) cmd_preflight ;;
   nodes)  node_lines ;;
   help|*)
-    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|preflight|start|stop|status|nodes} [node]"
+    echo "usage: bt-cluster [options] {policy|deploy|stage|stage-chunks|preflight|start|stop|reset|status|nodes} [node]"
     echo
     echo "options:"
     echo "  --home PATH        deployment root; the same absolute path on"
