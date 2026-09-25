@@ -87,6 +87,11 @@ done
 # 2,286,244 sat unused -- a clean run that would have produced the same
 # index as the run it was meant to replace.
 rm -f "${BIGTRANSLATE_HOME:?}/data/translations.sqlite"
+
+# The join's per-shard position. Derived, and stale counts from the last
+# run would be summed into the next one's bar until the shards overwrote
+# them.
+rm -rf "${BIGTRANSLATE_HOME:?}/data/join-progress"
 # The marker and the record that the last run ended. A start removes the
 # latter anyway, but a reset is meant to leave nothing derived behind.
 rm -f "$BIGTRANSLATE_HOME/data/run" "$BIGTRANSLATE_HOME/data/run.done"

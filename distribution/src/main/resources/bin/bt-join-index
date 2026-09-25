@@ -468,6 +468,30 @@ def post(url, batch, timeout):
         response.read()
 
 
+def write_shard_progress(shard, done, total):
+    """Record this shard's position for the run marker to add up.
+
+    Its own count only. The shards hold interleaved slices and none of them
+    knows the total, so each writes what it has done and bt-run-marker sums
+    them; a shard writing the pair would race the others and the bar would
+    jump. Written to a temporary name and renamed, so a marker reading the
+    directory never sees half a number.
+    """
+    home = os.environ.get("BIGTRANSLATE_HOME")
+    if not home:
+        return
+    folder = os.path.join(home, "data", "join-progress")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        temp = os.path.join(folder, ".shard-%d.tmp" % shard)
+        with open(temp, "w", encoding="utf-8") as handle:
+            handle.write("%d %d\n" % (done, total))
+        os.replace(temp, os.path.join(folder, "shard-%d" % shard))
+    except OSError as e:
+        # Saying where it has got to is never worth losing an index for.
+        log("  could not record shard progress: %s" % e)
+
+
 def run_marker_beat():
     """Tell anything watching that this stage is still working.
 
@@ -593,6 +617,8 @@ def main(argv=None):
     posted = skipped = seen = 0
     started = time.time()
     beat = run_marker_beat
+    files_done = 0
+    write_shard_progress(args.shard, 0, len(mine))
     for path in mine:
         base = os.path.basename(path)
         for number, parts in enumerate(
@@ -616,6 +642,12 @@ def main(argv=None):
                     beat()
                 except Exception as e:
                     log("  could not refresh the run marker: %s" % e)
+        # One file finished. Recorded here rather than per batch: a file is
+        # the unit the extract reports and the unit the panel already knows
+        # how to draw, and it is the only boundary at which this shard has
+        # certainly finished something.
+        files_done += 1
+        write_shard_progress(args.shard, files_done, len(mine))
     if batch:
         post(args.solr_url, batch, args.timeout)
         posted += len(batch)

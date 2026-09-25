@@ -37,7 +37,14 @@ export function stageLabel (progress) {
 // back to showing log text. While the read is running the files it has got
 // through are the progress, and the extract reports them.
 export function measure (progress) {
-  if (progress.stage === 'extracting' && Number(progress.filesTotal) > 0) {
+  // Files for the two stages that have nothing else to count: the extract,
+  // where no chunk exists until the corpus has been read, and the join,
+  // where Solr holds every document uncommitted so the index reads as empty
+  // for an hour and a half. Chunks for the translate stage in between.
+  // Without the join here the bar sat at 458 of 458 for the whole index,
+  // which reads as finished, or as hung.
+  const byFile = progress.stage === 'extracting' || progress.stage === 'joining'
+  if (byFile && Number(progress.filesTotal) > 0) {
     return {
       done: Number(progress.filesDone) || 0,
       total: Number(progress.filesTotal),
