@@ -189,16 +189,62 @@ def progress(home):
     return state
 
 
+JOIN_PROGRESS_DIR = "join-progress"
+
+
+def join_progress(home):
+    """Files indexed so far, summed across the shards.
+
+    The join runs four shards over interleaved slices of the corpus, so no
+    one of them knows the total and none can write the pair of numbers on
+    its own -- the last writer would win and the bar would jump backwards.
+    Each writes only its own count, and they are added up here.
+
+    A shard that dies stops contributing rather than holding the total at
+    its last value, which is the right way round: the bar should understate
+    a run that has lost a shard, not flatter it.
+    """
+    folder = os.path.join(home, "data", JOIN_PROGRESS_DIR)
+    done = total = 0
+    found = False
+    try:
+        names_here = sorted(os.listdir(folder))
+    except OSError:
+        return None
+    for name in names_here:
+        if not name.startswith("shard-"):
+            continue
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                parts = handle.read().split()
+            done += int(parts[0])
+            total += int(parts[1])
+            found = True
+        except (OSError, IndexError, ValueError):
+            # A shard caught mid-write is worth skipping, not failing over.
+            continue
+    return (done, total) if found else None
+
+
 def with_file_progress(state, existing, done, total):
-    """Carry how far the read has got, while it is the read that is running.
+    """Carry how far a stage has got when there is nothing to count on disk.
 
     Everything else here is counted off the disk, because a directory cannot
-    drift from itself. The extract has nothing to count: no chunk exists
-    until the whole corpus has been read, which is the longest stretch of a
-    run and the one with no bar. So this one number is reported rather than
-    derived, and only while it is true -- once a chunk exists the stage is
-    translating and the chunk counts take over.
+    drift from itself. Two stages have nothing to count. The extract has no
+    chunk until the whole corpus has been read; the join has no document
+    until the commit at the very end, so Solr reads as empty for an hour and
+    a half while four shards work. Both were a bar frozen at whatever the
+    previous stage left behind.
+
+    Files are the unit in both cases -- the extract reads 2,806 of them and
+    the join indexes the same 2,806 -- so the same pair of fields carries
+    both, and the panel needs no new ones.
     """
+    if state.get("stage") == "joining":
+        shards = join_progress(os.environ["BIGTRANSLATE_HOME"])
+        if shards is not None:
+            state["filesDone"], state["filesTotal"] = shards
+        return state
     if state.get("stage") != "extracting":
         return state
     if done is None:

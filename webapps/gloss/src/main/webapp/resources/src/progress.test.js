@@ -16,6 +16,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
+  measure,
   percent, rateLabel, remainingLabel, elapsedLabel, stageLabel, duration
 } from './progress.js'
 
@@ -89,4 +90,36 @@ test('the log pane is bounded and scrolls inside itself', () => {
     new URL('./components/ProgressPane.vue', import.meta.url), 'utf8')
   assert.match(pane, /max-height/, 'the log pane is unbounded')
   assert.match(pane, /overflow:\s*auto/, 'the log pane does not scroll')
+})
+
+test('the join draws files, because its chunk counts are already full', () => {
+  // Solr holds every document uncommitted until the commit at the very
+  // end, so the index reads as empty for an hour and a half. The chunk
+  // counts by then are 458 of 458, so drawing them left the bar full
+  // while the index was still being built -- finished, or hung.
+  const joining = {
+    stage: 'joining',
+    chunksDone: 458,
+    chunksTotal: 458,
+    filesDone: 1931,
+    filesTotal: 2806
+  }
+  assert.deepEqual(measure(joining), { done: 1931, total: 2806, unit: 'files' })
+})
+
+test('the join falls back to chunks until the shards have reported', () => {
+  const joining = { stage: 'joining', chunksDone: 458, chunksTotal: 458 }
+  assert.equal(measure(joining).unit, 'chunks')
+})
+
+test('translating still draws chunks', () => {
+  const translating = {
+    stage: 'translating',
+    chunksDone: 197,
+    chunksTotal: 458,
+    filesDone: 2806,
+    filesTotal: 2806
+  }
+  assert.deepEqual(measure(translating),
+    { done: 197, total: 458, unit: 'chunks' })
 })
