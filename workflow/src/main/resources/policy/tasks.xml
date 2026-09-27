@@ -49,7 +49,8 @@
           <!-- Read in place. The corpus is 38GB on an external volume and
                copying it buys nothing: a single pass over it takes five
                minutes and happens once. -->
-          <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
+          <!-- CorpusDir is supplied as metadata on EmploymentCorpusReady.
+               It is per-run state, not workflow-manager process state. -->
           <property name="StringsDir" value="[BIGTRANSLATE_HOME]/data/strings" envReplace="true"/>
           <property name="ColHeaders" value="[BIGTRANSLATE_HOME]/conf/colheaders.txt" envReplace="true"/>
           <property name="Encodings" value="[BIGTRANSLATE_HOME]/conf/encoding.txt" envReplace="true"/>
@@ -147,7 +148,8 @@
                that should follow them is never started, with nothing
                logged to say why. -->
           <property name="PCS_ActionRepoFile" value="file:[BIGTRANSLATE_HOME]/crawler/policy/action-beans.xml" envReplace="true"/>
-          <property name="CorpusDir" value="[BIGTRANSLATE_CORPUS]" envReplace="true"/>
+          <!-- CorpusDir follows the run metadata emitted by the extract and
+               translation stages. -->
           <!-- The File Manager archive, not the flat directory a translate task
                writes into. That flat directory only ever holds the chunks
                translated on that machine: on a two node run the manager had 9

@@ -29,6 +29,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -55,6 +56,17 @@ def load_translator():
 def log(message):
     sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
     sys.stderr.flush()
+
+
+def beat_run_marker():
+    """Keep Gloss aware while a long model request is in progress."""
+    marker = os.path.join(HERE, "bt-run-marker")
+    try:
+        subprocess.run([sys.executable, marker, "beat"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=False, timeout=30)
+    except (OSError, subprocess.SubprocessError) as error:
+        log("could not refresh the run marker: %s" % error)
 
 
 def resolve_with_glossary(strings, glossary, untranslatable):
@@ -136,6 +148,7 @@ def translate_chunk(translator, strings, service_url, batch_size,
                 "service returned %d translations for %d inputs"
                 % (len(got), len(batch)))
         out.update(dict(zip(batch, got)))
+        beat_run_marker()
     return out
 
 

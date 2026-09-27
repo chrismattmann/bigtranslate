@@ -542,7 +542,7 @@ def test_extract_does_not_write_into_the_repository_it_ingests_into():
     itself: "File canonical paths are equal", and nothing is catalogued."""
     pge = (REPO / "pge" / "src" / "main" / "resources" / "policy"
            / "no_filter" / "PgeConfig_ExtractStrings.xml").read_text()
-    assert "--out-dir [JobOutputDir]" in pge, (
+    assert '--out-dir "[JobOutputDir]"' in pge, (
         "extract writes chunks somewhere other than its job output dir")
     # The class the element declares, not any mention of it: the comment
     # explaining the choice names the wrong versioner on purpose.
@@ -621,9 +621,9 @@ def test_an_engine_driven_run_is_visible():
     """bin/bigtranslate writes the marker for a run it starts. A run the
     engine drives has no such caller, and Gloss showed IDLE throughout one."""
     policy = REPO / "pge" / "src" / "main" / "resources" / "policy" / "no_filter"
-    assert "bt-run-marker start" in (policy / "PgeConfig_ExtractStrings.xml").read_text()
-    assert "bt-run-marker beat" in (policy / "PgeConfig_TranslateChunk.xml").read_text()
-    assert "bt-run-marker clear" in (policy / "PgeConfig_JoinIndex.xml").read_text()
+    assert 'bt-run-marker" start' in (policy / "PgeConfig_ExtractStrings.xml").read_text()
+    assert 'bt-run-marker" beat' in (policy / "PgeConfig_TranslateChunk.xml").read_text()
+    assert 'bt-run-marker" clear' in (policy / "PgeConfig_JoinIndex.xml").read_text()
     assert (REPO / "distribution" / "src" / "main" / "resources" / "bin"
             / "bt-run-marker").exists()
 

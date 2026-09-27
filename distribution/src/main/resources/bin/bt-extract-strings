@@ -33,6 +33,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -44,6 +45,22 @@ import bt_encoding  # after the path insert above, which makes it importable
 def log(message):
     sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
     sys.stderr.flush()
+
+
+def shell_script_command(script, *args):
+    """Return a command for an extensionless POSIX launcher.
+
+    Unix executes the shebang directly. Windows cannot execute a shell
+    script through CreateProcess, even when Git Bash is on PATH, so invoke
+    Bash explicitly there.
+    """
+    command = [script, *args]
+    if os.name == "nt":
+        bash = shutil.which("bash")
+        if not bash:
+            raise SystemExit("Git Bash is required to run %s" % script)
+        command.insert(0, bash)
+    return command
 
 
 def read_columns(path):
@@ -213,10 +230,16 @@ def stage_chunks(out_dir, mode):
     if not os.path.isfile(cluster):
         log("no %s; not staging chunks" % cluster)
         return
+    nodes = os.environ.get("BT_NODES_CONF",
+                           os.path.join(home, "conf", "nodes.conf"))
+    if not os.path.isfile(nodes):
+        log("no compute-node list; nothing to stage")
+        return
 
     log("staging chunks to the compute nodes")
     result = subprocess.run(
-        [cluster, "--home", home, "stage-chunks", "--chunks", out_dir],
+        shell_script_command(cluster, "--home", home, "stage-chunks",
+                             "--chunks", out_dir),
         capture_output=True, text=True)
     for line in (result.stdout or "").splitlines():
         log("  %s" % line)

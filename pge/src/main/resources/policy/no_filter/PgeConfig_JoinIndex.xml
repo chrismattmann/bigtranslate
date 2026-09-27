@@ -6,9 +6,9 @@
        model is involved: this is a dict lookup repeated 836 million times.
        Solr takes about 35,000 documents a second, so the shards overlap
        reading the corpus with posting rather than pushing Solr harder. -->
-  <exe dir="[JobDir]" shell="/bin/bash">
+  <exe dir="[JobDir]" shell="bash">
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
-     <cmd>mkdir -p [JobOutputDir] [JobLogDir]</cmd>
+     <cmd>mkdir -p "[JobOutputDir]" "[JobLogDir]"</cmd>
      <!-- Every shard, from this one instance. JoinShards said eight and
           only shard zero ever ran, because nothing created instances for
           the other seven: a corpus was indexed one eighth of the way and
@@ -30,12 +30,12 @@
      <!-- One database for every shard to share. Read as JSON each shard
           holds its own 456MB copy of the same table, and eight of those is
           what put the machine over during the first full run. -->
-     <cmd>EXPECTED=$(ls -d [StringsDir]/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-build-translation-db --translated [TranslatedDir] --glossary [TranslateGlossary] --out [TranslationsDb] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
-     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do [BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-join-index --corpus [CorpusDir] --translated [TranslatedDir] --translations-db [TranslationsDb] --solr-url [SolrUrl] --colheaders [ColHeaders] --encodings [Encodings] --translate-cols [TranslateCols] --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] [JobLogDir]/join_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker clear</cmd>
-     <cmd>echo "[JoinShards] shards indexed" [GreaterThan] [JobOutputDir]/join.done</cmd>
+     <cmd>EXPECTED=$(ls -d "[StringsDir]"/chunk-*.json 2>/dev/null | wc -l | tr -d " ")</cmd>
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-build-translation-db" --translated "[TranslatedDir]" --glossary "[TranslateGlossary]" --out "[TranslationsDb]" --expect $EXPECTED [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>for s in $(seq 0 $(([JoinShards] - 1))); do "[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1 [Ampersand] done; wait</cmd>
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-run-marker" clear</cmd>
+     <cmd>echo "[JoinShards] shards indexed" [GreaterThan] "[JobOutputDir]/join.done"</cmd>
   </exe>
 
   <!-- Nothing to ingest. The documents are in Solr; the shard marker is for

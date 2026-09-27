@@ -201,11 +201,11 @@ class TestTheWiring:
 
     def test_translate_chunk_is_given_the_glossary(self):
         text = (POLICY / "no_filter" / "PgeConfig_TranslateChunk.xml").read_text()
-        assert "--glossary [TranslateGlossary]" in text
+        assert '--glossary "[TranslateGlossary]"' in text
 
     def test_the_translation_db_build_is_given_the_glossary(self):
         text = (POLICY / "no_filter" / "PgeConfig_JoinIndex.xml").read_text()
-        assert "--glossary [TranslateGlossary]" in text
+        assert '--glossary "[TranslateGlossary]"' in text
 
     def test_the_tasks_that_use_it_define_it(self):
         text = (WORKFLOW_POLICY / "tasks.xml").read_text()
