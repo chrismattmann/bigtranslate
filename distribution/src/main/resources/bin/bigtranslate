@@ -258,7 +258,14 @@ validate_corpus_path() {
         exit 1
     fi
 
-    validate_corpus_shape "$CORPUS_PATH"
+    # Explicitly, rather than leaving it to set -e. The guard refuses a
+    # corpus whose shape does not match conf/colheaders.txt, and it used to
+    # do that by calling exit itself. Returning is better -- it can be
+    # tested, and a function that kills its caller is hard to reuse -- but
+    # it moves the enforcement here, and set -e is a weak place to keep it:
+    # a later caller that puts this in a condition, a pipeline or a subshell
+    # silently turns the refusal into a warning nobody reads.
+    validate_corpus_shape "$CORPUS_PATH" || exit 1
 
     echo "Translating $count TSV file(s) from $CORPUS_PATH"
     CORPUS_FILE_COUNT="$count"

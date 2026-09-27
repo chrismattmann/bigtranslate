@@ -26,6 +26,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -123,7 +124,13 @@ class TestTheJoinStillClearsWhenItIsDone:
         pge = (ROOT / "pge" / "src" / "main" / "resources" / "policy"
                / "no_filter" / "PgeConfig_JoinIndex.xml").read_text(
                    encoding="utf-8")
-        clear = pge.index("bt-run-marker clear")
+        # Matched without the quoting between the two words. The Windows
+        # work quoted every path in these configs, so "bt-run-marker clear"
+        # became "bt-run-marker" clear and a literal search stopped finding
+        # a command that was still there and still running.
+        clear = re.search(r'bt-run-marker"?\s+clear', pge)
+        assert clear, "the join no longer clears the run marker"
+        clear = clear.start()
         index = pge.rindex("bt-join-index")
         assert clear > index, (
             "clearing before the indexing finishes would report the run over "
