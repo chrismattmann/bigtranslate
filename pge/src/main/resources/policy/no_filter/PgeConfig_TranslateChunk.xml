@@ -5,12 +5,12 @@
        a node. The chunk arrives already sorted by length, so its batches
        pad almost nothing. Holds no state beyond its own output file, which
        is what lets the same chunk run on any node. -->
-  <exe dir="[JobDir]" shell="/bin/bash">
+  <exe dir="[JobDir]" shell="bash">
      <cmd>export PYTHONIOENCODING=utf-8</cmd>
-     <cmd>mkdir -p [JobOutputDir] [JobLogDir] [TranslatedDir]</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-translate-chunk --chunk [ChunkPath] --out-dir [TranslatedDir] --glossary [TranslateGlossary] --service-url [PantoglossUrl] --batch-size [TranslateBatchSize] [GreaterThan][GreaterThan] [JobLogDir]/translate_[DateMilis].log 2[GreaterThan][Ampersand]1</cmd>
-     <cmd>cp [TranslatedDir]/[ChunkFile] [JobOutputDir]/</cmd>
-     <cmd>[BIGTRANSLATE_HOME]/bin/bt-run-marker beat</cmd>
+     <cmd>mkdir -p "[JobOutputDir]" "[JobLogDir]" "[TranslatedDir]"</cmd>
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-translate-chunk" --chunk "[ChunkPath]" --out-dir "[TranslatedDir]" --glossary "[TranslateGlossary]" --service-url "[PantoglossUrl]" --batch-size [TranslateBatchSize] [GreaterThan][GreaterThan] "[JobLogDir]/translate_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
+     <cmd>cp "[TranslatedDir]/[ChunkFile]" "[JobOutputDir]/"</cmd>
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-run-marker" beat</cmd>
   </exe>
 
   <!-- The chunk is catalogued so that something can count them. The join
@@ -52,6 +52,10 @@
     <metadata key="JobDir" val="[BIGTRANSLATE_HOME]/data/jobs/translate/[ChunkFile]_[DateMilis]"/>
     <metadata key="JobOutputDir" val="[JobDir]/output"/>
     <metadata key="JobLogDir" val="[JobDir]/logs"/>
-    <metadata key="ChunkPath" val="SQL(FORMAT='$FileLocation/$Filename',SORT_BY='CAS.ProductReceivedTime'){SELECT FileLocation,Filename,CAS.ProductReceivedTime FROM EmploymentStringChunk WHERE Filename = '[ChunkFile]'}"/>
+    <!-- BasicVersioner stores each chunk in this archive layout, and
+         bt-cluster stages the identical layout on compute nodes. Building
+         the path from FileLocation via SQL let Windows backslashes be
+         consumed by the expression parser before Bash ever saw them. -->
+    <metadata key="ChunkPath" val="[BIGTRANSLATE_HOME]/data/strings/[ChunkFile]/[ChunkFile]"/>
   </customMetadata>
 </pgeConfig>

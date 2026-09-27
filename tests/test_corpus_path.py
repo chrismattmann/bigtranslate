@@ -42,7 +42,14 @@ def run_validation(argument):
         ["sed", "-n", "/^corpus_files() {/,/^}/p", str(DRIVER)],
         capture_output=True, text=True, check=True).stdout
     assert helpers.strip(), "corpus_files is not in the driver script"
-    body = helpers + "\n" + body
+    # And validate_corpus_shape, which validate_corpus_path calls. Leaving
+    # it out left a "command not found" in the probe that nothing acted on,
+    # so this passed while exercising only half of what it names. The shape
+    # check needs conf/colheaders.txt, which a bare corpus fixture has no
+    # reason to provide, so it is stubbed to succeed: the shape of the
+    # corpus is test_corpus_shape.py's subject, not this file's.
+    shape = "validate_corpus_shape() { return 0; }\n"
+    body = shape + helpers + "\n" + body
     script = body + '\nvalidate_corpus_path "$1"\necho "RESOLVED=$CORPUS_PATH"\n'
     return subprocess.run(["bash", "-c", script, "bash", argument],
                           capture_output=True, text=True)

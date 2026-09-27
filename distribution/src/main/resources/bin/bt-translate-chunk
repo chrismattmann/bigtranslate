@@ -29,6 +29,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -55,6 +56,36 @@ def load_translator():
 def log(message):
     sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
     sys.stderr.flush()
+
+
+# Gloss calls a marker stale after ten minutes and deletes it, taking the
+# run off the page while it is still going. A beat a minute keeps a tenfold
+# margin on that.
+#
+# Not one per batch, which is what this did first. A batch is 32 strings,
+# so a chunk of 5,000 is 156 batches and a 458 chunk run is about 71,500
+# beats -- every one of them a Python interpreter that re-reads the marker,
+# walks data/strings and data/translated and rewrites the file. Measured at
+# 23ms each, that is half a CPU-hour spent restating a fact that changes
+# every ten minutes.
+BEAT_EVERY_SECONDS = 60
+_last_beat = 0.0
+
+
+def beat_run_marker(force=False):
+    """Keep Gloss aware while a long model request is in progress."""
+    global _last_beat
+    now = time.time()
+    if not force and now - _last_beat < BEAT_EVERY_SECONDS:
+        return
+    _last_beat = now
+    marker = os.path.join(HERE, "bt-run-marker")
+    try:
+        subprocess.run([sys.executable, marker, "beat"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=False, timeout=30)
+    except (OSError, subprocess.SubprocessError) as error:
+        log("could not refresh the run marker: %s" % error)
 
 
 def resolve_with_glossary(strings, glossary, untranslatable):
@@ -136,6 +167,7 @@ def translate_chunk(translator, strings, service_url, batch_size,
                 "service returned %d translations for %d inputs"
                 % (len(got), len(batch)))
         out.update(dict(zip(batch, got)))
+        beat_run_marker()
     return out
 
 

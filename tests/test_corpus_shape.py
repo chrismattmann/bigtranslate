@@ -52,12 +52,19 @@ def _function(name):
 
 
 def run_shape_check(tmp_path, home, corpus):
+    """Run the guard the way bin/bigtranslate runs it.
+
+    validate_corpus_shape returns rather than calling exit, so the refusal
+    only becomes a refusal because the caller acts on it. Probing it
+    without the `|| exit 1` tests a function in isolation instead of the
+    thing that actually protects a run.
+    """
     script = tmp_path / "probe.sh"
     script.write_text(textwrap.dedent("""\
         set -u
         BIGTRANSLATE_HOME=%s
         %s
-        validate_corpus_shape "%s"
+        validate_corpus_shape "%s" || exit 1
         echo ACCEPTED
         """) % (home, _function("corpus_files") + "\n"
                 + _function("validate_corpus_shape"), corpus))

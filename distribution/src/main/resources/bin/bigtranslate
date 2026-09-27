@@ -88,7 +88,7 @@ fi
 function check_python_tools {
     # pantogloss-translatejson runs under "#!/usr/bin/env python3", so the
     # interpreter first on PATH is the one that has to be able to import it.
-    if python3 -c "import pantogloss" > /dev/null 2>&1; then
+    if "${PYTHON:-python3}" -c "import pantogloss" > /dev/null 2>&1; then
         return 0
     fi
     echo "Missing Python tool: pantogloss"
@@ -258,7 +258,14 @@ validate_corpus_path() {
         exit 1
     fi
 
-    validate_corpus_shape "$CORPUS_PATH"
+    # Explicitly, rather than leaving it to set -e. The guard refuses a
+    # corpus whose shape does not match conf/colheaders.txt, and it used to
+    # do that by calling exit itself. Returning is better -- it can be
+    # tested, and a function that kills its caller is hard to reuse -- but
+    # it moves the enforcement here, and set -e is a weak place to keep it:
+    # a later caller that puts this in a condition, a pipeline or a subshell
+    # silently turns the refusal into a warning nobody reads.
+    validate_corpus_shape "$CORPUS_PATH" || exit 1
 
     echo "Translating $count TSV file(s) from $CORPUS_PATH"
     CORPUS_FILE_COUNT="$count"
@@ -324,7 +331,7 @@ validate_corpus_shape() {
 
     # A sample rather than the corpus: reading one line of a handful of files
     # is instant, and a corpus whose columns differ differs in all of them.
-    local checked=0 file fields columns
+    local checked=0 file fields columns validation_failed=0
     while IFS= read -r file; do
         fields=$(head -n 1 "$file" 2>/dev/null | awk -F'\t' '{print NF; exit}')
         case "$fields" in
@@ -351,13 +358,17 @@ validate_corpus_shape() {
             echo
             echo "If this corpus is right and the names are not, edit"
             echo "conf/colheaders.txt to describe it."
-            exit 1
+            validation_failed=1
+            break
         fi
         checked=$((checked + 1))
         [ "$checked" -ge 5 ] && break
-    done <<EOF
-$(corpus_files "$root" | head -20)
-EOF
+    done < <(corpus_files "$root" | head -20)
+    [ "$validation_failed" -eq 0 ] || return 1
+    # When the sample contains fewer than five files, the final loop-body
+    # predicate is false. Under `set -e`, Git Bash otherwise propagates that
+    # harmless status out of this validation function and aborts the run.
+    return 0
 }
 
 
@@ -527,8 +538,13 @@ wait_for_workflow() {
 start_the_pipeline() {
     local out
 
+    # Carry the corpus chosen for this run into the workflow. The workflow
+    # manager may have been started hours earlier, so its process environment
+    # cannot describe a per-run command-line argument. Keeping CorpusDir in
+    # workflow metadata also lets the extract products pass it to the join.
     out=$("$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$CLIENT_URL" \
-        --operation --sendEvent --eventName EmploymentCorpusReady 2>&1)
+        --operation --sendEvent --eventName EmploymentCorpusReady \
+        --metaData --key CorpusDir "$CORPUS_PATH" 2>&1)
 
     case "$out" in
         *SUCCESS*)
@@ -681,7 +697,14 @@ function check_port {
 #   Commented 'lsof' - Using 'nc' which helps to check port on Remote server as well 
 #   lsof -i tcp:$1
 
-    nc -z ${BIGTRANSLATE_HOST} $1 &> /dev/null
+    if command -v nc > /dev/null 2>&1; then
+        nc -z "${BIGTRANSLATE_HOST}" "$1" &> /dev/null
+    else
+        # Git Bash on Windows does not ship netcat, but its Bash still
+        # supports TCP pseudo-devices. Opening the socket is all this check
+        # needs; the OODT managers do not speak HTTP.
+        (echo > "/dev/tcp/${BIGTRANSLATE_HOST}/$1") &> /dev/null
+    fi
     if [ $? == 0 ]; then
 	echo 0
     else
