@@ -180,6 +180,19 @@ SETUP = (REPO / "distribution" / "src" / "main" / "resources"
          / "bin" / "bigtranslate-setup")
 
 
+def pantogloss_installs():
+    """Every pip install of Pantogloss in setup, as single logical lines.
+
+    Backslash continuations are joined first. Scanning raw lines misses an
+    install whose specifier sits on the next line, which is exactly the kind
+    of gap these assertions exist to close.
+    """
+    joined = SETUP.read_text().replace("\\\n", " ")
+    return [" ".join(line.split()) for line in joined.splitlines()
+            if '"$VENV/bin/pip" install' in line
+            and "PANTOGLOSS_SOURCE" in line]
+
+
 def floor_check(installed, required):
     """Run setup's own version comparison, rather than assert about its text.
 
@@ -257,13 +270,33 @@ def test_setup_asks_pip_for_the_pre_release_it_requires():
     setup = SETUP.read_text()
     assert "PANTOGLOSS_PRE" in setup, "nothing ever asks pip for a pre-release"
     assert "--pre" in setup
-    installs = [line for line in setup.splitlines()
-                if '"$VENV/bin/pip" install' in line
-                and "PANTOGLOSS_SOURCE" in line]
-    assert installs, "no pantogloss install found"
+    installs = pantogloss_installs()
+    assert len(installs) == 4, (
+        "expected four pantogloss installs, found %d" % len(installs))
     for line in installs:
         assert "$PANTOGLOSS_PRE" in line, (
-            "this install cannot reach a pre-release floor: %s" % line.strip())
+            "this install cannot reach a pre-release floor: %s" % line)
+
+
+def test_the_pre_release_install_also_upgrades():
+    """--pre widens what pip may choose; it does not revisit a met requirement.
+
+    The floor is deliberately not in the specifier, so pip is asked for a bare
+    name with no version, and an already-installed Pantogloss of any age
+    satisfies that. On a venv holding 0.25.0 the install printed "Requirement
+    already satisfied", changed nothing, and the floor check then reported it
+    TOO OLD: setup ran to completion and left the machine as it found it.
+
+    An empty venv hides this entirely -- there, every install is an install --
+    which is how it shipped. The case that matters is the one every machine
+    that has ever run setup before is in.
+    """
+    installs = pantogloss_installs()
+    assert len(installs) == 4, (
+        "expected four pantogloss installs, found %d" % len(installs))
+    for line in installs:
+        assert "--upgrade" in line, (
+            "this install leaves an older Pantogloss in place: %s" % line)
 
 
 def test_the_pre_release_permission_is_derived_from_the_floor():
