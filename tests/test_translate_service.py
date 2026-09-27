@@ -25,6 +25,8 @@ failures, and that each one says something different and useful.
 """
 import http.server
 import json
+import subprocess
+import sys
 import threading
 import importlib.util
 from pathlib import Path
@@ -174,29 +176,103 @@ def test_the_model_is_not_loaded_in_this_process():
     assert "DEFAULT_SERVICE_URL" in source
 
 
-def test_setup_requires_a_pantogloss_new_enough_to_be_safe():
-    """0.19.0 serialises concurrent callers into the model itself.
+SETUP = (REPO / "distribution" / "src" / "main" / "resources"
+         / "bin" / "bigtranslate-setup")
 
-    Earlier servers ran them straight into a shared Keras model and Metal
-    execution context, and MPSGraph aborted the process on the mismatched
-    shapes; 0.18.0 avoided that by allowing only one at a time. The version
-    is checked after installing rather than asked for in the specifier
-    because PANTOGLOSS_SOURCE may be a working checkout, whose reported
-    version is whatever its pyproject says.
+
+def floor_check(installed, required):
+    """Run setup's own version comparison, rather than assert about its text.
+
+    The heredoc is lifted out of the script and fed to this interpreter with
+    the same two arguments setup passes it, so what is under test is the
+    comparison that actually ships.
     """
-    setup = (REPO / "distribution" / "src" / "main" / "resources"
-             / "bin" / "bigtranslate-setup").read_text()
+    body = SETUP.read_text().split("<<'VERSION'\n", 1)[1]
+    body = body.split("\nVERSION\n", 1)[0]
+    done = subprocess.run([sys.executable, "-", installed, required],
+                          input=body, text=True, capture_output=True)
+    assert not done.stderr, done.stderr
+    return done.returncode == 0
+
+
+def test_setup_requires_a_pantogloss_new_enough_to_be_safe():
+    """1.0.0rc1 is the first release that runs on native Windows.
+
+    Below it the server imports the Unix-only resource module and does not
+    start on Windows at all. The floor it replaces, 0.19.0, still matters and
+    is now far below it: 0.19 serialises concurrent callers into the model
+    itself, where earlier servers ran them straight into a shared Keras model
+    and Metal execution context and MPSGraph aborted the process on the
+    mismatched shapes, and 0.18.0 avoided that by allowing only one at a time.
+
+    The version is checked after installing rather than asked for in the
+    specifier because PANTOGLOSS_SOURCE may be a working checkout, whose
+    reported version is whatever its pyproject says.
+    """
+    setup = SETUP.read_text()
     assert "PANTOGLOSS_REQUIRED" in setup, "no version floor is declared"
-    assert "0.19.0" in setup, "the floor is not 0.19.0"
+    assert "1.0.0rc1" in setup, "the floor is not 1.0.0rc1"
     assert "importlib.metadata" in setup, (
         "the installed version is never read, so the floor is not enforced")
     assert "TOO OLD" in setup, "an older Pantogloss is installed silently"
 
 
 def test_the_floor_can_be_overridden():
-    setup = (REPO / "distribution" / "src" / "main" / "resources"
-             / "bin" / "bigtranslate-setup").read_text()
-    assert "${PANTOGLOSS_REQUIRED:-0.19.0}" in setup
+    assert "${PANTOGLOSS_REQUIRED:-1.0.0rc1}" in SETUP.read_text()
+
+
+def test_the_floor_admits_the_release_it_asks_for():
+    assert floor_check("1.0.0rc1", "1.0.0rc1")
+    assert floor_check("1.0.0rc2", "1.0.0rc1")
+    assert floor_check("1.0.1", "1.0.0rc1")
+
+
+def test_a_finished_release_is_not_older_than_its_own_candidate():
+    """The bug a digits-only reading has: 1.0.0 reported TOO OLD against rc1.
+
+    Dropping the letters from each dotted piece turns "0rc1" into 1, so
+    1.0.0rc1 reads as (1, 0, 1) and sorts above the finished 1.0.0. Every
+    1.0.0 that ever ships would fail a floor of 1.0.0rc1, and the failure
+    would say the release is too old to be the release.
+    """
+    assert floor_check("1.0.0", "1.0.0rc1")
+    assert floor_check("1.0.0.post1", "1.0.0rc1")
+
+
+def test_the_floor_still_rejects_what_it_is_there_to_reject():
+    assert not floor_check("0.25.0", "1.0.0rc1")
+    assert not floor_check("0.18.0", "0.19.0")
+    assert not floor_check("1.0.0b1", "1.0.0rc1"), "a beta is not a candidate"
+    assert not floor_check("nonsense", "1.0.0rc1")
+
+
+def test_setup_asks_pip_for_the_pre_release_it_requires():
+    """pip excludes pre-releases, so a pre-release floor is unreachable.
+
+    Without --pre, "pip install pantogloss" resolves the newest final release
+    while 1.0.0rc1 is the newest thing on PyPI, and the floor check then
+    reports it TOO OLD -- a setup that names the problem and cannot fix it by
+    running again.
+    """
+    setup = SETUP.read_text()
+    assert "PANTOGLOSS_PRE" in setup, "nothing ever asks pip for a pre-release"
+    assert "--pre" in setup
+    installs = [line for line in setup.splitlines()
+                if '"$VENV/bin/pip" install' in line
+                and "PANTOGLOSS_SOURCE" in line]
+    assert installs, "no pantogloss install found"
+    for line in installs:
+        assert "$PANTOGLOSS_PRE" in line, (
+            "this install cannot reach a pre-release floor: %s" % line.strip())
+
+
+def test_the_pre_release_permission_is_derived_from_the_floor():
+    """So the two cannot disagree, and a 1.0.0 floor stops asking for betas."""
+    setup = SETUP.read_text()
+    block = setup[setup.index('PANTOGLOSS_PRE=""'):]
+    block = block[:block.index("esac")]
+    assert "$PANTOGLOSS_REQUIRED" in block, (
+        "--pre is set independently of the floor")
 
 
 def test_pantogloss_is_installed_from_pypi_by_default():

@@ -95,17 +95,39 @@ echo "Installing from $REQUIREMENTS"
 # checkout is on, which is worth knowing -- and an editable checkout reports
 # the version in its pyproject, which can trail the release it contains.
 #
-# 0.19.0 is the floor. It admits concurrent callers on Apple silicon and
-# serialises them into the model itself, combining those already waiting
-# into one call; before it, concurrent translate() calls shared one Keras
-# model and one Metal execution context and MPSGraph aborted the process.
-# 0.18.0 avoided that with a single inference slot, which was safe and left
-# the queue far longer than the work it guarded. 0.19 also memory-maps the
-# tokenizer caches, which takes a warm start from about 5.4s to about 0.2s.
-PANTOGLOSS_REQUIRED=${PANTOGLOSS_REQUIRED:-0.19.0}
+# 1.0.0rc1 is the floor. It is the first Pantogloss that runs on native
+# Windows: it reads process memory through a portable path instead of the
+# Unix-only resource module, so a Windows translator node is possible at all
+# rather than failing on import. It also drops nlcodec from the runtime
+# dependencies, which has no Windows wheel, and stops TensorFlow printing a
+# GPU warning and a shutdown traceback into the service log on every start.
+#
+# The floor it replaces was 0.19.0, for a reason that still holds and is now
+# far below the floor: 0.19 admits concurrent callers on Apple silicon and
+# serialises them into the model itself, combining those already waiting into
+# one call. Before it, concurrent translate() calls shared one Keras model and
+# one Metal execution context and MPSGraph aborted the process; 0.18.0 avoided
+# that with a single inference slot, which was safe and left the queue far
+# longer than the work it guarded. 0.19 also memory-maps the tokenizer caches,
+# which takes a warm start from about 5.4s to about 0.2s.
+PANTOGLOSS_REQUIRED=${PANTOGLOSS_REQUIRED:-1.0.0rc1}
 # The name alone, so the extras are appended to it below and pip resolves the
 # newest release. The floor is enforced afterwards either way.
 PANTOGLOSS_SOURCE=${PANTOGLOSS_SOURCE:-pantogloss}
+# pip will not resolve a pre-release unless it is asked to, so a pre-release
+# floor has to carry that permission with it: without --pre, asking for
+# "pantogloss" while 1.0.0rc1 is the newest thing on PyPI installs 0.25.0
+# instead, and the floor check below then reports it TOO OLD -- a setup that
+# says what is wrong but cannot fix it by running again.
+#
+# Derived from the floor rather than set separately, so the two cannot
+# disagree. It stays a floor and not a pin: with --pre, pip takes the newest
+# pantogloss including later pre-releases, which is what every other version
+# of this has done.
+PANTOGLOSS_PRE=""
+case "$PANTOGLOSS_REQUIRED" in
+    *[!0-9.]*) PANTOGLOSS_PRE="--pre" ;;
+esac
 if [ -n "$PANTOGLOSS_SOURCE" ]; then
     echo
     echo "Installing Pantogloss from $PANTOGLOSS_SOURCE"
@@ -169,19 +191,23 @@ if [ -n "$PANTOGLOSS_SOURCE" ]; then
         echo "  PANTOGLOSS_EXTRAS is set: using [$EXTRAS]"
     fi
 
+    # $PANTOGLOSS_PRE is unquoted on purpose. Empty, it has to expand to no
+    # argument at all; quoted, it expands to one empty argument and pip exits
+    # with "Invalid requirement: ''".
     case "$PANTOGLOSS_SOURCE" in
         *"["*"]"*)
-            "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+            "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
             ;;
         *://*|*.whl|*.tar.gz)
-            "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+            "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
             "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
             ;;
         *)
-            "$VENV/bin/pip" install "${PANTOGLOSS_SOURCE}[${EXTRAS}]" \
+            "$VENV/bin/pip" install $PANTOGLOSS_PRE \
+                "${PANTOGLOSS_SOURCE}[${EXTRAS}]" \
                 || {
                     echo "  extras not available; installing plain"
-                    "$VENV/bin/pip" install "$PANTOGLOSS_SOURCE"
+                    "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
                     "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
                 }
             ;;
@@ -195,25 +221,59 @@ if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
     installed=$("$VENV/bin/python" -c \
         "import importlib.metadata as m; print(m.version('pantogloss'))" 2>/dev/null)
     if [ -n "$installed" ]; then
+        # Enough of PEP 440 to order a pre-release below the release it leads
+        # to. The obvious reading -- keep the digits of each dotted piece and
+        # throw the letters away -- gets 1.0.0rc1 wrong twice: it reads the 1
+        # of "rc1" as the patch number, making it (1, 0, 1), and then sorts it
+        # *above* the finished 1.0.0. Every 1.0.0 that ever ships would be
+        # reported TOO OLD against an rc floor. packaging.version would do this
+        # properly, but it is not a dependency here and pip's copy is vendored
+        # and not ours to import, so this is the subset that matters: release
+        # numbers, then a pre-release marker ranked a < b < rc < released.
         if "$VENV/bin/python" - "$installed" "$PANTOGLOSS_REQUIRED" <<'VERSION'
+import re
 import sys
-def parts(v):
-    out = []
-    for piece in v.split(".")[:3]:
-        digits = "".join(c for c in piece if c.isdigit())
-        out.append(int(digits) if digits else 0)
-    while len(out) < 3:
-        out.append(0)
-    return tuple(out)
-sys.exit(0 if parts(sys.argv[1]) >= parts(sys.argv[2]) else 1)
+
+PRE = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "c": 2, "rc": 2, "pre": 2,
+       "preview": 2}
+
+
+def key(v):
+    m = re.match(r"v?(\d+(?:\.\d+)*)[-_.]?([a-z]+)?[-_.]?(\d*)",
+                 v.strip().lower())
+    if not m:
+        return ((0, 0, 0), (1,))
+    release = [int(piece) for piece in m.group(1).split(".")][:3]
+    while len(release) < 3:
+        release.append(0)
+    tag = m.group(2)
+    if tag in PRE:
+        return (tuple(release), (0, PRE[tag], int(m.group(3) or 0)))
+    # No marker, or a .post/.dev suffix this does not rank: read it as the
+    # release itself, which keeps an unrecognised suffix from failing a floor
+    # the version plainly clears.
+    return (tuple(release), (1,))
+
+
+sys.exit(0 if key(sys.argv[1]) >= key(sys.argv[2]) else 1)
 VERSION
         then
             echo "  pantogloss $installed"
         else
             echo "  pantogloss $installed  TOO OLD, wanted $PANTOGLOSS_REQUIRED or"
-            echo "                    later. Older servers cannot batch concurrent"
-            echo "                    callers into one model call, so on Apple"
-            echo "                    silicon they run one translation at a time."
+            echo "                    later. Below 1.0.0rc1 the server imports the"
+            echo "                    Unix-only resource module and does not start"
+            echo "                    on Windows at all; below 0.19.0 it cannot"
+            echo "                    batch concurrent callers into one model call,"
+            echo "                    so on Apple silicon it runs one translation"
+            echo "                    at a time."
+            if [ -n "$PANTOGLOSS_PRE" ]; then
+                # The likeliest way to land here: pip was asked for a name, the
+                # floor is a pre-release, and --pre never reached the install.
+                echo "                    $PANTOGLOSS_REQUIRED is a pre-release, which pip"
+                echo "                    installs only when asked. This script asks"
+                echo "                    for it; a hand-run pip needs --pre."
+            fi
             echo "                    Check out v$PANTOGLOSS_REQUIRED or later in"
             echo "                    \$PANTOGLOSS_SOURCE and run this again."
         fi
