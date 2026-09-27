@@ -218,8 +218,31 @@ function Start-Pantogloss([hashtable] $State) {
         '--max-queued-requests', "$($concurrency * 8 + 24)",
         '--queue-timeout', "$queueTimeout", '--device', $device)
 
+    # Read from the package metadata rather than by running the CLI: "serve
+    # --help" imports TensorFlow, which costs seconds every time the stack
+    # starts.
+    #
+    # Compared by hand, not with [version]. A PEP 440 pre-release is a legal
+    # Python version and an illegal System.Version: [version]'1.0.0rc1' throws
+    # a format exception, and with $ErrorActionPreference = 'Stop' that ends
+    # the start rather than skipping a flag. Only the release numbers are
+    # needed here -- the gate is 0.19.0, so any 1.x clears it whatever suffix
+    # it carries -- and dropping the suffix rather than parsing it is safe in
+    # exactly that direction.
     $version = & $python -c "import importlib.metadata as m; print(m.version('pantogloss'))"
-    if ($LASTEXITCODE -eq 0 -and [version]($version.Trim()) -ge [version]'0.19.0') {
+    $release = $null
+    if ($LASTEXITCODE -eq 0 -and $version -and
+            $version.Trim() -match '^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?') {
+        # Built component by component rather than cast from the matched text:
+        # System.Version wants at least major.minor, so [version]'2' throws the
+        # same way [version]'1.0.0rc1' does. An absent optional group is not in
+        # $Matches at all, so both of these read $null rather than an empty
+        # string, and both count as zero.
+        $minor = if ($Matches[2]) { [int]$Matches[2] } else { 0 }
+        $patch = if ($Matches[3]) { [int]$Matches[3] } else { 0 }
+        $release = [version]::new([int]$Matches[1], $minor, $patch)
+    }
+    if ($release -and $release -ge [version]'0.19.0') {
         $arguments += @(
             '--dynamic-batch-wait-ms', $(if ($env:PANTOGLOSS_BATCH_WAIT_MS) { $env:PANTOGLOSS_BATCH_WAIT_MS } else { '10' }),
             '--max-coalesced-batch-size', $(if ($env:PANTOGLOSS_COALESCED_BATCH) { $env:PANTOGLOSS_COALESCED_BATCH } else { '64' }),

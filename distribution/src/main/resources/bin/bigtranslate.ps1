@@ -56,7 +56,14 @@ function Invoke-Setup {
         $env:PANTOGLOSS_SOURCE
     } elseif (Test-Path -LiteralPath (Join-Path (Split-Path $BigTranslateHome -Parent) 'pantogloss\pyproject.toml')) {
         (Join-Path (Split-Path $BigTranslateHome -Parent) 'pantogloss') + '[server]'
-    } else { 'pantogloss[server]>=0.19' }
+    } else { 'pantogloss[server]>=1.0.0rc1' }
+    # The floor is in the specifier, not a --prerelease flag, because that is
+    # what makes uv accept it: a bare name resolves to the newest *final*
+    # release, which is 0.25.0 while 1.0.0rc1 is the newest thing on PyPI, and
+    # 0.25.0 imports the Unix-only resource module and does not start here at
+    # all. A constraint that names a pre-release admits pre-releases for that
+    # requirement -- measured with uv 0.11.30: '>=0.19' resolves 0.25.0 and
+    # '>=1.0.0rc1' resolves 1.0.0rc1.
     & $uv pip install --python (Join-Path $venv 'Scripts\python.exe') $pantoglossSource
     if ($LASTEXITCODE -ne 0) { throw 'Unable to install Pantogloss with its server dependencies.' }
     Write-Host "BigTranslate setup complete: $venv"

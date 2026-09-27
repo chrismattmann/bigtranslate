@@ -43,10 +43,14 @@ PANTOGLOSS_SOURCE=~/git/pantogloss bin/bigtranslate-setup
 bin/oodt restart
 ```
 
-Pantogloss is not in `requirements.txt` because it is not published;
-`PANTOGLOSS_SOURCE` takes a checkout, a wheel, or any pip specifier, and must
-resolve to 0.19.0 or later. Use Python 3.10–3.12 — TensorFlow 2.18 publishes no
-wheels above 3.12.
+Pantogloss is published, so `bin/bigtranslate-setup` installs it from PyPI by
+default and `requirements.txt` still leaves it out, because the extras it needs
+depend on the machine. `PANTOGLOSS_SOURCE` takes a checkout, a wheel, or any
+pip specifier instead, and must resolve to 1.0.0rc1 or later — the first
+release that runs on native Windows. The floor is a pre-release, which pip
+installs only when asked, so setup passes `--pre`; a hand-run `pip install
+pantogloss` lands on the newest final release and setup will call it too old.
+Use Python 3.10–3.12 — TensorFlow 2.18 publishes no wheels above 3.12.
 
 Restart the services rather than putting the tools on your own `PATH`: the PGEs
 inherit the workflow manager's environment, and `env.sh` adds
