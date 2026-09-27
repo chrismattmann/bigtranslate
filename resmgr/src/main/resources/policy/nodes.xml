@@ -37,5 +37,5 @@
 <cas:nodes xmlns:cas="http://oodt.jpl.nasa.gov/1.0/resource">
   <node nodeId="local" ip="[BIGTRANSLATE_NODE_URL]" capacity="8" envReplace="true"/>
   <node nodeId="local-managers" ip="[BIGTRANSLATE_NODE_URL]" capacity="4" envReplace="true"/>
-  <node nodeId="local-conditions" ip="[BIGTRANSLATE_NODE_URL]" capacity="20" envReplace="true"/>
+  <node nodeId="local-conditions" ip="[BIGTRANSLATE_NODE_URL]" capacity="64" envReplace="true"/>
 </cas:nodes>
