@@ -191,23 +191,43 @@ if [ -n "$PANTOGLOSS_SOURCE" ]; then
         echo "  PANTOGLOSS_EXTRAS is set: using [$EXTRAS]"
     fi
 
+    # --upgrade, and not only --pre.
+    #
+    # The floor is deliberately not in the specifier -- see above -- so what
+    # pip is asked for is a bare name with no version, and an already-installed
+    # Pantogloss of any age satisfies that. --pre widens which versions pip may
+    # *choose*; it does not make pip reconsider a requirement it thinks is
+    # already met. On a venv holding 0.25.0 the install printed "Requirement
+    # already satisfied: pantogloss (0.25.0)", changed nothing, and the floor
+    # check below then reported it TOO OLD. Setup ran to completion and left
+    # the machine exactly as it found it.
+    #
+    # An empty venv hides this completely, which is how it shipped: there,
+    # every install is an install. The case that matters is the one every real
+    # machine is in.
+    #
+    # pip's default --upgrade-strategy is only-if-needed, so this moves
+    # Pantogloss and only the dependencies that have to move with it --
+    # measured on the running venv, --pre --upgrade changed one package.
+    #
     # $PANTOGLOSS_PRE is unquoted on purpose. Empty, it has to expand to no
     # argument at all; quoted, it expands to one empty argument and pip exits
     # with "Invalid requirement: ''".
     case "$PANTOGLOSS_SOURCE" in
         *"["*"]"*)
-            "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
+            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
             ;;
         *://*|*.whl|*.tar.gz)
-            "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
+            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
             "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
             ;;
         *)
-            "$VENV/bin/pip" install $PANTOGLOSS_PRE \
+            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE \
                 "${PANTOGLOSS_SOURCE}[${EXTRAS}]" \
                 || {
                     echo "  extras not available; installing plain"
-                    "$VENV/bin/pip" install $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
+                    "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE \
+                        "$PANTOGLOSS_SOURCE"
                     "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
                 }
             ;;
