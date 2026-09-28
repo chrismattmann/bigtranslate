@@ -492,6 +492,121 @@ def write_shard_progress(shard, done, total):
         log("  could not record shard progress: %s" % e)
 
 
+def progress_dir():
+    home = os.environ.get("BIGTRANSLATE_HOME")
+    return os.path.join(home, "data", "join-progress") if home else None
+
+
+POSTED_SUFFIX = ".posted"
+
+
+def write_shard_posted(shard, posted):
+    """Record what this shard actually put into Solr, once it is done.
+
+    Separate from the progress file, which is files and is rewritten
+    constantly. This is written once, at the end, and only on a clean finish --
+    so its absence means the shard did not get there, which is half of what
+    --verify-only checks.
+    """
+    folder = progress_dir()
+    if not folder:
+        return
+    try:
+        os.makedirs(folder, exist_ok=True)
+        temp = os.path.join(folder, ".shard-%d.posted.tmp" % shard)
+        with open(temp, "w", encoding="utf-8") as handle:
+            handle.write("%d\n" % posted)
+        os.replace(temp, os.path.join(folder,
+                                      "shard-%d%s" % (shard, POSTED_SUFFIX)))
+    except OSError as e:
+        log("  could not record what shard %d posted: %s" % (shard, e))
+
+
+def read_shards_posted():
+    """What every finished shard says it posted: {shard: count}.
+
+    Read by the same script that writes it, deliberately. The progress files
+    are written here and summed in bt-run-marker, and that split is exactly how
+    a reader came to parse "done total" as JSON and report 0 of 0 for a join
+    that was a quarter done.
+    """
+    folder = progress_dir()
+    counts = {}
+    if not folder:
+        return counts
+    for path in glob.glob(os.path.join(folder, "shard-*" + POSTED_SUFFIX)):
+        name = os.path.basename(path)
+        try:
+            shard = int(name[len("shard-"):-len(POSTED_SUFFIX)])
+            with open(path, encoding="utf-8") as handle:
+                counts[shard] = int(handle.read().split()[0])
+        except (ValueError, IndexError, OSError):
+            continue
+    return counts
+
+
+def solr_count(solr_url, timeout):
+    url = (solr_url.rstrip("/")
+           + "/select?q=*%3A*&rows=0&wt=json")
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        return int(json.loads(response.read())["response"]["numFound"])
+
+
+def verify(solr_url, of, timeout):
+    """Refuse to call a join finished unless the index can prove it.
+
+    Three separate silent successes on 2026-09-27 and 28 are the reason this
+    exists, and no one check would have caught both:
+
+      - the shards were handed an unsubstituted [CorpusDir] and all four died
+        at once. Nothing was posted and nothing was committed, so "Solr equals
+        what the shards posted" was 0 == 0 and would have passed. What gives it
+        away is that no shard ever reported.
+      - the shards indexed all 119,453,210 records and a stray exit ended the
+        script before the commit, so the documents were in the index and
+        invisible. Every shard reported; Solr said 0.
+
+    So: every shard must have finished, the total must not be zero, and Solr
+    must agree with it. The workflow recorded Success for both of those runs.
+    """
+    counts = read_shards_posted()
+    missing = [n for n in range(of) if n not in counts]
+    if missing:
+        log("VERIFY FAILED: %d of %d shards never reported what they posted "
+            "(missing shard %s). A shard that did not finish did not index."
+            % (len(missing), of, ", ".join(str(n) for n in missing)))
+        return 1
+
+    expected = sum(counts.values())
+    if expected == 0:
+        log("VERIFY FAILED: every shard reported, and between them they "
+            "posted nothing.")
+        return 1
+
+    try:
+        found = solr_count(solr_url, timeout * 6)
+    except Exception as e:
+        log("VERIFY FAILED: could not ask Solr how many documents it holds: "
+            "%s" % e)
+        return 1
+
+    if found != expected:
+        if found < expected:
+            why = ("Documents that were posted and never committed are in the "
+                   "index and invisible to every query.")
+        else:
+            why = ("Solr holds more than this run posted, so the index was not "
+                   "empty when the run began.")
+        log("VERIFY FAILED: the shards posted %d records and Solr holds %d, a "
+            "difference of %d. %s"
+            % (expected, found, abs(found - expected), why))
+        return 1
+
+    log("verified: %d documents, matching what all %d shards posted"
+        % (found, of))
+    return 0
+
+
 def run_marker_beat():
     """Tell anything watching that this stage is still working.
 
@@ -569,6 +684,9 @@ def main(argv=None):
                         help="commit at the end of this shard")
     # One commit for the whole corpus, not one per shard: a commit is
     # expensive and eight of them in parallel is eight merges competing.
+    parser.add_argument("--verify-only", action="store_true",
+                        help="check that Solr holds what the shards posted, "
+                             "and nothing else")
     parser.add_argument("--commit-only", action="store_true",
                         help="commit what is already posted and do nothing "
                              "else")
@@ -598,6 +716,9 @@ def main(argv=None):
 
     if args.of < 1 or not 0 <= args.shard < args.of:
         parser.error("--shard must be in [0, --of)")
+
+    if args.verify_only:
+        return verify(args.solr_url, args.of, args.timeout)
 
     if args.commit_only:
         urllib.request.urlopen(
@@ -697,6 +818,9 @@ def main(argv=None):
         "required fields, %.0fs (%.0f docs/s)"
         % (args.shard, args.of, seen, posted, skipped, elapsed,
            posted / elapsed if elapsed else 0))
+    # After the log line above, so a shard that dies mid-post leaves no count
+    # and --verify-only can tell it apart from one that posted zero.
+    write_shard_posted(args.shard, posted)
     log("shard %d/%d: %d lookups, %.1f%% from cache, %d cached"
         % (args.shard, args.of, lookups,
            100.0 * table.hits / lookups if lookups else 0, len(table.cache)))
