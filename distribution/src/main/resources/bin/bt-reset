@@ -124,13 +124,31 @@ if [ "$keep_solr" = no ]; then
   # Solr is stopped, so the index is a directory again and can simply go.
   # Emptying it through the update handler would need it running, which is
   # the state this command refuses to operate in.
-  index="${SOLR_DATA_DIR:-$BIGTRANSLATE_HOME/solr}/index"
-  if [ -d "$index" ]; then
-    rm -rf "$index"
-    echo "Cleared the Solr index at $index"
-  else
-    echo "No Solr index at $index; nothing to clear."
-  fi
+  #
+  # The transaction log goes with it. Solr replays tlog on core load, so an
+  # index that was deleted and a tlog that was not is a core that comes up
+  # holding the previous run's documents -- and it says "Cleared the Solr
+  # index" on the way there. On 2026-09-27 that tlog held 49MB.
+  #
+  # Nothing about the document count would reveal it: every posting is
+  # indexed whether or not its Spanish was translated, so replayed documents
+  # are corpus records like any other and the total is the corpus size
+  # restated either way.
+  #
+  # The directories are removed and recreated rather than emptied with a
+  # glob: a glob that matches nothing aborts the whole command under some
+  # shells, so nothing gets deleted and the next step runs regardless.
+  solr_data="${SOLR_DATA_DIR:-$BIGTRANSLATE_HOME/solr}"
+  for part in index tlog; do
+    target="$solr_data/$part"
+    if [ -d "$target" ]; then
+      rm -rf "$target"
+      mkdir -p "$target"
+      echo "Cleared the Solr $part at $target"
+    else
+      echo "No Solr $part at $target; nothing to clear."
+    fi
+  done
 fi
 
 # The logs, too. "The next run starts from nothing" was not true of them:

@@ -105,4 +105,10 @@ class TestTheOperatorIsTold:
     def test_rotation_happens_after_the_clearing(self):
         # If it ran first, anything the clearing logged would be lost with
         # the run it belonged to.
-        assert RESET.index("Cleared the Solr index") < RESET.index("stamp=$(date")
+        #
+        # Anchored on the loop that clears the Solr data rather than on the
+        # sentence it prints. The previous version matched "Cleared the Solr
+        # index" verbatim and broke the moment that message was generalised to
+        # name the part it had cleared -- which is a test asserting the wording
+        # when what it means to assert is the order.
+        assert RESET.index("for part in index tlog") < RESET.index("stamp=$(date")
