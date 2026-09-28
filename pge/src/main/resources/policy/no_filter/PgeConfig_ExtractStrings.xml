@@ -15,7 +15,28 @@
           answer and then runs a single time. Triggering it from each
           catalogued chunk instead would create one join per chunk, all
           waiting on the same condition and then all doing the same work. -->
-     <cmd>"[BIGTRANSLATE_HOME]/workflow/bin/wmgr-client" --url "[PCS_WorkflowManagerUrl]" --operation --sendEvent --eventName EmploymentTranslationsComplete [GreaterThan][GreaterThan] "[JobLogDir]/extract_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
+     <!-- Carrying CorpusDir, because the join needs it and cannot get it any
+          other way.
+
+          This event creates the join's workflow instance, and an instance is
+          created with the metadata the event carries. Sent bare, the join
+          started with none: PathUtils had no CorpusDir to substitute and left
+          the name as written, so on the 2026-09-27 run all four shards were
+          handed the literal string and exited on it,
+
+            bt-join-index: error: no .tsv files under [CorpusDir]
+
+          after which the commit only pass committed an empty index, the marker
+          was cleared, and the workflow recorded Success. Solr held 0 documents
+          at the end of a run whose 2,286,244 translations were all correct.
+
+          Passed on from this task's own CorpusDir, which arrived the same way
+          on EmploymentCorpusReady. That keeps the corpus per run rather than
+          deployment state: a static default in tasks.xml would also have
+          fixed the crash, and would have indexed whatever conf/site.sh named
+          on a run launched against any other directory, which is a worse
+          failure than the one it cures because nothing would say so. -->
+     <cmd>"[BIGTRANSLATE_HOME]/workflow/bin/wmgr-client" --url "[PCS_WorkflowManagerUrl]" --operation --sendEvent --eventName EmploymentTranslationsComplete --metaData --key CorpusDir "[CorpusDir]" [GreaterThan][GreaterThan] "[JobLogDir]/extract_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
   </exe>
 
   <output>
