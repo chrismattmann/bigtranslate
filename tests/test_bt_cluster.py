@@ -87,7 +87,7 @@ class TestPolicyIsGeneratedFromTheNodeList:
         assert caps == {
             "manager": "8",
             "manager-managers": "4",
-            "manager-conditions": "20",
+            "manager-conditions": "64",
             "gpu": "8",
             "spare": "4"
         }
@@ -137,7 +137,17 @@ class TestPolicyIsGeneratedFromTheNodeList:
         assert "manager-conditions" in nodes
         assert nodes["manager-conditions"].get("ip") == nodes["manager"].get("ip"), (
             "the conditions pool is the same machine, reached the same way")
-        assert nodes["manager-conditions"].get("capacity") == "20"
+        # Larger than the translate pool, not equal to it. The pool size is
+        # how many gates can be asked per scheduler cycle, so with a few
+        # hundred chunks it sets how long the handover from extract to
+        # translate takes -- 17m32s on 2026-09-27, with 952 condition jobs
+        # through 20 slots, every translation slot idle throughout.
+        conditions = int(nodes["manager-conditions"].get("capacity"))
+        translate = int(nodes["manager"].get("capacity"))
+        assert conditions == 64
+        assert conditions > translate, (
+            "a conditions pool no bigger than the translate pool leaves the "
+            "handover between stages paced by the gates rather than the work")
 
         serving = self._serving(tmp_path)
         assert serving["manager-conditions"] == {"conditions"}

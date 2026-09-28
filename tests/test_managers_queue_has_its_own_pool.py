@@ -98,7 +98,8 @@ class TestEachQueueGetsItsOwnPool:
         nodes, _ = generate("local  10.0.0.1  8  20  4\n")
         caps = capacities(nodes)
         assert caps["local"] == 8
-        assert caps["local-conditions"] == 20
+        assert caps["local-conditions"] == 20, (
+            "an explicit conditions capacity has to win over the default")
         assert caps["local-managers"] == 4
 
     def test_managers_capacity_defaults_without_the_field(self):
@@ -106,7 +107,7 @@ class TestEachQueueGetsItsOwnPool:
         nodes, _ = generate("local  10.0.0.1  8\ngpu  10.0.0.2  8\n")
         caps = capacities(nodes)
         assert caps["local-managers"] == 4
-        assert caps["local-conditions"] == 20
+        assert caps["local-conditions"] == 64
 
 
 class TestOnlyTheFirstMachineRunsTheManagers:

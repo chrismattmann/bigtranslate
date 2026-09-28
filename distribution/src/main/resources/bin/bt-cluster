@@ -168,7 +168,19 @@ cmd_policy() {
         # constant and translations are slow and few, and on a shared pool the
         # translations win and the gates they are waiting on cannot get a slot
         # to open. Two ids on one host give them separate pools.
-        echo "  <node nodeId=\"$id-conditions\" ip=\"http://$host:$port\" capacity=\"${conditions:-20}\"/>"
+        #
+        # 64, not 20. The pool size sets how many gates can be asked per
+        # scheduler cycle, so with 458 chunks it sets how long the handover
+        # from extract to translate takes: on 2026-09-27, 952 condition jobs
+        # through 20 slots at the then 20-second cycle took 17m32s, during
+        # which every translation slot on every node sat idle. A condition
+        # reads a staging manifest off the local disk and tests a HashSet,
+        # and the result is cached against the manifest mtime and length, so
+        # the slots cost threads on the manager and nothing else. Raised
+        # alongside the scheduler cycle in resmgr/etc/resource.properties;
+        # either alone is most of the win and both together make the handover
+        # unnoticeable.
+        echo "  <node nodeId=\"$id-conditions\" ip=\"http://$host:$port\" capacity=\"${conditions:-64}\"/>"
       fi
       first=no
     done
