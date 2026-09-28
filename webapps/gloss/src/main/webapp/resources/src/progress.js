@@ -71,13 +71,28 @@ export function measure (progress) {
 // picking up where it left off, a node joining late.
 //
 // So when the weights are there, they are used.
+// Only for the stage the weights describe, which is the translating one.
+//
+// This took the weights whenever weightTotal was set, without asking what
+// stage the run was in, and the weights are the translation work: they are
+// complete the moment the last chunk is translated. So for the whole of the
+// join they read weightDone === weightTotal, and the banner said 100% while
+// the join was a quarter through -- 690 of 2806 files, with the bar beside it
+// correctly showing 25%, because the bar goes through measure() and this did
+// not. One number said finished and the other said a quarter, on the same
+// screen, from the same marker.
+//
+// So the stage decides here too, and it decides once: whatever measure()
+// chose to count is what this is a percentage of.
 export function percent (progress) {
-  const weighted = Number(progress.weightTotal)
-  if (weighted > 0) {
-    const done = Number(progress.weightDone) || 0
-    return Math.min(100, Math.round((done / weighted) * 100))
+  const { done, total, unit } = measure(progress)
+  if (unit === 'chunks') {
+    const weighted = Number(progress.weightTotal)
+    if (weighted > 0) {
+      const weightDone = Number(progress.weightDone) || 0
+      return Math.min(100, Math.round((weightDone / weighted) * 100))
+    }
   }
-  const { done, total } = measure(progress)
   if (!total) return 0
   return Math.min(100, Math.round((done / total) * 100))
 }
@@ -86,6 +101,13 @@ export function percent (progress) {
 // extract pass is ten minutes of apparently translating nothing on the
 // full corpus, and folding it in makes every early estimate wrong.
 export function chunksPerMinute (progress, now = Date.now()) {
+  // Nothing, unless chunks are what is currently moving. Both labels below
+  // are built on this, and during the join chunksDone sits at its final value
+  // while translatingSince recedes, so the rate it produced was the average
+  // over a translation that had already finished -- 23 chunks/hour, shown as
+  // though it were the rate of the thing on screen. A stale number reads
+  // exactly like a live one.
+  if (measure(progress).unit !== 'chunks') return 0
   const since = Number(progress.translatingSince)
   const done = Number(progress.chunksDone)
   if (!since || !done) return 0
