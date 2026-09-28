@@ -303,7 +303,25 @@ def main(argv=None):
         return 0
 
     now = int(time.time() * 1000)
-    existing = read(path) if args.action == "beat" else {}
+    # Read on a start too, not only a beat.
+    #
+    # A start used to discard whatever was there, on the reading that a start
+    # begins a run. Two things start one: bin/bigtranslate, which knows the
+    # corpus path and the real start time, and the extract stage's PgeConfig,
+    # which does neither. When the extract's start landed on the 2026-09-27
+    # run it reset startedAt from 13:13:50 to 13:24:52 -- eleven minutes into
+    # the run it was supposedly beginning -- and wrote path "" over the corpus
+    # path, because its --path is "[CorpusDir]" and CorpusDir substituted to
+    # nothing. Gloss showed a run with no path and the wrong elapsed for the
+    # rest of the run.
+    #
+    # A start that finds a live marker is a stage of a run already under way,
+    # not a new one: a genuinely new run follows a clear, which removes the
+    # marker, so there is nothing to carry forward and the distinction needs
+    # no flag. Carrying forward is also what this file already does everywhere
+    # else -- it merges rather than replaces, which is why the counts survive
+    # a poll.
+    existing = read(path)
 
     home = os.environ["BIGTRANSLATE_HOME"]
     seen = with_file_progress(progress(home), existing,
@@ -335,8 +353,9 @@ def main(argv=None):
     record = {
         "status": existing.get("status", args.status),
         "startedBy": existing.get("startedBy", args.started_by),
-        "path": existing.get("path", args.path) if args.action == "beat"
-                else args.path,
+        # An empty incoming value never overwrites a recorded one. The caller
+        # that has the path passes it; the caller that does not passes "".
+        "path": args.path or existing.get("path", ""),
         "exclude": (existing.get("exclude", "") if args.exclude is None
                     else args.exclude),
         "startedAt": existing.get("startedAt", now),
