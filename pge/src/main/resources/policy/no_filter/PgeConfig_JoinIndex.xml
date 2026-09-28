@@ -35,6 +35,23 @@
      <!-- Each shard is waited on by pid, and a failure in any of them fails
           this command.
 
+          It ends with "test", not "exit". Every cmd in this file is
+          concatenated into one script, so "exit 0" ended the whole script and
+          the three commands after this one never ran: the commit only pass,
+          the marker clear, and join.done. On the 2026-09-28 join that left
+          119,453,210 documents written to the index and never committed, so
+          Solr answered 0 to every query, and the script had exited 0 so the
+          PGE recorded Success. The data was intact and invisible.
+
+          The script is run under "set -e", so a command that returns non-zero
+          stops it. Ending on "test $rc -eq 0" is therefore all that is needed
+          to fail the task, and it stops this one command rather than the file.
+
+          "test" rather than "[" for the same reason on a different axis:
+          PathUtils treats [...] as a metadata reference, so "[ $rc -ne 0 ]"
+          was logged as an unresolved [Name] on every run. It happened to work,
+          because an unresolved reference is left as written.
+
           A bare "wait" returns 0 whatever the background jobs did, so shard
           failures were invisible. On the 2026-09-27 run all four exited
           immediately on an unsubstituted [CorpusDir]; the commit only pass
@@ -45,7 +62,7 @@
           Failing here is what keeps the two commands after this one from
           running: a marker cleared on a failed join is a run that reports
           itself finished. -->
-     <cmd>pids=""; for s in $(seq 0 $(([JoinShards] - 1))); do "[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1 [Ampersand] pids="$pids $!"; done; rc=0; for p in $pids; do wait $p || rc=1; done; if [ $rc -ne 0 ]; then echo "a join shard failed; see [JobLogDir]/join_[DateMilis].log" [GreaterThan][Ampersand]2; fi; exit $rc</cmd>
+     <cmd>pids=""; for s in $(seq 0 $(([JoinShards] - 1))); do "[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1 [Ampersand] pids="$pids $!"; done; rc=0; for p in $pids; do wait $p || rc=1; done; if test $rc -ne 0; then echo "a join shard failed; see [JobLogDir]/join_[DateMilis].log" [GreaterThan][Ampersand]2; fi; test $rc -eq 0</cmd>
      <cmd>"[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
      <cmd>"[BIGTRANSLATE_HOME]/bin/bt-run-marker" clear</cmd>
      <cmd>echo "[JoinShards] shards indexed" [GreaterThan] "[JobOutputDir]/join.done"</cmd>
