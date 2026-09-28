@@ -64,6 +64,22 @@
           itself finished. -->
      <cmd>pids=""; for s in $(seq 0 $(([JoinShards] - 1))); do "[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard $s --of [JoinShards] --expect $EXPECTED [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1 [Ampersand] pids="$pids $!"; done; rc=0; for p in $pids; do wait $p || rc=1; done; if test $rc -ne 0; then echo "a join shard failed; see [JobLogDir]/join_[DateMilis].log" [GreaterThan][Ampersand]2; fi; test $rc -eq 0</cmd>
      <cmd>"[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --shard 0 --of [JoinShards] --commit-only [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
+     <!-- Prove the index holds what was posted, before anything says the run
+          is over.
+ 
+          Three runs in a row reported Success having produced an index nobody
+          could query, and no single cheap check would have caught all of them:
+          one indexed nothing, one indexed everything and committed none of it,
+          and the document count is the corpus size restated either way, so it
+          cannot tell a good run from a bad one.
+ 
+          What it can tell is whether the join committed. The verify-only mode requires
+          every shard to have finished and reported what it put in, requires the
+          total to be non-zero, and requires Solr to agree with it. Placed after
+          the commit and before the marker clear, so under set -e a failure
+          leaves the run marker standing and the task failed, rather than a
+          finished-looking run over an empty index. -->
+     <cmd>"[BIGTRANSLATE_HOME]/bin/bt-join-index" --corpus "[CorpusDir]" --translated "[TranslatedDir]" --translations-db "[TranslationsDb]" --solr-url "[SolrUrl]" --colheaders "[ColHeaders]" --encodings "[Encodings]" --translate-cols "[TranslateCols]" --of [JoinShards] --verify-only [GreaterThan][GreaterThan] "[JobLogDir]/join_[DateMilis].log" 2[GreaterThan][Ampersand]1</cmd>
      <cmd>"[BIGTRANSLATE_HOME]/bin/bt-run-marker" clear</cmd>
      <cmd>echo "[JoinShards] shards indexed" [GreaterThan] "[JobOutputDir]/join.done"</cmd>
   </exe>
