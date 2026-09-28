@@ -515,6 +515,35 @@ def run_marker_beat():
         log("  could not run the run marker: %s" % e)
 
 
+# A [Name] that reached us as written, rather than as the thing it stands for.
+#
+# OODT's PathUtils substitutes a [Name] from the task's metadata and leaves the
+# text alone when the name is not there, so an unset key arrives as a literal
+# and every message downstream describes the placeholder as if it were a path.
+# On the 2026-09-27 run all four join shards reported
+#
+#   no .tsv files under [CorpusDir]
+#
+# which reads as an empty corpus and was a missing metadata key. The commit-only
+# pass then committed an empty index and the run reported success.
+UNSUBSTITUTED = re.compile(r"\[[A-Za-z][A-Za-z0-9_]*\]")
+
+
+def refuse_placeholders(parser, **paths):
+    """Fail on an argument still holding a [Name], naming it as substitution.
+
+    Checked before the filesystem is touched, because "no .tsv files under
+    [CorpusDir]" sends whoever reads it to the corpus, and the corpus is fine.
+    """
+    for flag, value in sorted(paths.items()):
+        if value and UNSUBSTITUTED.search(str(value)):
+            parser.error(
+                "--%s was given %r, which still contains an unsubstituted "
+                "[Name]. The workflow task has no metadata for it, so nothing "
+                "replaced it. This is a policy problem, not a missing file."
+                % (flag.replace("_", "-"), value))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bt-join-index",
@@ -560,6 +589,12 @@ def main(argv=None):
     parser.add_argument("--expect-timeout", type=int, default=900,
                         help="give up waiting after this many seconds")
     args = parser.parse_args(argv)
+    # Before the commit-only branch as well: a commit against a placeholder
+    # Solr URL would fail obscurely, and a commit is what turned four failed
+    # shards into a reported success.
+    refuse_placeholders(parser, corpus=args.corpus, translated=args.translated,
+                        translations_db=args.translations_db,
+                        solr_url=args.solr_url)
 
     if args.of < 1 or not 0 <= args.shard < args.of:
         parser.error("--shard must be in [0, --of)")
