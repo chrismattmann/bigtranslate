@@ -138,7 +138,21 @@ export function remainingLabel (progress, now = Date.now()) {
   return 'about ' + duration((left / perMinute) * 60)
 }
 
+// How long this run has been going, which is from when it started.
+//
+// This preferred translatingSince, on the reasoning that measuring from the
+// first chunk keeps the extract pass out of the estimate. That reasoning is
+// about rates, and chunksPerMinute already applies it on its own; elapsed is
+// not an estimate, it is a clock, and the clock started when the run did.
+//
+// Preferring translatingSince also made elapsed belong to the translating
+// stage rather than to the run, which is wrong for every stage after it. On the
+// 2026-09-28 join it read 20h 17m: translatingSince was the previous
+// afternoon's first chunk, rebuilt from the oldest file in data/translated,
+// while the join on screen was forty minutes old. A number that large is
+// obviously wrong and therefore harmless; the same fault during a single day's
+// run is a plausible one, which is worse.
 export function elapsedLabel (progress, now = Date.now()) {
-  const since = Number(progress.translatingSince) || Number(progress.startedAt)
+  const since = Number(progress.startedAt) || Number(progress.translatingSince)
   return since ? duration((now - since) / 1000) : ''
 }

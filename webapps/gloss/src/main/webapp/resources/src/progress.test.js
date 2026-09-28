@@ -181,3 +181,37 @@ test('the translating stage still reports its rate', () => {
     translatingSince: minutesAgo(60)
   }, NOW), '1.0 chunks/min')
 })
+
+test('elapsed is the age of the run, not of the translating stage', () => {
+  // It read 20h 17m on the 2026-09-28 join: translatingSince was the previous
+  // afternoon's first chunk, rebuilt from the oldest file in data/translated,
+  // while the join on screen was forty minutes old.
+  assert.equal(elapsedLabel({
+    stage: 'joining',
+    startedAt: minutesAgo(40),
+    translatingSince: minutesAgo(1217),
+    chunksDone: 458,
+    chunksTotal: 458,
+    filesDone: 1620,
+    filesTotal: 2806
+  }, NOW), '40m')
+})
+
+test('elapsed still answers when only translatingSince is known', () => {
+  // Markers written by older versions have no startedAt to prefer.
+  assert.equal(elapsedLabel({ translatingSince: minutesAgo(90) }, NOW), '1h 30m')
+})
+
+test('the rate keeps measuring from the first chunk, not the run', () => {
+  // Which is the reason translatingSince exists: the extract is ten minutes of
+  // apparently translating nothing, and folding it in makes early rates wrong.
+  const p = {
+    stage: 'translating',
+    startedAt: minutesAgo(70),
+    translatingSince: minutesAgo(60),
+    chunksDone: 60,
+    chunksTotal: 458
+  }
+  assert.equal(rateLabel(p, NOW), '1.0 chunks/min')
+  assert.equal(elapsedLabel(p, NOW), '1h 10m')
+})
