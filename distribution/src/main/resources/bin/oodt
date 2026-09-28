@@ -435,6 +435,66 @@ stop_pantogloss() {
   rm -f "$PANTOGLOSS_PID"
 }
 
+HEARTBEAT_PID="$OODT_BASE/run/bt-heartbeat.pid"
+HEARTBEAT_LOG="$OODT_BASE/logs/bt-heartbeat.log"
+
+# The run marker's heartbeat, kept by a daemon.
+#
+# It was kept by bin/bigtranslate's wait loop, which is a shell in somebody's
+# terminal, and by the stages, which only beat while a stage task is running.
+# So nothing beat between stages: on the 2026-09-27 run the extract to translate
+# handover took 17m32s against the ten minute bound in Gloss, and Gloss deleted
+# the marker and reported IDLE with 442 translate tasks queued and healthy. No
+# driver shell was running to cover it. The run itself is executed entirely by
+# daemons, so its liveness should not depend on a terminal being open.
+#
+# See bin/bt-heartbeat: it asks the Workflow Manager whether there is work, and
+# never invents a marker, never beats past a cleared one, and does not beat when
+# the manager cannot be reached.
+heartbeat_pid() {
+  if [ -f "$HEARTBEAT_PID" ]; then
+    filed=$(cat "$HEARTBEAT_PID" 2>/dev/null)
+    if [ -n "$filed" ] && kill -0 "$filed" > /dev/null 2>&1; then
+      echo "$filed"
+      return 0
+    fi
+    rm -f "$HEARTBEAT_PID"
+  fi
+}
+
+# Started with the stack on the manager only. A compute node has no marker to
+# beat -- data/run is per machine and the node's is nobody's run -- and no
+# Workflow Manager to ask, so start-pantogloss deliberately does not call this.
+start_heartbeat() {
+  if [ -n "$(heartbeat_pid)" ]; then
+    echo "Run marker heartbeat already running (pid $(heartbeat_pid))."
+    return 0
+  fi
+  [ -x "$OODT_BASE/bin/bt-heartbeat" ] || return 0
+  mkdir -p "$(dirname "$HEARTBEAT_PID")" "$(dirname "$HEARTBEAT_LOG")" 2>/dev/null
+  nohup "$OODT_BASE/bin/bt-heartbeat" >> "$HEARTBEAT_LOG" 2>&1 &
+  echo $! > "$HEARTBEAT_PID"
+  echo "Run marker heartbeat started (pid $(cat "$HEARTBEAT_PID"))."
+}
+
+stop_heartbeat() {
+  pid=$(heartbeat_pid)
+  if [ -z "$pid" ]; then
+    rm -f "$HEARTBEAT_PID"
+    return 0
+  fi
+  echo "Stopping the run marker heartbeat (pid $pid)."
+  kill "$pid" > /dev/null 2>&1
+  waited=0
+  while [ "$waited" -lt 20 ]; do
+    kill -0 "$pid" > /dev/null 2>&1 || break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  kill -0 "$pid" > /dev/null 2>&1 && kill -9 "$pid" > /dev/null 2>&1
+  rm -f "$HEARTBEAT_PID"
+}
+
 # The directories the services need to exist before they will start.
 #
 # Empty directories do not survive the tarball, so a freshly unpacked
@@ -617,6 +677,7 @@ start_oodt() {
   # Manager is what hands out translate work. Started here rather than at the
   # end so the load overlaps the managers coming up instead of following them.
   start_pantogloss
+  start_heartbeat
   wait_for_pantogloss
 
   nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
@@ -690,6 +751,7 @@ stop_oodt() {
     "$SOLR_SERVER_HOME"/bin/"$SOLR_EXEC" stop -p "$SOLR_PORT" >> "$OODT_OUT" 2>&1 &
   fi
   stop_pantogloss
+  stop_heartbeat
   # After the managers, so nothing hands out new work while these are being
   # stopped, and before wait_for_stopped so the shutdown is not reported
   # complete while science processes are still running.

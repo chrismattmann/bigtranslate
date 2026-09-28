@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Keeps the run marker's heartbeat alive for as long as the pipeline is
+# actually running, from a daemon rather than from an operator's shell.
+#
+# What "alive" used to mean was "some process is writing heartbeatAt", and the
+# writers were bin/bigtranslate's wait loop, which is a foreground shell, and
+# the stages themselves through their PgeConfigs. Neither covers a run.
+#
+# The stages only beat while a stage task is running, so nothing beats between
+# them. On the 2026-09-27 corpus run the handover from extract to translate took
+# seventeen and a half minutes, which is longer than the ten minute bound in
+# Gloss's ProcessBtWrapper, so Gloss deleted the marker and reported IDLE while
+# 442 translate tasks were queued and healthy. The operator watching Gloss saw a
+# finished run; so did a monitor reading the same endpoint.
+#
+# And the wait loop would have covered that gap -- it beats every poll and has
+# handled between-stage gaps since TRANSLATE_SETTLE was added -- except that it
+# is a shell in somebody's terminal, and on that run there was no such shell.
+# The run itself is executed by the File Manager, the Workflow Manager, the
+# Resource Manager and the batch stubs, all of which are daemons. Closing a
+# terminal made a healthy run read as dead.
+#
+# So liveness is asked of the thing that knows: the Workflow Manager, which has
+# non-terminal BigTranslate instances for exactly as long as there is work. That
+# is the same question bin/bigtranslate's running_instance_count asks, and the
+# counting here is deliberately identical to it.
+#
+# Three rules keep this from doing harm, which matter more than the beating:
+#
+#   1. It never creates a marker. No marker means no run was started, and a
+#      heartbeat is not a reason to invent one.
+#   2. It never beats across the end of a run. bt-run-marker already refuses to
+#      rebuild once the join has cleared the marker, and this checks too rather
+#      than relying on it.
+#   3. It does not beat when the Workflow Manager cannot be reached. That reads
+#      as harsh and is the honest answer: if the manager is not answering, the
+#      run is not progressing, and letting the marker go stale says so. Guessing
+#      the other way is how a marker came to sit for a day naming the previous
+#      afternoon's corpus.
+#
+# Run it in the foreground; bin/oodt puts it in the background and owns the pid.
+
+set -u
+
+PRGDIR=$(cd "$(dirname "$0")" && pwd)
+BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-$(cd "$PRGDIR/.." && pwd)}
+export BIGTRANSLATE_HOME
+
+# shellcheck source=/dev/null
+[ -f "$PRGDIR/setenv.sh" ] && . "$PRGDIR/setenv.sh" > /dev/null 2>&1
+
+MARKER="$BIGTRANSLATE_HOME/data/run"
+DONE="$BIGTRANSLATE_HOME/data/run.done"
+WMGR_URL=${WORKFLOW_URL:-http://localhost:${WORKFLOW_PORT:-9201}}
+
+# Well inside the ten minute bound, and not so often that a quiet machine is
+# doing constant RPC. Six beats per bound leaves room for several to be missed.
+INTERVAL=${BT_HEARTBEAT_INTERVAL:-90}
+
+ONCE=no
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --once) ONCE=yes; shift ;;
+    --interval) INTERVAL="$2"; shift 2 ;;
+    --url) WMGR_URL="$2"; shift 2 ;;
+    -h|--help)
+      echo "usage: bt-heartbeat [--once] [--interval SECONDS] [--url URL]"
+      echo
+      echo "Beats the run marker while the Workflow Manager has work."
+      exit 0
+      ;;
+    *) echo "bt-heartbeat: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+
+# Non-terminal BigTranslate workflow instances, or "unknown".
+#
+# Counted from grep's output and never from its exit status: "grep -c" exits 1
+# when it counts nothing, so an "|| echo 0" fallback fires on precisely the case
+# it exists to report and appends a second line.
+running_instances() {
+  instances=$("$BIGTRANSLATE_HOME"/workflow/bin/wmgr-client --url "$WMGR_URL" \
+    --operation --getWorkflowInsts 2>/dev/null)
+
+  if [ -z "$instances" ]; then
+    echo unknown
+    return 0
+  fi
+
+  count=$(printf '%s\n' "$instances" \
+    | grep -oE "status=[A-Za-z]+" \
+    | grep -vcE "status=(FINISHED|ERROR|Success|Failure|Stopped)")
+
+  case "$count" in
+    '' | *[!0-9]*) echo 0 ;;
+    *) echo "$count" ;;
+  esac
+}
+
+# One pass. Returns 0 whether or not it beat: not beating is a normal outcome
+# and not a fault.
+beat_once() {
+  # Rule 1: never invent a run.
+  [ -f "$MARKER" ] || return 0
+  # Rule 2: never beat across the end of one.
+  [ -f "$DONE" ] && return 0
+
+  running=$(running_instances)
+  # Rule 3: an unreachable manager is not a running run.
+  [ "$running" = unknown ] && return 0
+  [ "$running" = 0 ] && return 0
+
+  "$BIGTRANSLATE_HOME"/bin/bt-run-marker beat > /dev/null 2>&1 || true
+  return 0
+}
+
+if [ "$ONCE" = yes ]; then
+  beat_once
+  exit 0
+fi
+
+while true; do
+  beat_once
+  sleep "$INTERVAL"
+done
