@@ -123,3 +123,61 @@ test('translating still draws chunks', () => {
   assert.deepEqual(measure(translating),
     { done: 197, total: 458, unit: 'chunks' })
 })
+
+// The join's banner said 100% while its bar said 25%, from the same marker.
+//
+// measure() had been taught that the join counts files; percent() had not, and
+// never reached it -- it returned the weighted fraction whenever weightTotal
+// was set, and the weights are the translation work, complete the moment the
+// last chunk is translated. So for the whole of the join the two numbers on one
+// screen disagreed, and the one in the banner said the run had finished.
+const JOINING = {
+  stage: 'joining',
+  chunksDone: 458,
+  chunksTotal: 458,
+  weightDone: 102513038,
+  weightTotal: 102513038,
+  filesDone: 690,
+  filesTotal: 2806,
+  translatingSince: minutesAgo(1200)
+}
+
+test('the banner measures the stage it is in, not the one before', () => {
+  assert.equal(percent(JOINING), 25)
+  // The number the bar shows, from the same marker, so they cannot disagree.
+  const { done, total } = measure(JOINING)
+  assert.equal(percent(JOINING), Math.round((done / total) * 100))
+})
+
+test('the weights still drive the translating stage', () => {
+  // Which is the reason they exist: chunks hold equal counts and unequal work.
+  assert.equal(percent({
+    stage: 'translating',
+    chunksDone: 229,
+    chunksTotal: 458,
+    weightDone: 25628259,
+    weightTotal: 102513038
+  }), 25)
+})
+
+test('the extract measures files too, not a weight it has not earned', () => {
+  assert.equal(percent({
+    stage: 'extracting', filesDone: 1403, filesTotal: 2806,
+    chunksDone: 0, chunksTotal: 0, weightTotal: 0
+  }), 50)
+})
+
+test('no stale chunk rate is shown once chunks have stopped moving', () => {
+  // chunksDone sits at its final value while translatingSince recedes, so this
+  // reported the average over a translation that had already finished -- 23
+  // chunks/hour, offered as the rate of the join on screen.
+  assert.equal(rateLabel(JOINING, NOW), '')
+  assert.equal(remainingLabel(JOINING, NOW), '')
+})
+
+test('the translating stage still reports its rate', () => {
+  assert.equal(rateLabel({
+    stage: 'translating', chunksDone: 60, chunksTotal: 458,
+    translatingSince: minutesAgo(60)
+  }, NOW), '1.0 chunks/min')
+})
