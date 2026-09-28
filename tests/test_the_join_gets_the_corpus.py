@@ -171,3 +171,102 @@ class TestAFailedShardFailsTheJoin:
         text = JOIN_PGE.read_text()
         assert text.index('pids=""') < text.index("bt-run-marker")
         assert text.index('pids=""') < text.index("--commit-only")
+
+
+class TestTheShardLoopDoesNotTruncateTheScript:
+    """Every cmd in a PgeConfig is concatenated into one script.
+
+    So a cmd that ends in "exit" ends the file. The shard loop ended in
+    "exit $rc", and on the 2026-09-28 join the shards all succeeded, so it
+    exited 0 and the three commands after it never ran: the commit-only pass,
+    the marker clear, and join.done.
+
+    119,453,210 documents were written to the index and never committed, so
+    Solr answered 0 to every query -- and because the script exited 0, the PGE
+    recorded Success. The data was intact and invisible, which is the same
+    failure the corpus fix was for, reached a different way.
+
+    These build the whole script the way OODT does and run it against stubs,
+    rather than asserting about one command in isolation. Testing the shard
+    loop on its own is what let this through: it failed correctly and ended the
+    file while doing so.
+    """
+
+    def script(self, shard_program, tmp):
+        """Every cmd, joined, under set -e, with the join binary stubbed.
+
+        Placeholders are given real values of the right shape rather than one
+        blanket string: [JobLogDir]/join_[DateMilis].log has to come out as a
+        file inside a directory, not as two paths spliced together.
+        """
+        values = {
+            "BIGTRANSLATE_HOME": str(tmp),
+            "JobLogDir": str(tmp / "logs"),
+            "DateMilis": "1790612543932",
+            "JoinShards": "4",
+            "StringsDir": str(tmp / "strings"),
+            "TranslatedDir": str(tmp / "translated"),
+            "TranslationsDb": str(tmp / "translations.sqlite"),
+            "TranslateGlossary": str(tmp / "glossary.tsv"),
+            "CorpusDir": str(tmp / "corpus"),
+            "SolrUrl": "http://localhost:1/solr",
+            "ColHeaders": str(tmp / "colheaders.txt"),
+            "Encodings": str(tmp / "encoding.txt"),
+            "TranslateCols": str(tmp / "translate.cols"),
+        }
+        (tmp / "logs").mkdir(parents=True, exist_ok=True)
+        body = []
+        for c in re.findall(r"<cmd>(.*?)</cmd>", JOIN_PGE.read_text(), re.S):
+            c = c.replace("[GreaterThan]", ">").replace("[Ampersand]", "&")
+            for name, value in values.items():
+                c = c.replace("[%s]" % name, value)
+            # Every executable this file names becomes a stub: the shards get
+            # the caller's program, everything else echoes so the test can see
+            # whether it ran at all.
+            c = c.replace('"%s/bin/bt-join-index" --corpus' % tmp,
+                          '%s --corpus' % shard_program)
+            c = re.sub(r'"%s/bin/bt-[a-z-]+"' % re.escape(str(tmp)),
+                       "echo RAN", c)
+            body.append(c)
+        return "set -e\n" + "\n".join(body) + "\n"
+
+    def run(self, shard_program, tmp):
+        return subprocess.run(["bash", "-c", self.script(shard_program, tmp)],
+                              capture_output=True, text=True)
+
+    def test_the_commands_after_the_shards_still_run(self, tmp_path):
+        done = self.run("true", tmp_path)
+        assert done.returncode == 0, done.stderr[-400:]
+        # The commit-only pass and the marker clear are both after the loop.
+        # Without them the index is written and never made visible.
+        assert done.stdout.count("RAN") >= 1, (
+            "nothing after the shard loop ran, so the index would never be "
+            "committed: %r" % done.stdout)
+
+    def test_a_failing_shard_still_stops_the_task(self, tmp_path):
+        done = self.run("false", tmp_path)
+        assert done.returncode != 0
+        assert "a join shard failed" in done.stderr
+
+    def test_a_failing_shard_stops_the_commit_as_well(self, tmp_path):
+        """set -e stops the script, so the commit and clear do not run."""
+        done = self.run("false", tmp_path)
+        assert "RAN" not in done.stdout, (
+            "a failed join still committed and cleared the marker: %r"
+            % done.stdout)
+
+    def test_the_shard_loop_does_not_exit(self):
+        cmds = [c for c in re.findall(r"<cmd>(.*?)</cmd>", JOIN_PGE.read_text(),
+                                     re.S) if "pids=" in c]
+        assert cmds
+        assert "exit " not in cmds[0], (
+            "an exit in a concatenated script ends the file, not the command")
+
+    def test_no_bracket_test_is_used_in_a_cmd(self):
+        """PathUtils reads [...] as a metadata reference.
+
+        "[ $rc -ne 0 ]" was logged as an unresolved [Name] on every run. It
+        worked only because an unresolved reference is left as written.
+        """
+        for c in re.findall(r"<cmd>(.*?)</cmd>", JOIN_PGE.read_text(), re.S):
+            assert "[ $" not in c, c[:120]
