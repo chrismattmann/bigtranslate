@@ -258,6 +258,34 @@ cmd_policy() {
 
 # ---------------------------------------------------------------- deploy ---
 
+# Trees are copied with tar over ssh rather than with rsync.
+#
+# rsync is the obvious tool and it cannot be used, because it has to exist on
+# both ends: "rsync host:dest" runs "rsync --server" on the node. Git for
+# Windows ships 248 POSIX tools and rsync is not one of them, so a Windows node
+# needs a second POSIX runtime installed beside it -- and that is where it comes
+# apart. Measured on paparadelle, 2026-09-28, with MSYS2 rsync 3.5.1 installed
+# and reachable through --rsync-path:
+#
+#   rsync to /c/bt-w1/...                  works
+#   rsync to /Users/mattmann/bt-w1/...     fails, "change_dir failed"
+#   tar | ssh to /Users/mattmann/bt-w1/... works
+#
+# The canonical path is an /etc/fstab mapping, and Git Bash and MSYS2 keep
+# separate mount tables: MSYS2 tools can see the mapping, and rsync launched
+# over ssh cannot use it. Every machine using the SAME absolute
+# BIGTRANSLATE_HOME is not a preference -- the File Manager catalogues absolute
+# paths and the Workflow Manager writes them into task metadata -- so the
+# transport has to reach the canonical path, and only tar does.
+#
+# It is also less to depend on everywhere else. tar is on all three machines
+# already, and this drops a version spread that was being relied on without
+# anybody checking it: openrsync protocol 29 on the manager, rsync 3.2.7 on one
+# node, 3.5.1 on another.
+#
+# Not compressed. The tree is 4.6GB of jars, which are already deflated, so
+# gzip would spend CPU on both ends to save very little over a wired LAN.
+
 deploy_one() {
   id=$1; host=$2
   echo "deploying to $id ($host) at $BIGTRANSLATE_HOME"
@@ -267,11 +295,60 @@ deploy_one() {
   # on the node: a virtualenv records absolute paths and its binaries are
   # built for one architecture, so copying one from an arm64 Mac to a Linux
   # box produces a tree that looks right and cannot run.
-  rsync -a --delete \
-    --exclude '.venv' --exclude 'logs/*' --exclude 'run/*' \
-    --exclude 'data/jobs/*' --exclude 'data/translated/*' \
-    --exclude 'bin/setenv.sh' \
-    -e "$SSH" "$BIGTRANSLATE_HOME/" "$host:$BIGTRANSLATE_HOME/"
+  # What the node keeps, and what is replaced outright.
+  #
+  # tar has no --delete, and --delete is the half of this that matters: a
+  # deployment that only ever adds files accumulates them. On the manager that
+  # left two Mnemosyne versions of the same jar in six classpath directories at
+  # once, and the JVM expands lib/* in an order it explicitly does not specify,
+  # so which one loaded was decided by nothing. The equivalent is to remove
+  # what is about to be replaced first, computed from what is actually here
+  # rather than from a list that can go stale.
+  keep_at_top='.venv logs run data'
+  replace=$($SSH "$host" "cd '$BIGTRANSLATE_HOME' 2>/dev/null && ls -A" \
+    | grep -vxF -e .venv -e logs -e run -e data | tr '\n' ' ')
+
+  # bin/setenv.sh is per machine: not sent, and not removed with the rest of
+  # bin. Kept aside by name because bin itself is replaced.
+  $SSH "$host" "cd '$BIGTRANSLATE_HOME' || exit 1
+    [ -f bin/setenv.sh ] && cp -p bin/setenv.sh .setenv.kept
+    exit 0" || die "could not read $BIGTRANSLATE_HOME on $host"
+
+  if [ -n "$replace" ]; then
+    $SSH "$host" "cd '$BIGTRANSLATE_HOME' && rm -rf $replace" \
+      || die "could not clear the old deployment on $host"
+  fi
+
+  tar -C "$BIGTRANSLATE_HOME" -cf - \
+    --exclude './.venv' --exclude './logs/*' --exclude './run/*' \
+    --exclude './data/jobs/*' --exclude './data/translated/*' \
+    --exclude './bin/setenv.sh' . \
+    | $SSH "$host" "cd '$BIGTRANSLATE_HOME' && tar -xf -" \
+    || die "could not copy the deployment to $host"
+
+  # Put the node's own setenv.sh back, or give a fresh node one.
+  #
+  # It is excluded from the copy because it is per machine. On a node that has
+  # never been deployed to there is nothing to exclude it in favour of, so the
+  # exclusion left the file absent altogether -- and every script in bin/ starts
+  # by sourcing it. A fresh node was therefore never deployable, which went
+  # unnoticed because the two existing nodes were set up before the exclusion.
+  #
+  # Seeding it is safe precisely because the file derives what it needs:
+  # BIGTRANSLATE_HOME is $(cd "$_bt_bin/.." && pwd), so the copy is correct
+  # wherever it lands. An existing one is still never overwritten.
+  $SSH "$host" "cd '$BIGTRANSLATE_HOME' || exit 1
+    if [ -f .setenv.kept ]; then
+      mv -f .setenv.kept bin/setenv.sh
+    fi
+    exit 0" || die "could not restore bin/setenv.sh on $host"
+
+  if ! $SSH "$host" "[ -f '$BIGTRANSLATE_HOME/bin/setenv.sh' ]" 2>/dev/null; then
+    echo "  seeding bin/setenv.sh (this node had none)"
+    tar -C "$BIGTRANSLATE_HOME/bin" -cf - ./setenv.sh \
+      | $SSH "$host" "cd '$BIGTRANSLATE_HOME/bin' && tar -xf -" \
+      || die "could not seed bin/setenv.sh on $host"
+  fi
   $SSH "$host" "cd '$BIGTRANSLATE_HOME' && PANTOGLOSS_SOURCE='${PANTOGLOSS_SOURCE:-pantogloss}' bin/bigtranslate-setup" \
     || die "could not build the python environment on $host"
   echo "  $id ready"
@@ -289,12 +366,13 @@ stage_one() {
   for d in conf bin pge/policy workflow/policy data/strings; do
     [ -d "$BIGTRANSLATE_HOME/$d" ] || continue
     $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME/$d'"
-    rsync -a --exclude 'setenv.sh' -e "$SSH" \
-      "$BIGTRANSLATE_HOME/$d/" "$host:$BIGTRANSLATE_HOME/$d/"
+    tar -C "$BIGTRANSLATE_HOME/$d" -cf - --exclude './setenv.sh' . \
+      | $SSH "$host" "cd '$BIGTRANSLATE_HOME/$d' && tar -xf -" \
+      || die "could not stage $d to $host"
   done
   # A manifest of what actually arrived, written here on the manager, because
   # ChunkStagedCondition runs in the Workflow Manager and cannot stat a remote
-  # disk. Ask the node what it has rather than assuming the rsync copied what
+  # disk. Ask the node what it has rather than assuming the copy moved what
   # we sent -- a manifest that lists a file the node does not have would
   # release a job that then fails, which is the whole failure this prevents.
   mkdir -p "$BIGTRANSLATE_HOME/data/staging"
@@ -333,8 +411,13 @@ stage_chunks_one() {
   incoming="$BIGTRANSLATE_HOME/data/strings/.incoming"
   $SSH "$host" "rm -rf '$incoming' && mkdir -p '$incoming'" \
     || die "could not create data/strings on $host"
-  rsync -a --include 'chunk-*.json' --include 'chunk-*.json/***' --exclude '*' \
-    -e "$SSH" "$CHUNK_SRC/" "$host:$incoming/" \
+  # The chunks only, whatever else is in the source directory. Named rather
+  # than filtered, because tar has no --include: the glob is expanded in
+  # CHUNK_SRC so the archive holds bare chunk names, which is what the move
+  # below expects. Both a flat chunk and an archive-shaped chunk/chunk
+  # directory match, and both are handled after.
+  ( cd "$CHUNK_SRC" && tar -cf - chunk-*.json ) \
+    | $SSH "$host" "cd '$incoming' && tar -xf -" \
     || die "could not copy chunks to $host"
 
   # Put each chunk where the task will look for it, which is not where it was
@@ -470,7 +553,7 @@ preflight_one() {
     # against no trailing space reports every jar as differing, which is
     # noise that teaches you to ignore the check.
     mine=$(preflight_sum "$BIGTRANSLATE_HOME" "$jar")
-    theirs=$($SSH "$host" "cd '$BIGTRANSLATE_HOME' 2>/dev/null && find . -name '$jar' -not -path '*/target/*' -not -path '*/tomcat/webapps/*' -exec shasum {} + 2>/dev/null | awk '{print \$1}' | sort -u")
+    theirs=$($SSH "$host" "$REMOTE_SHA1; cd '$BIGTRANSLATE_HOME' 2>/dev/null && find . -name '$jar' -not -path '*/target/*' -not -path '*/tomcat/webapps/*' -exec \$s {} + 2>/dev/null | awk '{print \$1}' | sort -u")
     theirs=$(preflight_normalise "$theirs")
     if [ -z "$theirs" ]; then
       echo "  $id: $jar MISSING"; fail=1
@@ -497,13 +580,31 @@ preflight_normalise() {
   echo $(echo "$1" | sort -u | tr '\n' ' ')
 }
 
+# The SHA-1 tool to use, which is not the same one on every machine.
+#
+# Neither candidate is present everywhere as shipped, measured 2026-09-28:
+#
+#   shasum    stock on macOS and Linux, ABSENT from Git for Windows
+#   sha1sum   on Linux and Git for Windows, on macOS only through Homebrew
+#
+# So naming either one hard-codes a portability assumption that holds on two
+# machines out of three. Both print "<sum>  <path>", so whichever exists works
+# unchanged and the comparison stays valid across a mixed cluster.
+#
+# Resolved rather than guessed, and each side resolves for itself: what the
+# manager has is not what the node has.
+BT_SHA1=$(command -v sha1sum 2>/dev/null || command -v shasum 2>/dev/null || true)
+
+# The same resolution, as one line a remote shell can run for itself.
+REMOTE_SHA1='s=$(command -v sha1sum 2>/dev/null || command -v shasum 2>/dev/null)'
+
 # Every copy of a jar in this tree, as one sorted list of sums. More than one
 # sum means the tree disagrees with itself, which is the hot swap case.
 preflight_sum() {
   home=$1; jar=$2
   preflight_normalise "$(cd "$home" 2>/dev/null && find . -name "$jar" \
     -not -path '*/target/*' -not -path '*/tomcat/webapps/*' \
-    -exec shasum {} + 2>/dev/null | awk '{print $1}')"
+    -exec "${BT_SHA1:-sha1sum}" {} + 2>/dev/null | awk '{print $1}')"
 }
 
 # Do every OODT jar under this tree come from one build? Prints the offending
