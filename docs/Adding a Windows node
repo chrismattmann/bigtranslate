@@ -1,0 +1,168 @@
+# Adding a Windows node
+
+What paparadelle needed on 2026-09-28, in the order it needed it. Every step is
+node provisioning: none of it required a change to BigTranslate, because the node
+is made to present the same POSIX shape the other machines already have.
+
+The one thing that is not optional is the path. Every machine uses the **same
+absolute** `BIGTRANSLATE_HOME`, because the File Manager catalogues absolute
+paths and the Workflow Manager writes them into task metadata. A node has to find
+`bin`, `conf` and the chunks exactly where the manager says they are.
+
+## 1. OpenSSH server
+
+Native since Windows 10 1809; no third-party client needed.
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd; Set-Service sshd -StartupType Automatic
+```
+
+The capability does not always create a firewall rule, and without one the port
+**times out** rather than refusing — which reads like a dead service:
+
+```powershell
+New-NetFirewallRule -Name sshd -DisplayName "OpenSSH Server (sshd)" -Enabled True `
+  -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Profile Any
+```
+
+A timeout means filtering; a refusal means nothing listening. Worth knowing which
+you have before changing anything.
+
+## 2. The manager's key, in the right file
+
+`bt-cluster` runs `ssh -o BatchMode=yes`, so a password can never satisfy it and
+the manager's key must be unencrypted rather than agent-held.
+
+For an account in the Administrators group, sshd ignores
+`C:\Users\<user>\.ssh\authorized_keys` entirely — its default config has
+
+```
+Match Group administrators
+    AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys
+```
+
+so the key goes in that file, with ACLs restricted or sshd rejects it silently:
+
+```powershell
+$key = '<the manager's ~/.ssh/id_rsa.pub, one line>'
+$f = "$env:ProgramData\ssh\administrators_authorized_keys"
+Add-Content -Path $f -Value $key -Encoding ascii
+icacls $f /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"
+```
+
+`-Encoding ascii` matters: a BOM breaks the file with no message.
+
+## 3. Git Bash as the ssh shell
+
+`bt-cluster` sends POSIX pipelines — `mkdir -p`, `find | sed | sort`,
+`find -exec`, `[ -d ]`. Windows OpenSSH hands those to **cmd.exe**, where they all
+fail. Git for Windows brings 248 POSIX tools, and pointing sshd at its bash also
+puts the POSIX `find`, `sort` and `tar` ahead of the Windows programs of the same
+name, which would otherwise do something quite different.
+
+```powershell
+New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell `
+  -Value "C:\Program Files\Git\bin\bash.exe" -PropertyType String -Force
+New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShellCommandOption `
+  -Value "-c" -PropertyType String -Force
+```
+
+The second key is the one that gets missed: without it sshd passes cmd's `/c`,
+which bash does not understand. To undo both:
+
+```powershell
+Remove-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell,DefaultShellCommandOption
+```
+
+Interactive `ssh` to the box then lands in Git Bash rather than PowerShell.
+Local PowerShell is unaffected.
+
+## 4. The canonical path
+
+Git Bash's `/` is `C:\Program Files\Git`, so `/Users/mattmann/bt-w1` would fall
+inside the Git installation and be liable to vanish on a Git upgrade. Map it
+instead, keeping the data on its own:
+
+```bash
+mkdir -p /c/bt-w1
+printf 'C:/bt-w1 /Users/mattmann/bt-w1 ntfs binary,posix=0,noacl,user 0 0\n' >> /etc/fstab
+```
+
+Check it round-trips — write through the canonical path, read back through the
+drive path:
+
+```bash
+echo probe > /Users/mattmann/bt-w1/marker && cat /c/bt-w1/marker && rm /c/bt-w1/marker
+```
+
+If MSYS2 is also installed, its `/etc/fstab` is a **separate** file
+(`C:\msys64\etc\fstab`) with a separate mount table. Mapping one does not map the
+other, and tools from each runtime see different filesystems.
+
+## 5. A real Python
+
+BigTranslate needs 3.10 to 3.12: TensorFlow 2.18 publishes no wheels above 3.12.
+
+The Microsoft Store aliases in `WindowsApps` are stubs that print an
+advertisement instead of running. uv's *managed* interpreters work, but uv's
+stable aliases for them are junctions that a non-elevated ssh session cannot
+traverse:
+
+```
+The path cannot be traversed because it contains an untrusted mount point. (os error 448)
+```
+
+The versioned directories beside those junctions are real and fine. `/usr/bin` is
+first on the Git Bash PATH, so a wrapper there wins over the Store stubs:
+
+```bash
+PY=/c/Users/<user>/AppData/Roaming/uv/python/cpython-3.12.14-windows-x86_64-none/python.exe
+for n in python3 python; do
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$PY" > /usr/bin/$n && chmod +x /usr/bin/$n
+done
+python3 --version
+```
+
+## 6. Name resolution
+
+ninja resolves `paparadelle` over mDNS; a Linux node without avahi resolves only
+`paparadelle.local`. Add the entry explicitly on the manager and every node
+rather than depending on multicast:
+
+```bash
+sudo sh -c 'printf "<node-ip>\t<node-name>\n" >> /etc/hosts'
+```
+
+On the Windows side the hosts file is usually held open, and `Add-Content` fails
+with a sharing violation where a read-modify-write succeeds:
+
+```powershell
+$p = "$env:SystemRoot\System32\drivers\etc\hosts"
+[IO.File]::WriteAllText($p, [IO.File]::ReadAllText($p) + "<ip>`t<name>`r`n")
+```
+
+## What is NOT needed
+
+**rsync.** `bt-cluster` copies trees with `tar` over ssh. Installing MSYS2's
+rsync does not help and was tried: with rsync 3.5.1 on the node and
+`--rsync-path` pointing at it, a transfer to `/c/bt-w1` works and a transfer to
+the canonical `/Users/mattmann/bt-w1` fails with `change_dir failed`, because the
+mapping lives in a mount table that rsync's runtime does not consult.
+
+**shasum.** Git for Windows ships `sha1sum` and not `shasum`; `bt-cluster`
+resolves whichever is present, on each side independently.
+
+## Known gap
+
+`bin/bigtranslate-setup` does not finish on a Windows node yet. It creates the
+virtualenv and then looks for `.venv/bin/pip`, and a venv made by a Windows
+interpreter puts its programs in `.venv/Scripts/`:
+
+```
+bin/bigtranslate-setup: line 78: /Users/mattmann/bt-w1/.venv/bin/pip: No such file or directory
+```
+
+Everything before that works: the tree arrives at the canonical path, the node's
+own `bin/setenv.sh` is in place, and the interpreter is found and reported. The
+venv layout is its own change.
