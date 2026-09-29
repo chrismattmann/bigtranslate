@@ -100,8 +100,9 @@ export CATALINA_OPTS=-Dsolr.solr.home="$OODT_BASE"/solr
 # because the PGEs that call tsvtojson, repackage, poster and
 # pantogloss-translatejson are run by the workflow manager and inherit its
 # environment, not the environment of whoever typed "bigtranslate translate".
-if [ -d "$OODT_BASE"/.venv/bin ]; then
-  PATH="$OODT_BASE"/.venv/bin:"$PATH"
+# BT_VENV_BIN is bin or Scripts, resolved in setenv.sh, which was sourced above.
+if [ -n "${BT_VENV_BIN:-}" ] && [ -d "$BT_VENV_BIN" ]; then
+  PATH="$BT_VENV_BIN":"$PATH"
   export PATH
 fi
 

@@ -19,7 +19,7 @@
 # Run once after unpacking a distribution. Maven does not do this: it ships
 # requirements.txt and this script, and the Python install happens here.
 #
-# env.sh puts $BIGTRANSLATE_HOME/.venv/bin on PATH when this directory exists,
+# env.sh puts this environment's program directory on PATH when it exists,
 # so the servers -- and therefore the PGEs they run -- pick the tools up.
 
 set -e
@@ -75,8 +75,57 @@ else
 fi
 
 echo "Installing from $REQUIREMENTS"
-"$VENV/bin/pip" install --upgrade pip
-"$VENV/bin/pip" install -r "$REQUIREMENTS"
+# Where this virtualenv keeps its programs, now that there is one.
+#
+# "bin" on Unix, "Scripts" on Windows: python -m venv follows the platform of the
+# interpreter, and a Windows interpreter writes Scripts even when invoked from
+# Git Bash. This script assumed bin, so on the first deploy to a Windows node it
+# created the environment, said so, and then stopped on
+#
+#   line 78: .../.venv/bin/pip: No such file or directory
+#
+# with a perfectly good environment sitting under .venv/Scripts.
+VENV_BIN=""
+for candidate in bin Scripts; do
+    if [ -d "$VENV/$candidate" ]; then
+        VENV_BIN="$VENV/$candidate"
+        break
+    fi
+done
+if [ -z "$VENV_BIN" ]; then
+    echo "Created $VENV but it has neither bin nor Scripts in it."
+    echo "Nothing can be installed into it. Remove it and run this again."
+    exit 1
+fi
+
+# A python3 beside python, because the PGEs ask for python3 by name.
+#
+# Nine scripts in bin/ start with "#!/usr/bin/env python3", and env.sh puts this
+# directory first on PATH so that they get the environment's interpreter and its
+# packages. A Windows virtualenv installs python.exe and pythonw.exe and no
+# python3.exe, so python3 would resolve past this directory to whatever else is
+# on PATH -- an interpreter without pantogloss in it, which fails at import
+# rather than at startup and reads like a broken install.
+if [ ! -e "$VENV_BIN/python3" ] && [ ! -e "$VENV_BIN/python3.exe" ]; then
+    if [ -e "$VENV_BIN/python.exe" ]; then
+        cp "$VENV_BIN/python.exe" "$VENV_BIN/python3.exe"
+        echo "  added python3.exe (a Windows venv ships python.exe alone)"
+    fi
+fi
+
+# python -m pip, not the pip program.
+#
+# On Windows pip.exe cannot replace itself: the file is locked while it runs, and
+# pip detects that and refuses rather than corrupting the install --
+#
+#   ERROR: To modify pip, please run the following command:
+#          ...\.venv\Scripts\python.exe -m pip install --upgrade pip
+#
+# which stopped the deploy. Going through the interpreter is the documented form
+# on every platform and has no such problem, so all of the installs below use it
+# rather than only this one.
+"$VENV_BIN/python" -m pip install --upgrade pip
+"$VENV_BIN/python" -m pip install -r "$REQUIREMENTS"
 
 # Pantogloss does the translating, but it is not in requirements.txt: it is not
 # published, so a public dependency list cannot name it. It has to go in this
@@ -215,20 +264,20 @@ if [ -n "$PANTOGLOSS_SOURCE" ]; then
     # with "Invalid requirement: ''".
     case "$PANTOGLOSS_SOURCE" in
         *"["*"]"*)
-            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
+            "$VENV_BIN/python" -m pip install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
             ;;
         *://*|*.whl|*.tar.gz)
-            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
-            "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
+            "$VENV_BIN/python" -m pip install --upgrade $PANTOGLOSS_PRE "$PANTOGLOSS_SOURCE"
+            "$VENV_BIN/python" -m pip install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
             ;;
         *)
-            "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE \
+            "$VENV_BIN/python" -m pip install --upgrade $PANTOGLOSS_PRE \
                 "${PANTOGLOSS_SOURCE}[${EXTRAS}]" \
                 || {
                     echo "  extras not available; installing plain"
-                    "$VENV/bin/pip" install --upgrade $PANTOGLOSS_PRE \
+                    "$VENV_BIN/python" -m pip install --upgrade $PANTOGLOSS_PRE \
                         "$PANTOGLOSS_SOURCE"
-                    "$VENV/bin/pip" install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
+                    "$VENV_BIN/python" -m pip install "fastapi>=0.115,<1" "uvicorn>=0.34,<1"
                 }
             ;;
     esac
@@ -236,9 +285,9 @@ fi
 
 echo
 echo "Done. Installed:"
-if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
+if "$VENV_BIN/python" -c "import pantogloss" > /dev/null 2>&1; then
     # Said here rather than left to fail at run time.
-    installed=$("$VENV/bin/python" -c \
+    installed=$("$VENV_BIN/python" -c \
         "import importlib.metadata as m; print(m.version('pantogloss'))" 2>/dev/null)
     if [ -n "$installed" ]; then
         # Enough of PEP 440 to order a pre-release below the release it leads
@@ -250,7 +299,7 @@ if "$VENV/bin/python" -c "import pantogloss" > /dev/null 2>&1; then
         # properly, but it is not a dependency here and pip's copy is vendored
         # and not ours to import, so this is the subset that matters: release
         # numbers, then a pre-release marker ranked a < b < rc < released.
-        if "$VENV/bin/python" - "$installed" "$PANTOGLOSS_REQUIRED" <<'VERSION'
+        if "$VENV_BIN/python" - "$installed" "$PANTOGLOSS_REQUIRED" <<'VERSION'
 import re
 import sys
 
@@ -298,14 +347,14 @@ VERSION
             echo "                    \$PANTOGLOSS_SOURCE and run this again."
         fi
     fi
-    if "$VENV/bin/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then
+    if "$VENV_BIN/python" -c "import uvicorn, fastapi" > /dev/null 2>&1; then
         echo "  pantogloss serve  (the translation service)"
         # Said here, because the alternative is finding out from a run that
         # took as long as it always did.
         # Whether a GPU will actually be used, asked of TensorFlow itself
         # rather than inferred from what was installed. This is the answer
         # that matters and it is one line to get.
-        gpus=$("$VENV/bin/python" -c \
+        gpus=$("$VENV_BIN/python" -c \
             "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))" \
             2>/dev/null)
         if [ "${gpus:-0}" -gt 0 ] 2>/dev/null; then

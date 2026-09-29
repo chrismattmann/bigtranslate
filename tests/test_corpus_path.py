@@ -259,7 +259,11 @@ def test_only_our_own_service_is_ever_killed():
     """The same rule start follows: a port we do not own is not ours to stop."""
     body = OODT.read_text()
     finder = body[body.index("pantogloss_pid()"):body.index("start_pantogloss()")]
-    assert ".venv/bin/pantogloss" in finder, (
+    # Matched through the resolved program directory rather than a literal
+    # ".venv/bin": a Windows virtualenv puts its programs in .venv/Scripts,
+    # and BT_VENV_BIN is whichever of the two this deployment has. What
+    # matters is that the match is scoped to this deployment's own venv.
+    assert "$BT_VENV_BIN/pantogloss" in finder, (
         "any process on the port would be adopted, and killed")
 
 
