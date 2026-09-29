@@ -308,11 +308,19 @@ deploy_one() {
   replace=$($SSH "$host" "cd '$BIGTRANSLATE_HOME' 2>/dev/null && ls -A" \
     | grep -vxF -e .venv -e logs -e run -e data | tr '\n' ' ')
 
-  # bin/setenv.sh is per machine: not sent, and not removed with the rest of
-  # bin. Kept aside by name because bin itself is replaced.
-  $SSH "$host" "cd '$BIGTRANSLATE_HOME' || exit 1
-    [ -f bin/setenv.sh ] && cp -p bin/setenv.sh .setenv.kept
-    exit 0" || die "could not read $BIGTRANSLATE_HOME on $host"
+  # bin/setenv.sh is copied like everything else in bin.
+  #
+  # It used to be excluded as per machine, and it is not: it derives
+  # BIGTRANSLATE_HOME from its own location, and every per-site value it uses
+  # comes from conf/site.sh, which this copies. Measured before removing the
+  # exclusion -- the manager's and the GPU node's copies were byte identical.
+  #
+  # Excluding it had two costs. A node that had never been deployed to ended up
+  # with no setenv.sh at all, since there was nothing to exclude it in favour of,
+  # and nothing in bin/ runs without sourcing it. And shared logic added to it
+  # could never reach a node: resolving the virtualenv's program directory there
+  # left the nodes still guessing, because their copy was whatever they were
+  # first seeded with.
 
   if [ -n "$replace" ]; then
     $SSH "$host" "cd '$BIGTRANSLATE_HOME' && rm -rf $replace" \
@@ -321,34 +329,12 @@ deploy_one() {
 
   tar -C "$BIGTRANSLATE_HOME" -cf - \
     --exclude './.venv' --exclude './logs/*' --exclude './run/*' \
-    --exclude './data/jobs/*' --exclude './data/translated/*' \
-    --exclude './bin/setenv.sh' . \
+    --exclude './data/jobs/*' --exclude './data/translated/*' . \
     | $SSH "$host" "cd '$BIGTRANSLATE_HOME' && tar -xf -" \
     || die "could not copy the deployment to $host"
 
-  # Put the node's own setenv.sh back, or give a fresh node one.
-  #
-  # It is excluded from the copy because it is per machine. On a node that has
-  # never been deployed to there is nothing to exclude it in favour of, so the
-  # exclusion left the file absent altogether -- and every script in bin/ starts
-  # by sourcing it. A fresh node was therefore never deployable, which went
-  # unnoticed because the two existing nodes were set up before the exclusion.
-  #
-  # Seeding it is safe precisely because the file derives what it needs:
-  # BIGTRANSLATE_HOME is $(cd "$_bt_bin/.." && pwd), so the copy is correct
-  # wherever it lands. An existing one is still never overwritten.
-  $SSH "$host" "cd '$BIGTRANSLATE_HOME' || exit 1
-    if [ -f .setenv.kept ]; then
-      mv -f .setenv.kept bin/setenv.sh
-    fi
-    exit 0" || die "could not restore bin/setenv.sh on $host"
-
-  if ! $SSH "$host" "[ -f '$BIGTRANSLATE_HOME/bin/setenv.sh' ]" 2>/dev/null; then
-    echo "  seeding bin/setenv.sh (this node had none)"
-    tar -C "$BIGTRANSLATE_HOME/bin" -cf - ./setenv.sh \
-      | $SSH "$host" "cd '$BIGTRANSLATE_HOME/bin' && tar -xf -" \
-      || die "could not seed bin/setenv.sh on $host"
-  fi
+  $SSH "$host" "[ -f '$BIGTRANSLATE_HOME/bin/setenv.sh' ]" 2>/dev/null \
+    || die "bin/setenv.sh did not arrive on $host; nothing in bin/ can run"
   $SSH "$host" "cd '$BIGTRANSLATE_HOME' && PANTOGLOSS_SOURCE='${PANTOGLOSS_SOURCE:-pantogloss}' bin/bigtranslate-setup" \
     || die "could not build the python environment on $host"
   echo "  $id ready"
@@ -366,7 +352,7 @@ stage_one() {
   for d in conf bin pge/policy workflow/policy data/strings; do
     [ -d "$BIGTRANSLATE_HOME/$d" ] || continue
     $SSH "$host" "mkdir -p '$BIGTRANSLATE_HOME/$d'"
-    tar -C "$BIGTRANSLATE_HOME/$d" -cf - --exclude './setenv.sh' . \
+    tar -C "$BIGTRANSLATE_HOME/$d" -cf - . \
       | $SSH "$host" "cd '$BIGTRANSLATE_HOME/$d' && tar -xf -" \
       || die "could not stage $d to $host"
   done

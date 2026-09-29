@@ -111,38 +111,35 @@ class TestTheDeployStillReplacesRatherThanAccumulates:
             assert "--exclude '%s'" % pattern in body, pattern
 
 
-class TestSetenvOnAFreshNode:
-    """bin/setenv.sh is excluded from the copy because it is per machine.
+class TestSetenvIsCopiedLikeAnythingElse:
+    """bin/setenv.sh used to be excluded from the copy as per machine.
 
-    On a node that has never been deployed to there is nothing to exclude it in
-    favour of, so the exclusion left the file absent -- and every script in bin/
-    starts by sourcing it. A fresh node was therefore never deployable, which
-    went unnoticed because both existing nodes predate the exclusion. Observed
-    on the first deploy to paparadelle.
+    It is not per machine. It derives BIGTRANSLATE_HOME from its own location,
+    and every per-site value it uses comes from conf/site.sh, which the deploy
+    does copy. The manager's and the GPU node's copies were byte identical when
+    this was checked.
+
+    Excluding it cost two things. A node that had never been deployed to ended up
+    with no setenv.sh at all, because there was nothing to exclude it in favour
+    of, and nothing in bin/ runs without sourcing it. And shared logic added to
+    it could never reach a node: resolving the virtualenv's program directory
+    there left every node still guessing, since its copy was whatever it was
+    first seeded with.
     """
 
-    def deploy_body(self):
+    def test_it_is_not_excluded_from_the_deploy(self):
         text = source()
-        start = text.index("deploy_one() {")
-        return text[start:text.index("\ncmd_deploy", start)]
+        assert "--exclude './bin/setenv.sh'" not in text, (
+            "shared logic added to setenv.sh cannot reach a node while it is "
+            "excluded, and a fresh node gets none at all")
 
-    def test_an_existing_one_is_kept(self):
-        body = self.deploy_body()
-        assert ".setenv.kept" in body
-        assert "--exclude './bin/setenv.sh'" in body
+    def test_it_is_not_excluded_from_staging_either(self):
+        assert "--exclude './setenv.sh'" not in source()
 
-    def test_a_fresh_node_is_seeded(self):
-        body = self.deploy_body()
-        assert "seeding bin/setenv.sh" in body, (
-            "a node with no setenv.sh ends up with none, and nothing in bin/ "
-            "can run without it")
-
-    def test_seeding_never_overwrites(self):
-        body = self.deploy_body()
-        seed = body[body.index("seeding bin/setenv.sh"):]
-        guard = body[:body.index("seeding bin/setenv.sh")]
-        assert "if ! $SSH" in guard[-400:], (
-            "the seed is not guarded by a test for an existing file")
+    def test_the_deploy_checks_it_arrived(self):
+        """A node without it cannot run anything in bin/, so say so there."""
+        text = source()
+        assert "bin/setenv.sh did not arrive" in text
 
 
 class TestTheHashToolIsResolvedNotAssumed:
