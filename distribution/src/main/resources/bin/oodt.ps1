@@ -6,16 +6,30 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('start', 'stop', 'restart', 'status')]
+    [ValidateSet('start', 'stop', 'restart', 'status', 'start-node', 'stop-node')]
     [string] $Command,
 
-    [string] $OodtHome = (Split-Path -Parent $PSScriptRoot),
+    # $PSScriptRoot is empty when a non-PowerShell parent invokes this with a
+    # relative -File path, which is how bin/bt-cluster calls it over ssh: the
+    # deployment root came out empty and Split-Path refused it. Fall back to the
+    # invocation's own path, then to the working directory, which bt-cluster sets
+    # to the deployment before calling.
+    [string] $OodtHome = $(
+        $root = $PSScriptRoot
+        if (-not $root -and $MyInvocation.MyCommand.Path) {
+            $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+        }
+        if ($root) { Split-Path -Parent $root } else { (Get-Location).Path }
+    ),
     [int] $FileManagerPort = 9000,
     [int] $WorkflowPort = 9001,
     [int] $ResourceManagerPort = 9002,
     [int] $TomcatPort = 8080,
     [int] $SolrPort = 8983,
-    [int] $PantoglossPort = 8765
+    [int] $PantoglossPort = 8765,
+    # The batch stub's port, matching NODE_PORT in bin/bt-node so a node answers
+    # where the Resource Manager's nodes.xml says it does.
+    [int] $NodePort = $(if ($env:BIGTRANSLATE_NODE_PORT) { [int] $env:BIGTRANSLATE_NODE_PORT } else { 2001 })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -387,6 +401,105 @@ function Stop-Oodt {
     Write-Host 'OODT services stopped.'
 }
 
+function Start-BatchStub([hashtable] $State) {
+    # The Resource Manager's batch stub, which is what makes this machine a
+    # translate node: the manager dispatches a task to it and it runs the PGE.
+    #
+    # bin/bt-node does this on the Unix nodes and cannot here. Four separate
+    # things it relies on are absent or different on Windows, and each was
+    # measured on paparadelle on 2026-09-30:
+    #
+    #   java wants C:/... paths and ";" between classpath entries. Given the
+    #     POSIX form it reported "Could not find or load main class
+    #     ...AvroRpcBatchStub" with all 103 jars present, because not one entry
+    #     resolved.
+    #   "nohup java ... &" does not survive the ssh session that started it.
+    #     MSYS cannot hand a child to the system the way setsid does, so the
+    #     stub logged "AvroRpc Batch Stub started by chris" and was gone before
+    #     the next call looked for it.
+    #   reading its pid back through a pipe hangs the caller, because a command
+    #     substitution waits for every writer to close stdout and the detached
+    #     java holds it open.
+    #   lsof does not exist, so port_owner, port_taken and port_free are all
+    #     dead: bt-node could not confirm the stub bound, could not detect an
+    #     orphan, and stop could not find what to stop.
+    #
+    # Start-ManagedProcess, Wait-Port and the state file above answer all four,
+    # and they were already here for the managers. The stub is just another
+    # managed service.
+    if (Test-Port $NodePort) {
+        Write-Host "Batch stub already listening on $NodePort."
+        return
+    }
+
+    $java = Set-JavaEnvironment
+
+    # Forward slashes rather than backslashes. java accepts them on Windows and
+    # they survive being passed through a shell without anything reading them as
+    # escapes.
+    # Not $home: that is a read-only automatic variable in PowerShell, and
+    # assigning to it fails the script with "Cannot overwrite variable HOME
+    # because it is read-only or constant."
+    $deployment = $OodtHome.Replace('\', '/')
+    $classpath = @(
+        "$deployment/resmgr/lib/*",
+        "$deployment/workflow/lib/*",
+        "$deployment/pge/lib/*"
+    ) -join ';'
+
+    $arguments = @(
+        '-cp', $classpath,
+        "-Dorg.apache.oodt.cas.resource.properties=$deployment/resmgr/etc/resource.properties",
+        "-Djava.io.tmpdir=$deployment/tomcat/temp",
+        '-Dorg.apache.oodt.cas.pge.task.metkeys.legacyMode=true',
+        '-Dorg.apache.oodt.cas.pge.task.status.legacyMode=true',
+        'org.apache.oodt.cas.resource.system.extern.AvroRpcBatchStub',
+        '--portNum', "$NodePort"
+    )
+
+    $State['batchstub'] = Start-ManagedProcess 'batchstub' $java $arguments $OodtHome
+    Save-State $State
+
+    # Bound, not merely launched. Reporting a pid that never took the port is
+    # how an afternoon's jobs went to a process that was not serving.
+    if (-not (Wait-Port $NodePort $true 60)) {
+        throw "Batch stub did not reach port $NodePort. See $LogHome\batchstub.err.log."
+    }
+    Write-Host "Batch stub started on $NodePort (pid $($State['batchstub']))."
+}
+
+function Start-Node {
+    # The translation service first: a task handed to this node the moment the
+    # stub answers would otherwise find nothing to translate against.
+    Set-DeploymentEnvironment | Out-Null
+    $state = Get-State
+
+    # Starting a node is idempotent, which is what bin/bt-cluster start expects:
+    # it is run against the whole cluster and must not fail on the nodes that
+    # are already up. Start-Pantogloss throws when the port is taken, which is
+    # right for bringing up a whole stack and wrong here -- the first run of
+    # this reported "Port 8766 is already in use" about the service it had
+    # started itself a minute earlier. bin/bt-node says "already running" and
+    # carries on, so this does too.
+    if (Test-Port $PantoglossPort) {
+        Write-Host "Translation service already listening on $PantoglossPort."
+    } else {
+        Start-Pantogloss $state
+    }
+
+    Start-BatchStub $state
+    Save-State $state
+}
+
+function Stop-Node {
+    Set-DeploymentEnvironment | Out-Null
+    $state = Get-State
+    Stop-ManagedProcess 'batchstub' $state
+    Stop-ManagedProcess 'pantogloss' $state
+    Save-State $state
+    Write-Host 'Node stopped.'
+}
+
 function Show-Status {
     $checks = [ordered]@{
         filemgr = $FileManagerPort
@@ -398,6 +511,7 @@ function Show-Status {
     if (Test-Path -LiteralPath (Join-Path $OodtHome '.venv\Scripts\pantogloss.exe')) {
         $checks.pantogloss = $PantoglossPort
     }
+    $checks.batchstub = $NodePort
     foreach ($entry in $checks.GetEnumerator()) {
         $status = if (Test-Port $entry.Value) { 'running' } else { 'stopped' }
         Write-Host "$($entry.Key): $status (port $($entry.Value))"
@@ -409,4 +523,8 @@ switch ($Command) {
     'stop' { Stop-Oodt }
     'restart' { Stop-Oodt; Start-Oodt }
     'status' { Show-Status }
+    # What bin/bt-cluster calls on a Windows node, in place of bin/bt-node.
+    'start-node' { Start-Node }
+    'stop-node' { Stop-Node }
+    default { throw "unknown command: $Command" }
 }

@@ -128,10 +128,48 @@ for_each_remote() {
   if [ -n "$ONLY_NODE" ] && [ "$found" -eq 0 ] && ! manager_selected; then
     die "no node called [$ONLY_NODE] in $NODES_CONF (the first line is this machine and is not deployed to)"
   fi
-  remote_lines | while read -r id host capacity; do
+  # The node list on its own descriptor, not on the loop's stdin.
+  #
+  # It was "remote_lines | while read ...", which makes the list the loop body's
+  # stdin, and ssh reads stdin unless told not to: the first remote's ssh
+  # swallowed every line after it. With one remote there was nothing to swallow,
+  # so this sat unnoticed until a third machine was added -- and then "start"
+  # brought up the second node, reported success, and never mentioned the third.
+  # A node silently missing from a run is this project's oldest failure shape.
+  #
+  # Reading from fd 3 fixes it for every command in the loop rather than for the
+  # ssh calls one at a time, which is the difference between fixing this and
+  # fixing this kind.
+  # The node list on its own descriptor, never on the loop body's stdin.
+  #
+  # It was "remote_lines | while read ...". That makes the list the stdin of
+  # everything in the loop, and ssh reads stdin unless told not to, so the first
+  # remote's ssh swallowed every line after it. With a single remote there was
+  # nothing to swallow, so it sat unnoticed until a third machine was added --
+  # and then "start" brought up the second node, reported success, and never
+  # mentioned the third. A node silently missing from a run is this project's
+  # oldest failure shape.
+  #
+  # Moving the list from a pipe to a file does NOT fix it: the loop still reads
+  # its stdin, so ssh still drains it. That was tried, and the trace showed the
+  # second read returning nothing. Only a descriptor the body does not inherit
+  # works.
+  #
+  # "exec 3<" and "read <&3" are POSIX; <(...) is not, and this script is
+  # #!/bin/sh. That was tried too, passed "bash -n", and failed immediately
+  # under sh -- so it is checked with the shell in the shebang now.
+  #
+  # Done here rather than by adding -n to each ssh, so every command in the loop
+  # is safe rather than the ones somebody remembered.
+  _bt_nodes=$(mktemp "${TMPDIR:-/tmp}/bt-nodes.XXXXXX") || die "cannot create a temporary file"
+  remote_lines > "$_bt_nodes"
+  exec 3< "$_bt_nodes"
+  while read -r id host capacity <&3; do
     [ -n "$id" ] || continue
     "$@" "$id" "$host" "${capacity:-8}"
   done
+  exec 3<&-
+  rm -f "$_bt_nodes"
 }
 
 # ---------------------------------------------------------------- policy ---
@@ -451,8 +489,110 @@ cmd_stage() { for_each_remote stage_one; echo "staging complete"; }
 
 # ------------------------------------------------------- start/stop/status ---
 
-start_one() { echo "starting $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node start" || true; }
-stop_one()  { echo "stopping $1 ($2)"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node stop" || true; }
+# Which script starts a node's services, which is not the same on every node.
+#
+# bin/bt-node is bash and cannot manage processes on Windows. Four things it
+# relies on are absent or behave differently there, each measured on paparadelle
+# on 2026-09-30: java needs Windows paths and ";" classpath separators;
+# "nohup ... &" does not survive the ssh session that started it; reading a pid
+# back through a pipe hangs the caller, because the substitution waits for the
+# detached child to close stdout; and lsof does not exist, so every port check
+# in bt-node is dead and it can neither confirm a start nor find what to stop.
+#
+# bin/oodt.ps1 already answered all four for the managers -- Start-ManagedProcess
+# hands a process to Windows, Wait-Port confirms it bound, and a state file holds
+# the pids -- so on a Windows node the stub is one more managed service there
+# rather than four reimplementations here. The Unix nodes keep bin/bt-node
+# exactly as it was.
+#
+# Asked of the node rather than declared in conf/nodes.conf: one fewer field to
+# get wrong, and the answer cannot drift from the machine it describes.
+node_is_windows() {
+  case "$($SSH "$1" 'uname -s' 2>/dev/null | tr -d '\r')" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# The ports bin/oodt.ps1 needs, from the manager rather than from its own
+# defaults.
+#
+# oodt.ps1 derives every URL from its parameters and does not read conf/site.sh:
+# it is written for a standalone Windows install and defaults to pantogloss on
+# 8765 and the File Manager on 9000, where this deployment uses 8766 and 9200. On
+# the first attempt Start-Node waited ten minutes for a translation service on
+# 8765 while the one it had just started answered on 8766.
+#
+# Passed rather than parsed, because the manager is where cluster configuration
+# is decided and these are already parameters. A node that disagreed with the
+# manager about its own port would be told to translate against a service that
+# is not there.
+windows_node_arguments() {
+  printf '%s' "-PantoglossPort ${PANTOGLOSS_PORT:-8766} -NodePort ${BIGTRANSLATE_NODE_PORT:-2001}"
+}
+
+# Whether a node's services are answering, asked from here.
+#
+# The Windows start is dispatched rather than waited on, so this is what says it
+# worked. It is also the honest check either way: bin/bt-node has said "bound,
+# not merely launched" since a pid that never took its port sent an afternoon of
+# jobs to a process that was not serving.
+node_ports_up() {
+  host=$1
+  $SSH "$host" "timeout 4 bash -c '</dev/tcp/127.0.0.1/${BIGTRANSLATE_NODE_PORT:-2001}'" \
+    > /dev/null 2>&1 || return 1
+  $SSH "$host" "curl -s -m 8 -o /dev/null http://127.0.0.1:${PANTOGLOSS_PORT:-8766}/info" \
+    > /dev/null 2>&1 || return 1
+  return 0
+}
+
+wait_for_node_ports() {
+  host=$1; waited=0
+  # A cold start loads the translation model, which is the long part.
+  while [ "$waited" -lt 300 ]; do
+    if node_ports_up "$host"; then
+      return 0
+    fi
+    sleep 10
+    waited=$((waited + 10))
+  done
+  return 1
+}
+
+start_one() {
+  echo "starting $1 ($2)"
+  if node_is_windows "$2"; then
+    # Dispatched with -f, not waited on.
+    #
+    # Windows OpenSSH puts a session in a job object and holds the channel open
+    # until the job empties. Start-Process leaves its children in that job and
+    # PowerShell cannot ask for CREATE_BREAKAWAY_FROM_JOB, so the call never
+    # returns even though the work is done: measured at 400s and still waiting,
+    # with both "pantogloss started on port 8766" and "Batch stub started on
+    # 2001" already in its output.
+    #
+    # So the start is dispatched and the result is read from the node's ports
+    # instead. That is a better test than an exit status in any case -- it says
+    # the services are answering rather than that a script finished.
+    $SSH -n -f "$2" "cd '$BIGTRANSLATE_HOME' && powershell -NoProfile -File ./bin/oodt.ps1 start-node $(windows_node_arguments) >> logs/start-node.log 2>&1" || true
+    if wait_for_node_ports "$2"; then
+      echo "  $1 up: batch stub ${BIGTRANSLATE_NODE_PORT:-2001}, translation service ${PANTOGLOSS_PORT:-8766}"
+    else
+      echo "  $1 DID NOT COME UP; see logs/start-node.log and logs/batchstub.err.log on the node"
+    fi
+  else
+    $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node start" || true
+  fi
+}
+
+stop_one() {
+  echo "stopping $1 ($2)"
+  if node_is_windows "$2"; then
+    $SSH "$2" "cd '$BIGTRANSLATE_HOME' && powershell -NoProfile -File ./bin/oodt.ps1 stop-node $(windows_node_arguments)" || true
+  else
+    $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node stop" || true
+  fi
+}
 
 # Clear what a node carries between runs.
 #
