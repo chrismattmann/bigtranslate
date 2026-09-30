@@ -189,7 +189,7 @@ def pantogloss_installs():
     """
     joined = SETUP.read_text().replace("\\\n", " ")
     return [" ".join(line.split()) for line in joined.splitlines()
-            if '"$VENV/bin/pip" install' in line
+            if "-m pip install" in line
             and "PANTOGLOSS_SOURCE" in line]
 
 

@@ -103,6 +103,10 @@ case "${1:-}" in
     # The translation service first: a task handed to this node the moment
     # the stub answers would otherwise find nothing to translate against.
     "$BIGTRANSLATE_HOME"/bin/oodt start-pantogloss
+    # < /dev/null, so ssh can return. ssh holds a session open until every
+    # descriptor its command inherited is closed, and a detached process with
+    # stdin still open keeps it waiting -- which is how a node start hung
+    # after the service it launched was already up and answering.
     nohup "$JAVA_HOME/bin/java" \
       -cp "$STUB_CP" \
       -Dorg.apache.oodt.cas.resource.properties="$BIGTRANSLATE_HOME"/resmgr/etc/resource.properties \
@@ -110,7 +114,7 @@ case "${1:-}" in
       -Dorg.apache.oodt.cas.pge.task.metkeys.legacyMode="true" \
       -Dorg.apache.oodt.cas.pge.task.status.legacyMode="true" \
       org.apache.oodt.cas.resource.system.extern.AvroRpcBatchStub \
-      --portNum "$NODE_PORT" >> "$STUB_LOG" 2>&1 &
+      --portNum "$NODE_PORT" >> "$STUB_LOG" 2>&1 < /dev/null &
     started=$!
     # Bound, not merely launched. Reporting a pid that never took the port is
     # how a whole afternoon's worth of jobs went to the wrong process.

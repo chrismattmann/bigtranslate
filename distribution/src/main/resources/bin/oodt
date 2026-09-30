@@ -228,7 +228,7 @@ pantogloss_pid() {
     # on the port belongs to somebody else and is not ours to stop, which is
     # the rule start follows too.
     if ps -p "$candidate" -o command= 2>/dev/null \
-        | grep -q "$OODT_BASE/.venv/bin/pantogloss"; then
+        | grep -q "$BT_VENV_BIN/pantogloss"; then
       echo "$candidate" > "$PANTOGLOSS_PID"
       echo "$candidate"
       return 0
@@ -272,7 +272,7 @@ pantogloss_queue_timeout() {
 # package metadata rather than by running the CLI: "serve --help" imports
 # TensorFlow, which costs seconds every time the stack starts.
 pantogloss_batches_dynamically() {
-  "$OODT_BASE"/.venv/bin/python - <<'VERSION' 2>/dev/null
+  "$BT_VENV_BIN"/python - <<'VERSION' 2>/dev/null
 import re
 import sys
 from importlib.metadata import version
@@ -328,7 +328,7 @@ pantogloss_concurrency() {
     # working, so testing for it that way silently answered "no Metal here"
     # and started the service with eight slots -- the one setting that
     # crashes it.
-    gpus=$("$OODT_BASE"/.venv/bin/python -c \
+    gpus=$("$BT_VENV_BIN"/python -c \
       "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))" \
       2>/dev/null)
     if [ "${gpus:-0}" -gt 0 ] 2>/dev/null; then
@@ -356,14 +356,26 @@ solr_index_policy() {
   fi
 }
 
+# < /dev/null on every nohup below.
+#
+# ssh holds a session open until every descriptor its command inherited is
+# closed, so a background process that keeps stdin open keeps ssh waiting even
+# though it is detached and its output is redirected. "bt-cluster start" against
+# the Windows node never returned for that reason: the translation service had
+# started, was answering on its port, and the ssh call that launched it sat there
+# regardless.
+#
+# Redirecting stdout and stderr was already enough on the two Unix nodes, which
+# is why this went unnoticed. stdin is the one that was left.
+
 start_pantogloss() {
-  serve_bin="$OODT_BASE/.venv/bin/pantogloss"
+  serve_bin="$BT_VENV_BIN/pantogloss"
   if [ ! -x "$serve_bin" ]; then
     echo "No Pantogloss in $OODT_BASE/.venv -- run bin/bigtranslate-setup."
     echo "Translation will fail until it is there."
     return 0
   fi
-  if ! "$OODT_BASE"/.venv/bin/python -c "import uvicorn, fastapi" > /dev/null 2>&1; then
+  if ! "$BT_VENV_BIN"/python -c "import uvicorn, fastapi" > /dev/null 2>&1; then
     echo "Pantogloss is installed without its server extra, so the"
     echo "translation service cannot start. Re-run bin/bigtranslate-setup."
     return 0
@@ -399,7 +411,7 @@ start_pantogloss() {
     --queue-timeout "$PANTOGLOSS_QUEUE_TIMEOUT" \
     --device "$PANTOGLOSS_DEVICE" \
     $batching \
-    >> "$PANTOGLOSS_LOG" 2>&1 &
+    >> "$PANTOGLOSS_LOG" 2>&1 < /dev/null &
   echo $! > "$PANTOGLOSS_PID"
   echo "Translation service starting on $PANTOGLOSS_PORT: $concurrency at a time"
   echo "on $PANTOGLOSS_DEVICE${batching:+, batching waiting callers together}"
@@ -472,7 +484,7 @@ start_heartbeat() {
   fi
   [ -x "$OODT_BASE/bin/bt-heartbeat" ] || return 0
   mkdir -p "$(dirname "$HEARTBEAT_PID")" "$(dirname "$HEARTBEAT_LOG")" 2>/dev/null
-  nohup "$OODT_BASE/bin/bt-heartbeat" >> "$HEARTBEAT_LOG" 2>&1 &
+  nohup "$OODT_BASE/bin/bt-heartbeat" >> "$HEARTBEAT_LOG" 2>&1 < /dev/null &
   echo $! > "$HEARTBEAT_PID"
   echo "Run marker heartbeat started (pid $(cat "$HEARTBEAT_PID"))."
 }
@@ -630,7 +642,7 @@ ensure_workflow_instance_schema() {
 # Cheap to prevent and expensive to discover, since until the PGE learned to
 # fail on a failing command these losses were recorded as successes.
 wait_for_pantogloss() {
-  [ -x "$OODT_BASE/.venv/bin/pantogloss" ] || return 0
+  [ -x "$BT_VENV_BIN/pantogloss" ] || return 0
   waited=0
   while [ "$waited" -lt 600 ]; do
     if curl -s -m 5 "http://127.0.0.1:$PANTOGLOSS_PORT/health" 2>/dev/null \
@@ -649,8 +661,8 @@ wait_for_pantogloss() {
 start_oodt() {
   ensure_working_dirs
   ensure_resource_policy
-  nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
-  nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
+  nohup "$FILEMGR_HOME"/bin/"$FILEMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1 < /dev/null &
+  nohup "$RESMGR_HOME"/bin/"$RESMGR_EXEC" start "$@" >> "$OODT_OUT" 2>&1 < /dev/null &
 
   # The Resource Manager before the Workflow Manager, and not merely started
   # but listening. Under the ResourceRunner the workflow engine opens a client
@@ -680,9 +692,9 @@ start_oodt() {
   start_heartbeat
   wait_for_pantogloss
 
-  nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1  &
+  nohup "$WORKFLOW_HOME"/bin/"$WORKFLOW_EXEC" start "$@" >> "$OODT_OUT" 2>&1 < /dev/null &
   ensure_tomcat_ports
-  nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 &
+  nohup "$OODT_BASE"/tomcat/bin/"$TOMCAT_EXEC" start "$@" >> "$OODT_OUT" 2>&1 < /dev/null &
   # Solr runs as its own application now, with its own Jetty, rather than as a
   # war inside Tomcat. --solr-home points it at the bigtranslate core;
   # --user-managed keeps it out of SolrCloud, which BigTranslate does not use.

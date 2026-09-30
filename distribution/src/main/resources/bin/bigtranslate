@@ -70,8 +70,8 @@ SOLR_URL=${SOLR_URL:-http://localhost:$SOLR_PORT/solr/bigtranslate}
 # This script is not started through env.sh, so pick the virtual environment up
 # the same way env.sh does before looking for anything in it.
 BIGTRANSLATE_HOME=${BIGTRANSLATE_HOME:-$(cd "$(dirname "$0")/.." && pwd)}
-if [ -d "$BIGTRANSLATE_HOME"/.venv/bin ]; then
-    PATH="$BIGTRANSLATE_HOME"/.venv/bin:"$PATH"
+if [ -n "${BT_VENV_BIN:-}" ] && [ -d "$BT_VENV_BIN" ]; then
+    PATH="$BT_VENV_BIN":"$PATH"
     export PATH
 fi
 

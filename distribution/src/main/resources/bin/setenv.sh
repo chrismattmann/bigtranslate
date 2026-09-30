@@ -243,3 +243,31 @@ export BIGTRANSLATE_EXCLUDE=${BIGTRANSLATE_EXCLUDE:-}
 # so it should be far longer than any task rather than close to one.
 AVRO_CLIENT_TIMEOUT_MS=${AVRO_CLIENT_TIMEOUT_MS:-14400000}
 export JDK_JAVA_OPTIONS="${JDK_JAVA_OPTIONS:+$JDK_JAVA_OPTIONS }-Dorg.apache.oodt.avro.client.requestTimeoutMillis=${AVRO_CLIENT_TIMEOUT_MS}"
+
+# Where this deployment's virtualenv keeps its programs.
+#
+# "bin" on Unix and "Scripts" on Windows: python -m venv follows the platform of
+# the interpreter that made it, and a Windows interpreter writes Scripts even
+# when it was invoked from Git Bash. So nothing may assume either name.
+#
+# bigtranslate-setup assumed bin. On the first deploy to a Windows node it
+# created the virtualenv, reported the interpreter it had found, and then stopped
+# on
+#
+#   bin/bigtranslate-setup: line 78: .../.venv/bin/pip: No such file or directory
+#
+# with the environment sitting there under .venv/Scripts. Five files carried the
+# same assumption, so it is resolved once here: setenv.sh is what env.sh,
+# bin/bigtranslate and bin/bt-node all read, and env.sh is what bin/oodt reads.
+#
+# Empty when there is no virtualenv, which is a fresh node before setup has run.
+# Every user of it tests first, exactly as the hardcoded path used to be tested.
+BT_VENV_BIN=""
+for _bt_venv_dir in bin Scripts; do
+  if [ -d "$BIGTRANSLATE_HOME/.venv/$_bt_venv_dir" ]; then
+    BT_VENV_BIN="$BIGTRANSLATE_HOME/.venv/$_bt_venv_dir"
+    break
+  fi
+done
+unset _bt_venv_dir
+export BT_VENV_BIN
