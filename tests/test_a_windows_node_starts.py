@@ -126,12 +126,59 @@ class TestTheStartIsDispatchedAndThenVerified:
         assert "DID NOT COME UP" in body, (
             "a dispatched start that failed would otherwise be silent")
 
-    def test_both_ports_are_checked(self):
+    def body(self, name):
         text = CLUSTER.read_text()
-        check = text[text.index("node_ports_up()"):]
-        check = check[:check.index("\n}")]
-        assert "BIGTRANSLATE_NODE_PORT" in check, "the batch stub is not checked"
-        assert "PANTOGLOSS_PORT" in check, "the translation service is not checked"
+        body = text[text.index("%s() {" % name):]
+        return body[:body.index("\n}")]
+
+    def test_both_ports_are_checked(self):
+        composite = self.body("node_ports_up")
+        assert "node_stub_up" in composite, "the batch stub is not checked"
+        assert "node_service_up" in composite, (
+            "the translation service is not checked")
+        assert "BIGTRANSLATE_NODE_PORT" in self.body("node_stub_up")
+        assert "PANTOGLOSS_PORT" in self.body("node_service_up")
+
+
+class TestStatusOnAWindowsNode:
+    """
+    bin/bt-node status reads the ports with lsof, which Git for Windows does not
+    ship, so on a Windows node it reports the batch stub as down whatever the
+    stub is doing. Measured on paparadelle with the stub answering on 2001:
+    "bt-cluster status" said "Batch stub not running" and "oodt.ps1 status" on
+    the same machine said "batchstub: running (port 2001)".
+
+    A status that calls a working service stopped is worse than none: it sends
+    somebody to restart a node that was fine, or to look for a fault in the
+    healthy half of the cluster.
+    """
+
+    def status(self):
+        text = CLUSTER.read_text()
+        body = text[text.index("status_one() {"):]
+        return body[:body.index("\n}\n")]
+
+    def test_a_windows_node_is_not_asked_through_bt_node(self):
+        body = self.status()
+        windows = body[body.index("node_is_windows"):body.index("else")]
+        assert "bt-node" not in windows, (
+            "bt-node status needs lsof, which the node does not have")
+
+    def test_a_unix_node_still_goes_through_bt_node(self):
+        assert "bt-node status" in self.status(), (
+            "the Unix nodes lost their status")
+
+    def test_both_services_are_reported_separately(self):
+        body = self.status()
+        assert "node_stub_up" in body, "the batch stub is not reported"
+        assert "node_service_up" in body, (
+            "a node serving jobs with no translation service behind it is the "
+            "failure that looks like success")
+
+    def test_a_service_that_is_down_says_so(self):
+        body = self.status()
+        assert body.count("NOT answering") >= 2, (
+            "each service needs to be able to report itself down")
 
 
 class TestThePowerShellSide:

@@ -537,12 +537,22 @@ windows_node_arguments() {
 # worked. It is also the honest check either way: bin/bt-node has said "bound,
 # not merely launched" since a pid that never took its port sent an afternoon of
 # jobs to a process that was not serving.
+# Asked for each service separately, because "the node is down" and "the node
+# is up and its translation service is not" are different faults with different
+# remedies, and status is where that distinction is worth the second ssh.
+node_stub_up() {
+  $SSH "$1" "timeout 4 bash -c '</dev/tcp/127.0.0.1/${BIGTRANSLATE_NODE_PORT:-2001}'" \
+    > /dev/null 2>&1
+}
+
+node_service_up() {
+  $SSH "$1" "curl -s -m 8 -o /dev/null http://127.0.0.1:${PANTOGLOSS_PORT:-8766}/info" \
+    > /dev/null 2>&1
+}
+
 node_ports_up() {
-  host=$1
-  $SSH "$host" "timeout 4 bash -c '</dev/tcp/127.0.0.1/${BIGTRANSLATE_NODE_PORT:-2001}'" \
-    > /dev/null 2>&1 || return 1
-  $SSH "$host" "curl -s -m 8 -o /dev/null http://127.0.0.1:${PANTOGLOSS_PORT:-8766}/info" \
-    > /dev/null 2>&1 || return 1
+  node_stub_up "$1" || return 1
+  node_service_up "$1" || return 1
   return 0
 }
 
@@ -623,7 +633,41 @@ reset_one() {
       echo \"  moved \$d aside as \$d-superseded-\$stamp\"
     done" || true
 }
-status_one(){ printf '%-10s %-22s ' "$1" "$2"; $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node status" 2>&1 | tail -1; }
+# What a node is doing, asked the way each platform can answer.
+#
+# bin/bt-node status reads the ports with lsof, which Git for Windows does not
+# ship -- so on a Windows node every check inside it comes back empty and it
+# reports the stub as down. Measured on paparadelle with the stub answering:
+# "bt-cluster status" said "Batch stub not running" while "oodt.ps1 status" on
+# that same machine said "batchstub: running (port 2001)".
+#
+# A status that reports a working service as stopped is worse than having none.
+# What anybody does next with it is restart a node that was fine, or go looking
+# for a fault in the half of the cluster that is healthy -- and after a run it
+# is the thing that decides whether a missing third of the translations gets
+# investigated or explained away.
+#
+# A Windows node is asked the question the start already asks, rather than
+# through a second implementation that has to be kept in step with the first:
+# are the ports answering. Both are named, because a node serving jobs with no
+# translation service behind it is the failure that looks like success.
+status_one() {
+  printf '%-10s %-22s ' "$1" "$2"
+  if node_is_windows "$2"; then
+    if node_stub_up "$2"; then
+      printf 'Batch stub running on %s' "${BIGTRANSLATE_NODE_PORT:-2001}"
+    else
+      printf 'Batch stub NOT answering on %s' "${BIGTRANSLATE_NODE_PORT:-2001}"
+    fi
+    if node_service_up "$2"; then
+      printf ', translation service on %s.\n' "${PANTOGLOSS_PORT:-8766}"
+    else
+      printf ', translation service NOT answering on %s.\n' "${PANTOGLOSS_PORT:-8766}"
+    fi
+  else
+    $SSH "$2" "cd '$BIGTRANSLATE_HOME' && . ./bin/setenv.sh && ./bin/bt-node status" 2>&1 | tail -1
+  fi
+}
 
 # --node applies to this machine too. Asking about one node and being told
 # about all of them is the sort of small dishonesty that makes a script
