@@ -37,3 +37,25 @@
 #
 # export SOLR_DATA_DIR=/Volumes/BTSOLR
 # export SOLR_HEAP=4g
+
+# Which java the services run under.
+#
+# Leave it unset and bin/setenv.sh finds one: /usr/libexec/java_home on macOS,
+# otherwise java from the PATH. Set it when the one it would find is not the
+# one you want -- which is the normal case on a Mac with Homebrew JDKs, because
+# /usr/libexec/java_home only reports JVMs installed into
+# /Library/Java/JavaVirtualMachines and a "brew install openjdk@21" is not one
+# of them. On the manager here java_home reports 11 while the stack runs 21.
+#
+# Worth setting deliberately on a cluster in any case: every machine running a
+# different JVM because each had a different PATH is not a decision anybody
+# made, and it is invisible until one of them behaves differently.
+#
+# Guard anything per machine by platform. This file is copied to every node by
+# bin/bt-cluster deploy, so an unconditional Homebrew path would send a Linux
+# node looking for a JVM that is not on it -- and with the check in bin/bt-node
+# it would say so and stop, rather than start on the wrong one.
+#
+# case "$(uname -s)" in
+#   Darwin) export JAVA_HOME=/opt/homebrew/opt/openjdk@21 ;;
+# esac

@@ -271,3 +271,68 @@ for _bt_venv_dir in bin Scripts; do
 done
 unset _bt_venv_dir
 export BT_VENV_BIN
+
+# ---------------------------------------------------------------- java ---
+#
+# Where java is, resolved once, for the same reason the virtualenv's program
+# directory is: several files need it and none of them set it.
+#
+# bin/bt-node launches the batch stub as "$JAVA_HOME/bin/java". With JAVA_HOME
+# unset that is "/bin/java", which exists on no machine here, and the failure
+# arrives as the wrong diagnosis half a minute later:
+#
+#   nohup: /bin/java: No such file or directory        <- in logs/batch-stub.log
+#   Batch stub did not reach 2001 within 30s           <- what the operator sees
+#
+# and because the manager's stub is started before the remotes, and bin/bt-cluster
+# runs under set -e, one missing variable on the manager ended a cluster start
+# before it reached either node. All three then reported down, which reads as a
+# network fault rather than as an unset variable.
+#
+# Nothing in the deployment set it and nothing in the shell profile did either:
+# the stack had been started from a shell that happened to have it exported, and
+# the whole cluster depended on that shell being the one anybody used next.
+#
+# Resolution order, most explicit first:
+#
+#   JAVA_HOME already exported   honoured untouched, including a deliberate
+#                               choice of an older JVM for one run
+#   JAVA_HOME in conf/site.sh    the per-site place, sourced before this
+#   /usr/libexec/java_home       macOS, and it can be wrong: on the manager it
+#                                reports 11 while the stack runs 21, because
+#                                Homebrew's 21 is not registered with it
+#   java on the PATH             resolved back to its home, which is what a
+#                                Linux node and a Git Bash node both have
+#
+# Left empty if java genuinely cannot be found, rather than defaulted to
+# something plausible. The callers report that themselves, by name.
+#
+# Every reference to JAVA_HOME here is ${JAVA_HOME:-}, because this file is
+# sourced by callers that run set -u and the first unguarded expansion ends
+# them. bin/bt-heartbeat does, and the first version of this block killed it
+# with no message at all: the caller exited 1 with empty stdout and empty
+# stderr, which reads as "the heartbeat decided not to beat".
+if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME:-}/bin/java" ]; then
+  : # an explicit choice, honoured
+else
+  JAVA_HOME=""
+  if [ -x /usr/libexec/java_home ]; then
+    JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null) || JAVA_HOME=""
+  fi
+  if [ -z "${JAVA_HOME:-}" ] || [ ! -x "${JAVA_HOME:-}/bin/java" ]; then
+    # bin/java from the PATH, resolved back to the home two directories up.
+    # Symlinks are followed where readlink can: Homebrew's java is a link into
+    # a Cellar directory, and the bin/../lib/server layout a JVM needs is
+    # beside the real one, not beside the link.
+    _bt_java=$(command -v java 2>/dev/null || true)
+    if [ -n "$_bt_java" ]; then
+      _bt_real=$(readlink -f "$_bt_java" 2>/dev/null || echo "$_bt_java")
+      _bt_candidate=$(dirname "$(dirname "$_bt_real")")
+      if [ -x "$_bt_candidate/bin/java" ]; then
+        JAVA_HOME=$_bt_candidate
+      fi
+    fi
+    unset _bt_java _bt_real _bt_candidate
+  fi
+fi
+export JAVA_HOME
