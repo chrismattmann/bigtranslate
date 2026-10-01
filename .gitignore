@@ -94,3 +94,16 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+######################
+# Unsubstituted placeholders
+######################
+#
+# PathUtils leaves an unset [Name] in a PgeConfig as the literal text, so a
+# command like mkdir -p "[JobOutputDir]" creates a directory with brackets in
+# its name in whatever directory it ran from. Run the join by hand inside a
+# clone and "git add -A" commits it -- which is how [JobOutputDir]/join.done
+# reached master on 2026-09-28 and sat there for three days.
+#
+# Bracket is a character class in gitignore, so both are escaped.
+\[*\]/
