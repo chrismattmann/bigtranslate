@@ -56,6 +56,23 @@ def a_fake_jdk(root, name="jdk"):
     return home
 
 
+def a_path_without_java(root):
+    """A PATH holding the tools the resolution needs and no java.
+
+    Emptying PATH outright is not the same thing: the block needs dirname and
+    readlink to turn a java on the PATH into a home, so with those gone it
+    reports empty for a reason that has nothing to do with java. Both halves of
+    the test then pass and neither means anything.
+    """
+    only = root / "only"
+    only.mkdir()
+    for tool in ("dirname", "readlink", "basename", "sh"):
+        found = shutil.which(tool)
+        if found:
+            (only / tool).symlink_to(found)
+    return only
+
+
 def java_home_after_setenv(site=None, env=None, shell="sh"):
     """Source setenv.sh in a real shell and read back JAVA_HOME."""
     home = Path(tempfile.mkdtemp())
@@ -69,7 +86,13 @@ def java_home_after_setenv(site=None, env=None, shell="sh"):
               'printf "%%s" "$JAVA_HOME"\n' % (home, home))
     full = {"PATH": os.environ["PATH"]}
     full.update(env or {})
-    out = subprocess.run([shell, "-c", script], capture_output=True,
+    # The shell is resolved here, against the real PATH, because a test that
+    # empties PATH to hide java hides the shell too -- and then nothing runs
+    # and the assertion passes for the wrong reason. That is exactly how the
+    # first version of test_no_java_anywhere_leaves_it_empty passed on a Linux
+    # node and then failed in CI with "No such file or directory: 'sh'".
+    exe = shutil.which(shell) or shell
+    out = subprocess.run([exe, "-c", script], capture_output=True,
                          text=True, env=full)
     assert out.returncode == 0, out.stderr
     return out.stdout.strip()
@@ -135,11 +158,22 @@ class TestDiscovery:
     @pytest.mark.skipif(HAS_JAVA_HOME_TOOL,
                         reason="java_home answers first on macOS")
     def test_no_java_anywhere_leaves_it_empty(self, tmp_path):
-        bare = tmp_path / "bin"
-        bare.mkdir()
-        found = java_home_after_setenv(env={"PATH": str(bare), "JAVA_HOME": ""})
+        """Paired with a positive case, so an empty result has to mean something.
+
+        A PATH with no java in it is also a PATH with no anything in it, and the
+        first version of this test proved only that nothing had run.
+        """
+        tools = a_path_without_java(tmp_path)
+        found = java_home_after_setenv(env={"PATH": str(tools), "JAVA_HOME": ""})
         assert found == "", (
             "guessing is worse than an empty value the callers can report")
+        # The same harness and the same PATH, with one java added.
+        jdk = a_fake_jdk(tmp_path, name="present")
+        path = "%s:%s" % (jdk / "bin", tools)
+        again = java_home_after_setenv(env={"PATH": path, "JAVA_HOME": ""})
+        assert again == str(jdk), (
+            "the harness found nothing either way, so the empty result above "
+            "says nothing about the resolution")
 
 
 class TestItSurvivesSetU:
