@@ -107,6 +107,16 @@ case "${1:-}" in
     # descriptor its command inherited is closed, and a detached process with
     # stdin still open keeps it waiting -- which is how a node start hung
     # after the service it launched was already up and answering.
+    # By name, because nohup's version of this is "/bin/java: No such file or
+    # directory" in a log the operator is not reading yet, followed thirty
+    # seconds later by "Batch stub did not reach $NODE_PORT", which points at
+    # the port instead of at the variable.
+    [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ] || {
+      echo "No java found. JAVA_HOME is '${JAVA_HOME:-unset}' and there is no" >&2
+      echo "java on the PATH either, so the batch stub cannot be started." >&2
+      echo "Set JAVA_HOME in $BIGTRANSLATE_HOME/conf/site.sh." >&2
+      exit 1
+    }
     nohup "$JAVA_HOME/bin/java" \
       -cp "$STUB_CP" \
       -Dorg.apache.oodt.cas.resource.properties="$BIGTRANSLATE_HOME"/resmgr/etc/resource.properties \
