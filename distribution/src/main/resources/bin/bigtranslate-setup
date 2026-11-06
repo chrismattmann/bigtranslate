@@ -52,8 +52,8 @@ case "$PYTHON_VERSION" in
     3.10|3.11|3.12) ;;
     *)
         echo "$PYTHON is Python $PYTHON_VERSION."
-        echo "ETLLib is fine with that, but Pantogloss needs TensorFlow 2.18, which"
-        echo "publishes no wheels above 3.12. If you intend to translate, re-run with"
+        echo "Pantogloss needs TensorFlow, which publishes no wheels above 3.12."
+        echo "If you intend to translate, re-run with"
         echo "PYTHON set to a 3.10-3.12 interpreter."
         echo
         ;;
