@@ -93,3 +93,67 @@ def test_pantogloss_is_still_checked_for():
     body = (BIN / "bigtranslate").read_text(encoding="utf-8")
     assert "import pantogloss" in body
     assert "PANTOGLOSS_SOURCE" in body
+
+
+# --------------------------------------------------------------- the docs ---
+#
+# The code stopped needing ETLLib a while ago and the build instructions went
+# on requiring it, which is the half nobody runs and so nobody notices:
+#
+#   * ETLLib on PATH: pip install "etllib @ git+.../etllib.git"
+#     ... The PGE uses tsvtojson, repackage, and poster
+#
+# Every claim in that bullet was false by then. Someone following it installed
+# a dependency nothing calls, and was told the pipeline uses three tools that
+# had been deleted.
+
+DOCS = ROOT / "docs"
+
+
+def _doc_files():
+    if not DOCS.is_dir():
+        return []
+    return [p for p in DOCS.iterdir() if p.is_file()]
+
+
+def test_no_document_tells_anybody_to_install_it():
+    offenders = []
+    for path in _doc_files():
+        text = path.read_text(encoding="utf-8", errors="replace").lower()
+        for phrase in ("pip install \"etllib", "pip install etllib",
+                       "etllib on path"):
+            if phrase in text:
+                offenders.append("%s: %s" % (path.name, phrase))
+    assert not offenders, (
+        "the build instructions require a dependency nothing calls: %s"
+        % offenders)
+
+
+def test_no_document_claims_the_pge_uses_the_w1_tools():
+    offenders = []
+    for path in _doc_files():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for tool in TOOLS:
+            if "PGE uses" in text and tool in text:
+                offenders.append("%s names %s" % (path.name, tool))
+    assert not offenders, (
+        "a document still describes the W1 tools as part of the pipeline: %s"
+        % offenders)
+
+
+def test_the_build_doc_does_not_pin_a_stale_mnemosyne_version():
+    """A version written out in prose goes stale silently.
+
+    It said 1.11.0 while the pom was four releases ahead, which is the same
+    way DRAT's README badge came to claim 1.11.0. The pom is the one place
+    that has to be right, so the doc points at it instead of repeating it.
+    """
+    doc = DOCS / "Building BigTranslate"
+    if not doc.is_file():
+        pytest.skip("no build doc")
+    text = doc.read_text(encoding="utf-8", errors="replace")
+    import re
+    pinned = re.findall(r"Mnemosyne\s+(\d+\.\d+\.\d+)", text)
+    assert not pinned, (
+        "the build doc pins Mnemosyne %s in prose; oodt.version in the root "
+        "pom is the single place that should say it" % pinned)
